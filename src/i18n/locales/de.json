@@ -1,0 +1,773 @@
+{
+  "tagline": "Dein Raum zum Verbinden, Teilen und Entdecken.",
+  "auth": {
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "username": "Benutzername",
+    "usernamePlaceholder": "Benutzernamen eingeben",
+    "password": "Passwort",
+    "passwordPlaceholder": "Passwort eingeben",
+    "dontHaveAccount": "Noch kein Konto?",
+    "getStarted": "Jetzt starten",
+    "errorEmptyFields": "Bitte Benutzernamen und Passwort eingeben.",
+    "errorLoginFailed": "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
+    "verifyEmailTitle": "E-Mail bestätigen",
+    "verifyEmailDescription": "Gib den 6-stelligen Bestätigungscode ein, den wir an {{email}} gesendet haben.",
+    "verificationCodeLabel": "Bestätigungscode",
+    "verificationCodePlaceholder": "6-stelligen Code eingeben",
+    "verifyEmailCta": "E-Mail bestätigen",
+    "resendVerificationCode": "Code erneut senden",
+    "continueToApp": "Weiter",
+    "verificationCodeSent": "Bestätigungscode gesendet. Überprüfe deinen Posteingang und Spam-Ordner.",
+    "verificationCodeResent": "Ein neuer Bestätigungscode wurde gesendet.",
+    "verificationSuccess": "Deine E-Mail wurde erfolgreich bestätigt.",
+    "errorVerificationCodeRequired": "Bitte gib den Bestätigungscode ein.",
+    "errorVerificationFailed": "E-Mail-Bestätigung fehlgeschlagen. Bitte versuche es erneut.",
+    "errorResendVerificationFailed": "Code konnte nicht erneut gesendet werden. Bitte versuche es erneut.",
+    "errorVerificationSessionMissing": "Bestätigungssitzung abgelaufen. Bitte melde dich erneut an.",
+    "wrongEmailPrompt": "Falsche E-Mail-Adresse verwendet?",
+    "goBackToSignUp": "Zurück zur Registrierung",
+    "yourEmail": "deine E-Mail",
+    "forgotPassword": "Passwort vergessen?",
+    "forgotEmail": "E-Mail vergessen?",
+    "signUpAgreementPrefix": "Durch die Registrierung stimmst du unseren",
+    "signUpAgreementAnd": "und",
+    "recoverPasswordTitle": "Passwort zurücksetzen",
+    "recoverPasswordDescription": "Gib deine Konto-E-Mail ein, dann senden wir dir einen Link zum Zurücksetzen des Passworts.",
+    "recoveryEmailLabel": "Konto-E-Mail",
+    "recoveryEmailPlaceholder": "Gib deine Konto-E-Mail ein",
+    "sendRecoveryEmail": "Wiederherstellungs-E-Mail senden",
+    "recoverAccountTitle": "Kontodaten wiederherstellen",
+    "recoverAccountDescription": "Gib deinen Benutzernamen oder deine E-Mail ein. Wir senden deine Kontodaten an die passende E-Mail-Adresse.",
+    "recoveryIdentifierLabel": "Benutzername oder E-Mail",
+    "recoveryIdentifierPlaceholder": "Gib deinen Benutzernamen oder deine E-Mail ein",
+    "errorRecoveryEmailRequired": "Bitte gib deine Konto-E-Mail ein.",
+    "errorRecoveryIdentifierRequired": "Bitte gib deinen Benutzernamen oder deine E-Mail ein.",
+    "passwordRecoverySent": "Wenn deine E-Mail existiert, haben wir eine E-Mail zum Zurücksetzen gesendet. Prüfe Posteingang und Spam.",
+    "passwordRecoveryFailed": "E-Mail zum Zurücksetzen konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "accountRecoverySent": "Wenn ein Konto zu den Angaben passt, wurde eine Wiederherstellungs-E-Mail gesendet. Prüfe Posteingang und Spam.",
+    "accountRecoveryFailed": "E-Mail zur Kontowiederherstellung konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "rememberedCredentials": "Zugangsdaten wieder eingefallen?",
+    "backToSignIn": "Zurück zur Anmeldung",
+    "resetPasswordTitle": "Neues Passwort festlegen",
+    "resetPasswordDescription": "Erstelle ein neues Passwort für dein Konto.",
+    "newPasswordLabel": "Neues Passwort",
+    "newPasswordPlaceholder": "Gib dein neues Passwort ein",
+    "confirmNewPasswordLabel": "Neues Passwort bestätigen",
+    "confirmNewPasswordPlaceholder": "Gib dein neues Passwort erneut ein",
+    "resetPasswordButton": "Passwort aktualisieren",
+    "errorResetTokenMissing": "Der Zurücksetzungslink fehlt oder ist ungültig. Fordere einen neuen an.",
+    "errorResetPasswordFieldsRequired": "Bitte gib dein neues Passwort ein und bestätige es.",
+    "errorResetPasswordMismatch": "Passwörter stimmen nicht überein.",
+    "passwordResetSuccess": "Passwort erfolgreich zurückgesetzt.",
+    "passwordResetSuccessDescription": "Du kannst dich jetzt mit deinem neuen Passwort anmelden.",
+    "passwordResetFailed": "Zurücksetzen des Passworts fehlgeschlagen. Bitte fordere einen neuen Link an und versuche es erneut.",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Re-enter your password",
+    "alreadyHaveAccount": "Already have an account?",
+    "errorPasswordsDontMatch": "Passwords do not match.",
+    "errorRegistrationFailed": "Registration failed. Please try again.",
+    "socialContinueGoogle": "Mit Google fortfahren",
+    "socialContinueApple": "Mit Apple fortfahren",
+    "socialLoadingGoogle": "Connecting to Google...",
+    "socialLoadingApple": "Connecting to Apple...",
+    "socialOrDivider": "oder unten mit Benutzername fortfahren",
+    "socialConfigMissing": "Social login is not configured yet.",
+    "socialWebOnly": "Social login is available on web in this build.",
+    "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "socialCancelled": "Social sign-in was cancelled.",
+    "socialTimeout": "Social sign-in timed out. Please try again.",
+    "socialStateMismatch": "Security check failed. Please try again.",
+    "socialAuthFailed": "Social sign-in failed. Please try again.",
+    "socialUsernameTitle": "Wähle deinen Benutzernamen",
+    "socialUsernameDescription": "Wähle den Benutzernamen, den andere in deinem Profil sehen. Du kannst ihn später ändern.",
+    "socialUsernameCta": "Mit diesem Benutzernamen fortfahren",
+    "errorSocialSessionMissing": "Die Social-Anmeldung ist abgelaufen. Bitte erneut versuchen.",
+    "errorSocialUsernameRequired": "Bitte gib einen Benutzernamen ein.",
+    "errorSocialUsernameUpdateFailed": "Benutzername konnte nicht gespeichert werden. Bitte versuche einen anderen.",
+    "needDifferentAccountPrompt": "Ein anderes Konto verwenden?",
+    "shareProfileTitle": "Teile dein neues Profil",
+    "shareProfileDescription": "Dein Konto {{username}} ist bereit. Teile es auf deinen Lieblingsplattformen, bevor du fortfährst.",
+    "shareProfileMessage": "Ich bin gerade Openspace.Social als {{username}} beigetreten. Vernetze dich mit mir!",
+    "shareInstagram": "Instagram",
+    "shareFacebook": "Facebook",
+    "shareX": "X (Twitter)",
+    "shareBluesky": "Bluesky",
+    "shareReddit": "Reddit",
+    "shareContinueCta": "Weiter zu Openspace",
+    "shareSkipCta": "Jetzt überspringen",
+    "shareSkipHint": "Du kannst jederzeit später teilen.",
+    "shareInstagramNotice": "Wir haben deinen Profiltext kopiert. Füge ihn in deinen Instagram-Beitrag oder deine Bio ein.",
+    "errorShareSessionMissing": "Freigabesitzung abgelaufen. Bitte erneut anmelden.",
+    "newAccountLabel": "mein neues Konto"
+  },
+  "home": {
+    "welcomeBack": "Willkommen zurück, {{name}}!",
+    "welcomeBackGeneric": "Willkommen zurück!",
+    "comingSoon": "Das neue Openspace-Erlebnis kommt bald.",
+    "linkedAccountsTitle": "Linked accounts",
+    "linkedAccountsDescription": "Connect your social providers to make sign-in and recovery easier.",
+    "providerGoogle": "Google",
+    "providerApple": "Apple",
+    "linkedStatusConnected": "Connected",
+    "linkedStatusWithEmail": "Connected as {{email}}",
+    "linkedStatusNotConnected": "Not connected",
+    "linkAction": "Link",
+    "unlinkAction": "Unlink",
+    "linkSuccess": "{{provider}} linked successfully.",
+    "unlinkSuccess": "{{provider}} unlinked successfully.",
+    "linkFailed": "Could not link account. Please try again.",
+    "unlinkFailed": "Could not unlink account. Please try again.",
+    "linkWebOnly": "Linking social accounts is available on web in this build.",
+    "linkConfigMissing": "Social login is not configured yet.",
+    "linkPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "linkCancelled": "Social linking was cancelled.",
+    "linkTimeout": "Social linking timed out. Please try again.",
+    "linkStateMismatch": "Security check failed. Please try again."
+  },
+  "theme": {
+    "switchToLight": "Zum hellen Modus wechseln",
+    "switchToDark": "Zum dunklen Modus wechseln"
+  },
+  "language": {
+    "select": "Sprache auswählen",
+    "current": "Sprache"
+  },
+  "aboutUs": {
+    "shiftTitle": "Ein sozialer Wandel: Warum Kanadier nach Alternativen zu US-Plattformen suchen",
+    "shiftBody": "Angesichts wachsender Handelsspannungen zwischen Kanada und den USA überdenken viele Kanadier ihre Abhängigkeit von amerikanischen Social-Media-Plattformen. Über geopolitische Bedenken hinaus haben diese Plattformen persönliche Daten schon lange als Ware behandelt – indem sie Ihre Interessen, Verhaltensweisen, Verbindungen und Vorlieben zum Profit abschöpfen. Openspace.Social ist anders. Stolz kanadisch priorisieren wir Ihre Sicherheit und Privatsphäre über Profit. Im Gegensatz zu Mainstream-Plattformen, die mit Datenbrokern zusammenarbeiten, nutzen wir Ihre Daten nicht aus. Openspace.Social zu wählen bedeutet, eine Plattform zu wählen, die Ihre Informationen respektiert und transparent arbeitet. Schließen Sie sich der Bewegung hin zu einem wirklich unabhängigen, datenschutzorientierten sozialen Erlebnis an.",
+    "aboutTitle": "Über Openspace.Social",
+    "about1": "Openspace.Social ist eine revolutionäre Social-Network-Plattform, die Nutzern eine erfrischende Alternative zu Mainstream-Plattformen bieten soll. Was Openspace.Social auszeichnet, ist sein unerschütterliches Engagement für echte Community-Verbindungen bei gleichzeitiger Priorisierung der Privatsphäre der Nutzer.",
+    "about2": "In einer Zeit, in der Datenschutzbedenken von größter Bedeutung sind, verfolgt Openspace.Social einen proaktiven Ansatz zum Schutz von Nutzerdaten. Die Plattform setzt robuste Datenschutzfunktionen ein und stellt sicher, dass Nutzer die Kontrolle über ihre persönlichen Informationen und den Zugriff darauf haben. Diese Betonung der Privatsphäre schafft einen Raum, in dem Einzelpersonen sich frei ausdrücken können, ohne Angst vor aufdringlichen Datenpraktiken zu haben.",
+    "about3": "Im Gegensatz zu anderen sozialen Netzwerken, die oft Popularitätsmetriken priorisieren, konzentriert sich Openspace.Social auf den Aufbau bedeutungsvoller Verbindungen innerhalb von Communities. Die Plattform ermutigt Nutzer, Communities basierend auf gemeinsamen Interessen, Werten oder Zielen beizutreten oder zu erstellen. Dieser gemeinschaftszentrierte Ansatz fördert authentischere Interaktionen und ein Gefühl der Zugehörigkeit.",
+    "about4": "Openspace.Social erkennt die Bedeutung der Nutzerermächtigung an und bietet anpassbare Datenschutzeinstellungen und Tools, mit denen Einzelpersonen ihr Online-Erlebnis gestalten können. Nutzer können sich in einer sicheren Umgebung mit Freunden, Familie oder neuen Bekannten verbinden und Momente und Inhalte teilen, ohne ihre persönlichen Grenzen zu gefährden.",
+    "about5": "In einer digitalen Landschaft, in der Vertrauen entscheidend ist, erweist sich Openspace.Social als Leuchtturm der Transparenz und gemeinschaftszentrierten Werte. Durch die Priorisierung von Privatsphäre, bedeutungsvollen Verbindungen und Nutzerermächtigung ist Openspace.Social bereit, das Social-Networking-Erlebnis für diejenigen neu zu definieren, die eine authentischere und sicherere Online-Präsenz suchen."
+  },
+  "footer": {
+    "customize": "Du kannst mit Feed-Filtern, Listen und Kreisen anpassen, was du sehen möchtest.",
+    "aboutUs": "Über uns",
+    "privacyPolicy": "Datenschutzrichtlinie",
+    "termsOfUse": "Nutzungsbedingungen",
+    "guidelines": "Richtlinien"
+  },
+  "cookies": {
+    "title": "Wir verwenden Cookies",
+    "body": "Wir verwenden Cookies, um dein Erlebnis zu verbessern, Inhalte zu personalisieren und unseren Datenverkehr zu analysieren. Du kannst wählen, ob du akzeptieren oder ablehnen möchtest.",
+    "acceptAll": "Alle akzeptieren",
+    "decline": "Ablehnen",
+    "learnMore": "Mehr erfahren"
+  },
+  "termsOfUse": {
+    "updatedAt": "Aktualisiert am 22.11.2023.",
+    "tableOfContentsTitle": "INHALTSVERZEICHNIS",
+    "tableOfContents": [
+      "1. ZUSTIMMUNG ZU DEN BEDINGUNGEN",
+      "2. RECHTE AM GEISTIGEN EIGENTUM",
+      "3. NUTZERERKLÄRUNGEN",
+      "4. NUTZERREGISTRIERUNG",
+      "5. DIENSTLEISTUNGEN",
+      "6. KÄUFE UND ZAHLUNG",
+      "7. RÜCKERSTATTUNGSRICHTLINIE",
+      "8. VERBOTENE AKTIVITÄTEN",
+      "9. NUTZERGENERIERTE BEITRÄGE",
+      "10. BEITRAGSLIZENZ",
+      "11. EINREICHUNGEN",
+      "12. WEBSITE-VERWALTUNG",
+      "13. DATENSCHUTZRICHTLINIE",
+      "14. URHEBERRECHTSVERLETZUNGEN",
+      "15. LAUFZEIT UND KÜNDIGUNG",
+      "16. ÄNDERUNGEN UND UNTERBRECHUNGEN",
+      "17. GELTENDES RECHT",
+      "18. STREITBEILEGUNG",
+      "19. KORREKTUREN",
+      "20. HAFTUNGSAUSSCHLUSS",
+      "21. HAFTUNGSBESCHRÄNKUNG",
+      "22. SCHADLOSHALTUNG",
+      "23. NUTZERDATEN",
+      "24. ELEKTRONISCHE KOMMUNIKATION, TRANSAKTIONEN UND SIGNATUREN",
+      "25. California-NUTZER UND EINWOHNER",
+      "26. SONSTIGES",
+      "27. KONTAKTIEREN SIE UNS"
+    ],
+    "sections": [
+      {
+        "title": "ZUSTIMMUNG ZU DEN BEDINGUNGEN",
+        "paragraphs": [
+          "Diese Nutzungsbedingungen stellen eine rechtsverbindliche Vereinbarung dar, die zwischen Ihnen, ob persönlich oder im Namen einer Einheit (\"Sie\"), und Openspace (\"Unternehmen\", \"wir\", \"uns\" oder \"unser\") bezüglich Ihres Zugangs zu und der Nutzung der Openspacelive.com-Website sowie aller anderen Medienformen, Medienkanäle, mobilen Websites oder mobilen Anwendungen, die damit verbunden, verlinkt oder anderweitig verbunden sind (zusammen die \"Website\"), geschlossen wird. Die Website bietet einen Online-Marktplatz für folgende Waren, Produkte und/oder Dienstleistungen: Hosting-Dienste (die \"Dienstleistungen\"). Sie stimmen zu, dass Sie durch den Zugang zur Website und/oder den Dienstleistungen diese Nutzungsbedingungen gelesen, verstanden und sich damit einverstanden erklärt haben, an alle diese Nutzungsbedingungen gebunden zu sein. WENN SIE NICHT MIT ALLEN DIESEN NUTZUNGSBEDINGUNGEN EINVERSTANDEN SIND, SIND SIE AUSDRÜCKLICH UNTERSAGT, DIE WEBSITE UND/ODER DIE DIENSTLEISTUNGEN ZU NUTZEN, UND SIE MÜSSEN DIE NUTZUNG SOFORT EINSTELLEN.",
+          "Wir behalten uns das Recht vor, nach unserem alleinigen Ermessen von Zeit zu Zeit Änderungen oder Modifikationen dieser Nutzungsbedingungen vorzunehmen. Wir werden Sie über alle Änderungen informieren, indem wir das Datum \"Zuletzt aktualisiert\" dieser Nutzungsbedingungen aktualisieren, und Sie verzichten auf jedes Recht, eine spezifische Benachrichtigung über jede solche Änderung zu erhalten. Bitte stellen Sie sicher, dass Sie jedes Mal, wenn Sie unsere Website nutzen, die geltenden Bedingungen überprüfen, damit Sie verstehen, welche Bedingungen gelten.",
+          "Die Website ist nicht darauf ausgelegt, branchenspezifischen Vorschriften (HIPAA, FISMA usw.) zu entsprechen. Wenn Ihre Interaktionen solchen Gesetzen unterliegen würden, dürfen Sie diese Website nicht nutzen. Sie dürfen die Website nicht auf eine Weise nutzen, die gegen den Gramm-Leach-Bliley Act (GLBA) verstoßen würde.",
+          "Die Website ist für Nutzer vorgesehen, die mindestens 13 Jahre alt sind. Alle Nutzer, die in der Gerichtsbarkeit, in der sie wohnen, minderjährig sind (im Allgemeinen unter 18 Jahre alt), müssen die Erlaubnis haben und direkt von einem Elternteil oder Vormund beaufsichtigt werden, um die Website zu nutzen."
+        ]
+      },
+      {
+        "title": "RECHTE AM GEISTIGEN EIGENTUM",
+        "paragraphs": [
+          "Sofern nicht anders angegeben, sind die Website und die Dienstleistungen unser Eigentum, und alle Quellcodes, Datenbanken, Funktionen, Software, Website-Designs, Audio, Video, Text, Fotografien und Grafiken auf der Website (zusammen der \"Inhalt\") sowie die darin enthaltenen Marken, Dienstleistungsmarken und Logos (die \"Marken\") sind von uns besessen oder kontrolliert oder an uns lizenziert und sind durch Urheberrechts- und Markengesetze sowie verschiedene andere Rechte am geistigen Eigentum und Gesetze gegen unlauteren Wettbewerb in den Vereinigten Staaten, internationale Urheberrechtsgesetze und internationale Konventionen geschützt. Der Inhalt und die Marken werden auf der Website \"WIE BESEHEN\" nur zu Ihrer Information und persönlichen Nutzung bereitgestellt. Außer wie ausdrücklich in diesen Nutzungsbedingungen vorgesehen, darf kein Teil der Website oder der Dienstleistungen und kein Inhalt oder Marken kopiert, reproduziert, aggregiert, neu veröffentlicht, hochgeladen, veröffentlicht, öffentlich angezeigt, kodiert, übersetzt, übertragen, verteilt, verkauft, lizenziert oder anderweitig für kommerzielle Zwecke ausgenutzt werden, ohne unsere ausdrückliche vorherige schriftliche Genehmigung.",
+          "Vorausgesetzt, dass Sie berechtigt sind, die Website zu nutzen, erhalten Sie eine eingeschränkte Lizenz, auf die Website zuzugreifen und sie zu nutzen und eine Kopie eines Teils des Inhalts, auf den Sie ordnungsgemäß zugegriffen haben, herunterzuladen oder auszudrucken, ausschließlich für Ihren persönlichen, nicht-kommerziellen Gebrauch. Wir behalten uns alle Rechte vor, die Ihnen in Bezug auf die Website, den Inhalt und die Marken nicht ausdrücklich gewährt wurden."
+        ]
+      },
+      {
+        "title": "NUTZERERKLÄRUNGEN",
+        "paragraphs": [
+          "Durch die Nutzung der Website oder der Dienstleistungen erklären und garantieren Sie, dass: (1) alle Registrierungsinformationen, die Sie einreichen, wahr, korrekt, aktuell und vollständig sind; (2) Sie die Richtigkeit dieser Informationen aufrechterhalten und die Registrierungsinformationen nach Bedarf umgehend aktualisieren; (3) Sie die rechtliche Handlungsfähigkeit besitzen und sich bereit erklären, diese Nutzungsbedingungen einzuhalten; (4) Sie nicht unter 13 Jahre alt sind; (5) Sie in der Gerichtsbarkeit, in der Sie wohnen, nicht minderjährig sind, oder wenn Sie minderjährig sind, haben Sie die elterliche Erlaubnis zur Nutzung der Website erhalten; (6) Sie nicht über automatisierte oder nicht-menschliche Mittel auf die Website oder die Dienstleistungen zugreifen, sei es über einen Bot, ein Skript oder anderweitig; (7) Sie die Website nicht für illegale oder unzulässige Zwecke nutzen; und (8) Ihre Nutzung der Website oder der Dienstleistungen nicht gegen geltende Gesetze oder Vorschriften verstoßen wird.",
+          "Sie dürfen die Website oder die Dienstleistungen nicht für illegale oder unzulässige Zwecke nutzen und dürfen bei der Nutzung der Dienstleistungen keine Gesetze verletzen. Zu den nicht autorisierten Dienstleistungen gehören: Rauschmittel jeglicher Art; illegale Drogen oder andere illegale Produkte; alkoholische Getränke; Glücksspiele; sowie Pornografie oder grafisch explizite Inhalte, Bilder oder andere Produkte für Erwachsene. Das Veröffentlichen nicht autorisierter Produkte oder Inhalte kann zur sofortigen Kündigung Ihres Kontos und einem lebenslangen Nutzungsverbot der Website führen.",
+          "Wir sind ein Dienstleister und machen keine Aussagen zur Sicherheit, Wirksamkeit, Angemessenheit, Richtigkeit, Verfügbarkeit, Preisen, Bewertungen, Rezensionen oder Rechtmäßigkeit der auf der Website enthaltenen Informationen oder der über die Website angebotenen Marktplatzangebote. Wir empfehlen keine Dienstleistungen und die Website wird ausschließlich zu Informations- und Werbezwecken bereitgestellt."
+        ]
+      },
+      {
+        "title": "NUTZERREGISTRIERUNG",
+        "paragraphs": [
+          "Sie müssen sich möglicherweise auf der Website registrieren, um auf die Dienstleistungen zugreifen zu können. Sie stimmen zu, Ihr Passwort vertraulich zu halten, und sind für die gesamte Nutzung Ihres Kontos und Passworts verantwortlich. Wir behalten uns das Recht vor, einen von Ihnen gewählten Benutzernamen zu entfernen, zurückzufordern oder zu ändern, wenn wir nach unserem alleinigen Ermessen feststellen, dass ein solcher Benutzername unangemessen, obszön oder anderweitig anstößig ist."
+        ]
+      },
+      {
+        "title": "DIENSTLEISTUNGEN",
+        "paragraphs": [
+          "Alle Dienstleistungen unterliegen der Verfügbarkeit, und wir können nicht garantieren, dass Marktplatzangebote vorrätig sind. Bestimmte Dienstleistungen sind möglicherweise nur online über die Website verfügbar. Solche Dienstleistungen können in begrenzten Mengen vorhanden sein und unterliegen der Rückgabe oder dem Umtausch nur gemäß unserer Rückgaberichtlinie. Wir behalten uns das Recht vor, die auf der Website angebotenen oder verfügbaren Mengen der Dienstleistungen zu begrenzen. Alle Beschreibungen oder Preise der Dienstleistungen können jederzeit ohne vorherige Ankündigung nach unserem alleinigen Ermessen geändert werden. Wir behalten uns das Recht vor, jede Dienstleistung jederzeit aus beliebigem Grund einzustellen. Wir garantieren nicht, dass die Qualität der von Ihnen gekauften Dienstleistungen Ihren Erwartungen entspricht oder dass Fehler auf der Website korrigiert werden."
+        ]
+      },
+      {
+        "title": "KÄUFE UND ZAHLUNG",
+        "paragraphs": [
+          "Wir akzeptieren folgende Zahlungsformen: Bargeld und Stripe (Kreditkarten und andere). Sie stimmen zu, aktuelle, vollständige und genaue Kauf- und Kontoinformationen für alle über die Website getätigten Käufe der Dienstleistungen bereitzustellen. Sie stimmen ferner zu, Konto- und Zahlungsinformationen einschließlich E-Mail-Adresse, Zahlungsmethode und Ablaufdatum der Zahlungskarte umgehend zu aktualisieren, damit wir Ihre Transaktionen abschließen und Sie bei Bedarf kontaktieren können. Umsatzsteuer wird nach unserem Ermessen zum Kaufpreis hinzugefügt. Wir können Preise jederzeit ändern. Alle Zahlungen erfolgen in US-Dollar.",
+          "Sie stimmen zu, alle Gebühren zu den dann gültigen Preisen für Ihre Käufe sowie alle anfallenden Versandgebühren zu zahlen, und Sie ermächtigen uns, Ihren gewählten Zahlungsanbieter für solche Beträge bei der Aufgabe Ihrer Bestellung zu belasten. Wenn Ihre Bestellung wiederkehrenden Gebühren unterliegt, stimmen Sie zu, dass wir Ihre Zahlungsmethode wiederkehrend belasten dürfen, ohne Ihre vorherige Genehmigung für jede wiederkehrende Belastung zu benötigen, bis Sie die entsprechende Bestellung kündigen. Wir behalten uns das Recht vor, Fehler oder Irrtümer in der Preisgestaltung zu korrigieren, auch wenn wir bereits eine Zahlung angefordert oder erhalten haben. Wir behalten uns das Recht vor, jede über die Website aufgegebene Bestellung abzulehnen."
+        ]
+      },
+      {
+        "title": "RÜCKERSTATTUNGSRICHTLINIE",
+        "paragraphs": [
+          "Wir bieten keine Rückerstattungen für Dienstleistungen an. Alle Verkäufe sind endgültig. Es werden keine Rückerstattungen ausgestellt."
+        ]
+      },
+      {
+        "title": "VERBOTENE AKTIVITÄTEN",
+        "paragraphs": [
+          "Sie dürfen nicht auf die Website zugreifen oder sie für einen anderen Zweck nutzen als den, für den wir die Website zur Verfügung stellen. Die Website darf nicht in Verbindung mit kommerziellen Unternehmungen verwendet werden, außer wenn diese von uns ausdrücklich befürwortet oder genehmigt wurden. Als Nutzer der Website stimmen Sie zu, Folgendes nicht zu tun:"
+        ],
+        "bullets": [
+          "Systematisch Daten oder andere Inhalte von der Website abrufen, um direkt oder indirekt eine Sammlung, Kompilierung, Datenbank oder ein Verzeichnis ohne schriftliche Genehmigung von uns zu erstellen.",
+          "Uns und andere Nutzer täuschen, betrügen oder irreführen, insbesondere beim Versuch, sensible Kontoinformationen wie Benutzerpasswörter zu erfahren.",
+          "Versuchen, Konten oder damit verbundene Daten zu verkaufen, zu kaufen oder zu tauschen.",
+          "Sicherheitsbezogene Funktionen der Website zu umgehen, zu deaktivieren oder anderweitig zu stören, einschließlich Funktionen, die die Nutzung oder Kopierung von Inhalten verhindern oder einschränken oder Beschränkungen bei der Nutzung der Website und/oder der darin enthaltenen Inhalte durchsetzen.",
+          "Uns und/oder die Website nach unserer Einschätzung zu verunglimpfen, zu schädigen oder anderweitig zu beschädigen.",
+          "Informationen von der Website zu nutzen, um eine andere Person zu belästigen, zu missbrauchen oder zu schaden. Unsere Support-Dienste missbrauchen oder falsche Berichte über Missbrauch oder Fehlverhalten einreichen.",
+          "Die Website in einer Weise zu nutzen, die nicht mit geltenden Gesetzen oder Vorschriften vereinbar ist.",
+          "Unberechtigtes Framing der oder Verlinkung zur Website vorzunehmen.",
+          "Viren, Trojaner oder andere Materialien hochzuladen oder zu übertragen, einschließlich übermäßiger Verwendung von Großbuchstaben und Spamming, die die ungestörte Nutzung und den Genuss der Website durch eine Partei beeinträchtigen.",
+          "Sich an unberechtigter automatisierter Nutzung des Systems zu beteiligen, wie etwa die Verwendung von Skripten zum Senden von Kommentaren oder Nachrichten oder die Verwendung von Data-Mining, Robots oder ähnlichen Datenerfassungs- und Extraktionswerkzeugen.",
+          "Den Urheberrechtshinweis oder andere Eigentumsrechtshinweise aus Inhalten zu löschen.",
+          "Zu versuchen, sich als ein anderer Nutzer oder eine andere Person auszugeben oder den Benutzernamen eines anderen Nutzers zu verwenden.",
+          "Materialien hochzuladen oder zu übertragen, die als passive oder aktive Informationssammlungs- oder -übertragungsmechanismen fungieren, einschließlich Spyware oder passiver Sammlungsmechanismen.",
+          "Die Website oder die damit verbundenen Netzwerke oder Dienste zu stören, zu unterbrechen oder unangemessen zu belasten.",
+          "Unsere Mitarbeiter oder Vertreter, die einen Teil der Dienstleistungen für Sie erbringen, zu belästigen, zu ärgern, einzuschüchtern oder zu bedrohen.",
+          "Zu versuchen, Maßnahmen der Website zu umgehen, die den Zugang zur Website oder einem Teil davon verhindern oder einschränken sollen.",
+          "Die Software der Website zu kopieren oder anzupassen, einschließlich, aber nicht beschränkt auf Flash, PHP, HTML, JavaScript oder anderen Code.",
+          "Die Software, die die Website ausmacht oder in irgendeiner Weise Teil der Website ist, zu entschlüsseln, zu dekompilieren, zu zerlegen oder rückzuentwickeln.",
+          "Einen Einkaufsagenten oder Beschaffungsagenten für Käufe auf der Website zu nutzen.",
+          "Die Dienstleistungen unbefugt zu nutzen, einschließlich der Erfassung von Benutzernamen und/oder E-Mail-Adressen von Nutzern auf elektronischem oder anderem Wege zum Zweck der Zusendung unerwünschter E-Mails.",
+          "Die Dienstleistungen als Teil eines Versuchs zu nutzen, mit uns zu konkurrieren oder die Website und/oder den Inhalt anderweitig für gewinnbringende Unternehmungen oder kommerzielle Zwecke zu nutzen.",
+          "Gegen Website-Regeln zu verstoßen, die in den Community-Richtlinien festgelegt sind.",
+          "Illegale Aktivitäten zu betreiben."
+        ]
+      },
+      {
+        "title": "NUTZERGENERIERTE BEITRÄGE",
+        "paragraphs": [
+          "Die Website kann Sie einladen, in Blogs, Nachrichtenbrettern, Online-Foren und anderen Funktionen zu chatten, beizutragen oder teilzunehmen, und kann Ihnen die Möglichkeit geben, Inhalte und Materialien für uns oder auf der Website zu erstellen, einzureichen, zu veröffentlichen, anzuzeigen, zu übertragen, auszuführen, zu publizieren, zu verteilen oder zu senden, einschließlich, aber nicht beschränkt auf Text, Schriften, Video, Audio, Fotografien, Grafiken, Kommentare, Vorschläge oder persönliche Informationen oder andere Materialien (zusammen \"Beiträge\"). Beiträge können von anderen Nutzern der Website und über Drittanbieter-Websites eingesehen werden. Alle Beiträge, die Sie übermitteln, können als nicht vertraulich und nicht proprietär behandelt werden. Wenn Sie Beiträge erstellen oder verfügbar machen, erklären und garantieren Sie hiermit, dass:"
+        ],
+        "bullets": [
+          "Die Erstellung, Verbreitung, Übertragung, öffentliche Anzeige oder Aufführung sowie der Zugang zu, das Herunterladen oder Kopieren Ihrer Beiträge keine Eigentumsrechte Dritter verletzen und nicht verletzen werden, einschließlich, aber nicht beschränkt auf Urheberrechte, Patente, Marken, Geschäftsgeheimnisse oder moralische Rechte.",
+          "Sie der Schöpfer und Eigentümer sind oder über die erforderlichen Lizenzen, Rechte, Einwilligungen, Freigaben und Genehmigungen verfügen, um Ihre Beiträge zu nutzen und uns, der Website und anderen Nutzern der Website zu erlauben, Ihre Beiträge in jeder von der Website und diesen Nutzungsbedingungen vorgesehenen Weise zu nutzen.",
+          "Sie die schriftliche Einwilligung, Freigabe und/oder Genehmigung jeder identifizierbaren Person in Ihren Beiträgen haben, den Namen oder das Abbild jeder solchen identifizierbaren Person zu verwenden, um die Aufnahme und Nutzung Ihrer Beiträge in jeder von der Website und diesen Nutzungsbedingungen vorgesehenen Weise zu ermöglichen.",
+          "Ihre Beiträge nicht falsch, unrichtig oder irreführend sind.",
+          "Ihre Beiträge keine unaufgeforderten oder unautorisierten Werbeanzeigen, Werbematerialien, Schneeballsysteme, Kettenbriefe, Spam, Massenmailings oder andere Formen der Werbung sind.",
+          "Ihre Beiträge nicht obszön, anstößig, lasziv, schmutzig, gewalttätig, belästigend, verleumderisch, diffamierend oder anderweitig anstößig sind.",
+          "Ihre Beiträge niemanden lächerlich machen, verspotten, verunglimpfen, einschüchtern oder missbrauchen.",
+          "Ihre Beiträge nicht verwendet werden, um eine andere Person zu belästigen oder zu bedrohen und um Gewalt gegen eine bestimmte Person oder Gruppe von Menschen zu fördern.",
+          "Ihre Beiträge keine geltenden Gesetze, Vorschriften oder Regeln verletzen.",
+          "Ihre Beiträge nicht die Privatsphäre oder Öffentlichkeitsrechte Dritter verletzen.",
+          "Ihre Beiträge keine geltenden Gesetze bezüglich Kinderpornografie verletzen oder anderweitig beabsichtigt sind, die Gesundheit oder das Wohlbefinden von Minderjährigen zu schützen.",
+          "Ihre Beiträge keine anstößigen Kommentare enthalten, die mit Rasse, nationaler Herkunft, Geschlecht, sexueller Präferenz oder körperlicher Behinderung in Verbindung stehen.",
+          "Ihre Beiträge keine Bestimmungen dieser Nutzungsbedingungen oder geltende Gesetze oder Vorschriften anderweitig verletzen oder auf Materialien verlinken, die diese verletzen."
+        ],
+        "paragraphsAfterBullets": [
+          "Jede Nutzung der Website oder der Dienstleistungen, die gegen das Vorstehende verstößt, stellt einen Verstoß gegen diese Nutzungsbedingungen dar und kann unter anderem zur Kündigung oder Aussetzung Ihrer Rechte zur Nutzung der Website und der Marktplatzangebote führen."
+        ]
+      },
+      {
+        "title": "BEITRAGSLIZENZ",
+        "paragraphs": [
+          "Durch das Veröffentlichen Ihrer Beiträge auf einem Teil der Website gewähren Sie automatisch und erklären und garantieren, dass Sie das Recht haben, uns zu gewähren, eine uneingeschränkte, unbegrenzte, unwiderrufliche, dauerhafte, nicht-exklusive, übertragbare, lizenzgebührenfreie, vollständig bezahlte, weltweite Berechtigung und Lizenz, solche Beiträge für beliebige Zwecke, kommerziell, Werbezwecke oder anderweitig zu hosten, zu nutzen, zu kopieren, zu reproduzieren, offenzulegen, zu verkaufen, weiterzuverkaufen, zu veröffentlichen, zu senden, neu zu betiteln, zu archivieren, zu speichern, zu cachen, öffentlich aufzuführen, öffentlich anzuzeigen, neu zu formatieren, zu übersetzen, zu übertragen, auszugsweise (ganz oder teilweise) und zu verteilen sowie abgeleitete Werke davon zu erstellen oder solche Beiträge in andere Werke zu integrieren und Unterlizenzen des Vorstehenden zu erteilen und zu autorisieren.",
+          "Wir beanspruchen kein Eigentumsrecht an Ihren Beiträgen. Sie behalten das volle Eigentum an all Ihren Beiträgen und allen damit verbundenen Rechten am geistigen Eigentum oder anderen Eigentumsrechten. Wir haften nicht für Aussagen oder Darstellungen in Ihren Beiträgen, die Sie in einem Bereich der Website gemacht haben. Sie sind allein verantwortlich für Ihre Beiträge zur Website, und Sie stimmen ausdrücklich zu, uns von jeglicher Verantwortung freizustellen und von rechtlichen Schritten gegen uns bezüglich Ihrer Beiträge abzusehen.",
+          "Wir haben das Recht, nach unserem alleinigen und absoluten Ermessen, (1) Beiträge zu bearbeiten, zu redigieren oder anderweitig zu ändern; (2) Beiträge neu zu kategorisieren, um sie an geeigneteren Stellen auf der Website zu platzieren; und (3) Beiträge jederzeit und aus beliebigem Grund ohne Ankündigung vorab zu sichten oder zu löschen. Wir haben keine Verpflichtung, Ihre Beiträge zu überwachen."
+        ]
+      },
+      {
+        "title": "EINREICHUNGEN",
+        "paragraphs": [
+          "Sie erkennen an und stimmen zu, dass alle Fragen, Kommentare, Vorschläge, Ideen, Feedback oder andere Informationen bezüglich der Website oder der Dienstleistungen, die Sie uns zur Verfügung stellen, nicht vertraulich sind und unser alleiniges Eigentum werden. Wir haben ausschließliche Rechte, einschließlich aller Rechte am geistigen Eigentum, und sind berechtigt, diese Einreichungen ohne Einschränkung für jeden rechtmäßigen Zweck, kommerziell oder anderweitig, ohne Anerkennung oder Entschädigung für Sie zu nutzen und zu verbreiten. Sie verzichten hiermit auf alle moralischen Rechte an solchen Einreichungen, und Sie garantieren hiermit, dass solche Einreichungen von Ihnen stammen oder dass Sie das Recht haben, solche Einreichungen vorzunehmen. Sie stimmen zu, dass es keine Handhabe gegen uns für eine angebliche oder tatsächliche Verletzung oder Aneignung eines Eigentumsrechts an Ihren Einreichungen geben wird."
+        ]
+      },
+      {
+        "title": "WEBSITE-VERWALTUNG",
+        "paragraphs": [
+          "Wir behalten uns das Recht, aber nicht die Pflicht vor, (1) die Website auf Verstöße gegen diese Nutzungsbedingungen zu überwachen; (2) angemessene rechtliche Schritte gegen jeden zu unternehmen, der nach unserem alleinigen Ermessen gegen das Gesetz oder diese Nutzungsbedingungen verstößt, einschließlich, ohne Einschränkung, der Meldung solcher Nutzer an die Strafverfolgungsbehörden; (3) nach unserem alleinigen Ermessen und ohne Einschränkung die Verfügbarkeit Ihrer Beiträge oder eines Teils davon abzulehnen, einzuschränken oder zu deaktivieren; (4) nach unserem alleinigen Ermessen und ohne Einschränkung, Mitteilung oder Haftung alle Dateien und Inhalte von der Website zu entfernen oder anderweitig zu deaktivieren, die übermäßig groß sind oder unsere Systeme auf irgendeine Weise belasten; und (5) die Website anderweitig auf eine Weise zu verwalten, die darauf ausgelegt ist, unsere Rechte und unser Eigentum zu schützen und das ordnungsgemäße Funktionieren der Website und der Dienstleistungen zu erleichtern."
+        ]
+      },
+      {
+        "title": "DATENSCHUTZRICHTLINIE",
+        "paragraphs": [
+          "Wir legen Wert auf Datenschutz und Datensicherheit. Bitte lesen Sie unsere Datenschutzrichtlinie. Durch die Nutzung der Website oder der Dienstleistungen stimmen Sie zu, an unsere Datenschutzrichtlinie gebunden zu sein, die in diese Nutzungsbedingungen einbezogen ist. Bitte beachten Sie, dass die Website und die Dienstleistungen in den Vereinigten Staaten gehostet werden. Wenn Sie auf die Website oder die Dienstleistungen aus einer anderen Region der Welt zugreifen, in der Gesetze oder andere Anforderungen für die Erhebung, Nutzung oder Offenlegung personenbezogener Daten gelten, die von den geltenden Gesetzen in den Vereinigten Staaten abweichen, übertragen Sie Ihre Daten durch Ihre fortgesetzte Nutzung der Website in die Vereinigten Staaten, und Sie stimmen zu, dass Ihre Daten in die Vereinigten Staaten übertragen und dort verarbeitet werden.",
+          "Wir nehmen wissentlich keine Informationen von Kindern an, fordern sie nicht an oder bieten ihnen wissentlich keine Produkte an. Daher werden wir gemäß dem U.S. Children's Online Privacy Protection Act, wenn wir tatsächliche Kenntnis davon erhalten, dass jemand unter 13 Jahren uns persönliche Informationen ohne die erforderliche und überprüfbare elterliche Zustimmung gegeben hat, diese Informationen so schnell wie praktisch möglich von der Website löschen."
+        ]
+      },
+      {
+        "title": "URHEBERRECHTSVERLETZUNGEN",
+        "paragraphs": [
+          "Wir respektieren die geistigen Eigentumsrechte anderer. Wenn Sie glauben, dass Materialien, die auf oder über die Website verfügbar sind, ein von Ihnen besessenes oder kontrolliertes Urheberrecht verletzen, benachrichtigen Sie uns bitte sofort unter Verwendung der unten angegebenen Kontaktinformationen (eine \"Benachrichtigung\"). Eine Kopie Ihrer Benachrichtigung wird an die Person gesendet, die das in der Benachrichtigung adressierte Material gepostet oder gespeichert hat. Bitte beachten Sie, dass Sie gemäß geltendem Recht für Schäden haftbar gemacht werden können, wenn Sie wesentliche falsche Darstellungen in einer Benachrichtigung machen. Wenn Sie also nicht sicher sind, dass ein auf oder durch die Website verlinktes Material Ihr Urheberrecht verletzt, sollten Sie zunächst einen Rechtsanwalt konsultieren."
+        ]
+      },
+      {
+        "title": "LAUFZEIT UND KÜNDIGUNG",
+        "paragraphs": [
+          "Diese Nutzungsbedingungen bleiben in voller Kraft und Wirkung, solange Sie die Website nutzen. OHNE EINSCHRÄNKUNG EINER ANDEREN BESTIMMUNG DIESER NUTZUNGSBEDINGUNGEN BEHALTEN WIR UNS DAS RECHT VOR, NACH UNSEREM ALLEINIGEN ERMESSEN UND OHNE MITTEILUNG ODER HAFTUNG, DEN ZUGANG ZU UND DIE NUTZUNG DER WEBSITE UND DER DIENSTLEISTUNGEN (EINSCHLIESSLICH DER SPERRUNG BESTIMMTER IP-ADRESSEN) ZU VERWEIGERN, AN JEDE PERSON AUS BELIEBIGEM ODER KEINEM GRUND, EINSCHLIESSLICH, OHNE EINSCHRÄNKUNG, FÜR DEN BRUCH EINER ERKLÄRUNG, GARANTIE ODER VERPFLICHTUNG IN DIESEN NUTZUNGSBEDINGUNGEN ODER GELTENDEM RECHT ODER VORSCHRIFT. WIR KÖNNEN IHRE NUTZUNG ODER TEILNAHME AN DER WEBSITE UND DEN DIENSTLEISTUNGEN BEENDEN ODER IHR KONTO UND ALLE INHALTE ODER INFORMATIONEN, DIE SIE VERÖFFENTLICHT HABEN, JEDERZEIT OHNE WARNUNG UND NACH UNSEREM ALLEINIGEN ERMESSEN LÖSCHEN.",
+          "Wenn wir Ihr Konto aus einem Grund kündigen oder sperren, ist es Ihnen untersagt, unter Ihrem Namen, einem falschen oder geliehenen Namen oder dem Namen eines Dritten zu registrieren und ein neues Konto zu erstellen, auch wenn Sie möglicherweise im Namen des Dritten handeln. Neben der Kündigung oder Sperrung Ihres Kontos behalten wir uns das Recht vor, angemessene rechtliche Schritte zu unternehmen, einschließlich, ohne Einschränkung, der Verfolgung zivilrechtlicher, strafrechtlicher und einstweiliger Rechtsbehelfe."
+        ]
+      },
+      {
+        "title": "ÄNDERUNGEN UND UNTERBRECHUNGEN",
+        "paragraphs": [
+          "Wir behalten uns das Recht vor, die Inhalte der Website jederzeit oder aus beliebigem Grund nach unserem alleinigen Ermessen ohne Ankündigung zu ändern, zu modifizieren oder zu entfernen. Wir haben jedoch keine Verpflichtung, Informationen auf unserer Website zu aktualisieren. Wir behalten uns auch das Recht vor, alle oder einen Teil der Dienstleistungen ohne Ankündigung jederzeit zu ändern oder einzustellen. Wir haften nicht gegenüber Ihnen oder Dritten für Änderungen, Preisänderungen, Aussetzungen oder Einstellungen der Website oder der Dienstleistungen.",
+          "Wir können nicht garantieren, dass die Website und die Dienstleistungen jederzeit verfügbar sind. Wir können Hardware-, Software- oder andere Probleme erfahren oder müssen Wartungsarbeiten an der Website durchführen, was zu Unterbrechungen, Verzögerungen oder Fehlern führen kann. Sie stimmen zu, dass wir keinerlei Haftung für Verluste, Schäden oder Unannehmlichkeiten übernehmen, die durch Ihre Unfähigkeit verursacht werden, während einer Ausfallzeit oder Unterbrechung der Website oder der Dienstleistungen auf diese zuzugreifen oder sie zu nutzen."
+        ]
+      },
+      {
+        "title": "GELTENDES RECHT",
+        "paragraphs": [
+          "Diese Nutzungsbedingungen und Ihre Nutzung der Website und der Dienstleistungen unterliegen den Gesetzen des Staates Florida und werden in Übereinstimmung damit ausgelegt, die für Vereinbarungen gelten, die im Staat Florida geschlossen und vollständig ausgeführt werden, ohne Rücksicht auf Kollisionsnormen."
+        ]
+      },
+      {
+        "title": "STREITBEILEGUNG",
+        "paragraphs": [
+          "Informelle Verhandlungen: Um die Lösung zu beschleunigen und die Kosten von Streitigkeiten, Kontroversen oder Ansprüchen im Zusammenhang mit diesen Nutzungsbedingungen zu kontrollieren, vereinbaren die Parteien, vor der Einleitung eines Schiedsverfahrens mindestens 30 Tage lang informelle Verhandlungen zu führen. Solche informellen Verhandlungen beginnen mit einer schriftlichen Mitteilung einer Partei an die andere Partei.",
+          "Verbindliches Schiedsverfahren: Wenn die Parteien eine Streitigkeit nicht durch informelle Verhandlungen beilegen können, wird die Streitigkeit endgültig und ausschließlich durch verbindliches Schiedsverfahren beigelegt. SIE VERSTEHEN, DASS OHNE DIESE BESTIMMUNG SIE DAS RECHT HÄTTEN, VOR GERICHT ZU KLAGEN UND EINE JURY-VERHANDLUNG ZU HABEN. Das Schiedsverfahren wird gemäß den Commercial Arbitration Rules der American Arbitration Association (\"AAA\") eingeleitet und durchgeführt. Das Schiedsverfahren kann persönlich, durch Einreichung von Dokumenten, telefonisch oder online durchgeführt werden. Soweit nicht durch geltende AAA-Regeln oder geltendes Recht erforderlich, findet das Schiedsverfahren in Miami, Florida statt.",
+          "Beschränkungen: Die Parteien vereinbaren, dass jedes Schiedsverfahren auf die Streitigkeit zwischen den Parteien individuell beschränkt ist. Im vollen gesetzlich zulässigen Umfang darf kein Schiedsverfahren mit einem anderen Verfahren verbunden werden, es gibt kein Recht oder keine Befugnis, eine Streitigkeit auf Basis einer Sammelklage zu schiedsrichten, und es gibt kein Recht oder keine Befugnis, eine Streitigkeit in einer angeblich repräsentativen Eigenschaft im Namen der allgemeinen Öffentlichkeit oder anderer Personen einzubringen.",
+          "Ausnahmen: Die Parteien vereinbaren, dass die folgenden Streitigkeiten nicht den obigen Bestimmungen unterliegen: (a) Streitigkeiten, die auf die Durchsetzung oder den Schutz oder die Gültigkeit der geistigen Eigentumsrechte einer Partei abzielen; (b) Streitigkeiten im Zusammenhang mit oder aus Behauptungen über Diebstahl, Piraterie, Verletzung der Privatsphäre oder unberechtigte Nutzung; und (c) Ansprüche auf einstweiligen Rechtsschutz."
+        ]
+      },
+      {
+        "title": "KORREKTUREN",
+        "paragraphs": [
+          "Möglicherweise befinden sich auf der Website Informationen, die Tippfehler, Ungenauigkeiten oder Auslassungen enthalten, die sich auf die Dienstleistungen beziehen können, einschließlich Beschreibungen, Preise, Verfügbarkeit und verschiedene andere Informationen. Wir behalten uns das Recht vor, Fehler, Ungenauigkeiten oder Auslassungen zu korrigieren und die Informationen auf der Website jederzeit ohne vorherige Ankündigung zu ändern oder zu aktualisieren."
+        ]
+      },
+      {
+        "title": "HAFTUNGSAUSSCHLUSS",
+        "paragraphs": [
+          "DIE WEBSITE UND DIE DIENSTLEISTUNGEN WERDEN AUF EINER \"WIE BESEHEN\"- UND \"WIE VERFÜGBAR\"-BASIS BEREITGESTELLT. SIE STIMMEN ZU, DASS IHRE NUTZUNG DER WEBSITE UND UNSERER DIENSTLEISTUNGEN AUF IHR ALLEINIGES RISIKO ERFOLGT. IM GRÖSSTMÖGLICHEN GESETZLICH ZULÄSSIGEN UMFANG LEHNEN WIR ALLE GEWÄHRLEISTUNGEN, AUSDRÜCKLICHE ODER STILLSCHWEIGENDE, IM ZUSAMMENHANG MIT DER WEBSITE UND DEN DIENSTLEISTUNGEN UND DEREN NUTZUNG AB, EINSCHLIESSLICH, OHNE EINSCHRÄNKUNG, DER STILLSCHWEIGENDEN GEWÄHRLEISTUNGEN DER MARKTGÄNGIGKEIT, EIGNUNG FÜR EINEN BESTIMMTEN ZWECK UND NICHTVERLETZUNG. WIR GEBEN KEINE GARANTIEN ODER ZUSICHERUNGEN HINSICHTLICH DER RICHTIGKEIT ODER VOLLSTÄNDIGKEIT DES INHALTS DER WEBSITE ODER DES INHALTS VON WEBSITES, DIE MIT DER WEBSITE VERLINKT SIND, UND ÜBERNEHMEN KEINE HAFTUNG ODER VERANTWORTUNG FÜR (1) FEHLER, IRRTÜMER ODER UNGENAUIGKEITEN IN INHALTEN UND MATERIALIEN, (2) PERSONENSCHÄDEN ODER SACHSCHÄDEN JEGLICHER ART, DIE AUS IHREM ZUGANG ZU UND IHRER NUTZUNG DER WEBSITE RESULTIEREN, (3) UNBEFUGTEN ZUGANG ZU ODER NUTZUNG UNSERER SICHEREN SERVER UND/ODER ALLER DARIN GESPEICHERTEN PERSÖNLICHEN INFORMATIONEN UND/ODER FINANZIELLEN INFORMATIONEN, (4) UNTERBRECHUNGEN ODER EINSTELLUNGEN VON ÜBERTRAGUNGEN AN ODER VON DER WEBSITE ODER DEN DIENSTLEISTUNGEN, (5) BUGS, VIREN, TROJANER ODER ÄHNLICHES, DIE DURCH DRITTE AN ODER DURCH DIE WEBSITE ÜBERTRAGEN WERDEN KÖNNEN, UND/ODER (6) FEHLER ODER AUSLASSUNGEN IN INHALTEN UND MATERIALIEN ODER FÜR VERLUSTE ODER SCHÄDEN JEGLICHER ART, DIE ALS FOLGE DER NUTZUNG VON INHALTEN ENTSTEHEN, DIE ÜBER DIE WEBSITE GEPOSTET, ÜBERTRAGEN ODER ANDERWEITIG VERFÜGBAR GEMACHT WERDEN."
+        ]
+      },
+      {
+        "title": "HAFTUNGSBESCHRÄNKUNG",
+        "paragraphs": [
+          "IN KEINEM FALL HAFTEN WIR ODER UNSERE DIREKTOREN, MITARBEITER ODER VERTRETER GEGENÜBER IHNEN ODER DRITTEN FÜR DIREKTE, INDIREKTE, FOLGESCHÄDEN, EXEMPLARISCHE, ZUFÄLLIGE, BESONDERE ODER STRAFENDE SCHÄDEN, EINSCHLIESSLICH ENTGANGENER GEWINNE, ENTGANGENER EINNAHMEN, DATENVERLUSTE ODER ANDERER SCHÄDEN, DIE AUS IHRER NUTZUNG DER WEBSITE ODER DER DIENSTLEISTUNGEN ENTSTEHEN, AUCH WENN WIR AUF DIE MÖGLICHKEIT SOLCHER SCHÄDEN HINGEWIESEN WURDEN. UNGEACHTET GEGENTEILIGER BESTIMMUNGEN HIERIN WIRD UNSERE HAFTUNG GEGENÜBER IHNEN AUS BELIEBIGEM GRUND UND UNABHÄNGIG VON DER KLAGEFORM JEDERZEIT AUF $0,00 USD BEGRENZT SEIN. BESTIMMTE US-BUNDESSTAATSGESETZE UND INTERNATIONALE GESETZE LASSEN KEINE EINSCHRÄNKUNGEN BEI STILLSCHWEIGENDEN GEWÄHRLEISTUNGEN ODER DEN AUSSCHLUSS ODER DIE EINSCHRÄNKUNG BESTIMMTER SCHÄDEN ZU. WENN DIESE GESETZE AUF SIE ZUTREFFEN, GELTEN EINIGE ODER ALLE DER OBIGEN HAFTUNGSAUSSCHLÜSSE ODER EINSCHRÄNKUNGEN MÖGLICHERWEISE NICHT FÜR SIE, UND SIE HABEN MÖGLICHERWEISE ZUSÄTZLICHE RECHTE."
+        ]
+      },
+      {
+        "title": "SCHADLOSHALTUNG",
+        "paragraphs": [
+          "Sie stimmen zu, uns, einschließlich unserer Tochtergesellschaften, verbundenen Unternehmen und all unserer jeweiligen Führungskräfte, Vertreter, Partner und Mitarbeiter, von und gegen alle Verluste, Schäden, Haftungen, Ansprüche oder Forderungen, einschließlich angemessener Anwaltsgebühren und -kosten, die von Dritten aufgrund oder aus Folgendem entstehen, zu verteidigen, schadlos zu halten und freizustellen: (1) Ihre Beiträge; (2) Nutzung der Dienstleistungen; (3) Verletzung dieser Nutzungsbedingungen; (4) Verletzung Ihrer in diesen Nutzungsbedingungen dargelegten Erklärungen und Garantien; (5) Ihre Verletzung der Rechte Dritter, einschließlich, aber nicht beschränkt auf geistige Eigentumsrechte; oder (6) jede offensichtlich schädliche Handlung gegenüber einem anderen Nutzer der Website oder der Dienstleistungen, mit dem Sie über die Website in Kontakt getreten sind. Ungeachtet des Vorstehenden behalten wir uns das Recht vor, auf Ihre Kosten die ausschließliche Verteidigung und Kontrolle über jede Angelegenheit zu übernehmen, für die Sie verpflichtet sind, uns schadlos zu halten, und Sie stimmen zu, auf Ihre Kosten mit unserer Verteidigung solcher Ansprüche zu kooperieren."
+        ]
+      },
+      {
+        "title": "NUTZERDATEN",
+        "paragraphs": [
+          "Wir werden bestimmte Daten aufbewahren, die Sie auf die Website übertragen, zum Zweck der Verwaltung der Leistung der Dienstleistungen sowie Daten bezüglich Ihrer Nutzung der Dienstleistungen. Obwohl wir regelmäßige Routine-Datensicherungen durchführen, sind Sie allein für alle Daten verantwortlich, die Sie übertragen oder die sich auf Aktivitäten beziehen, die Sie mit den Dienstleistungen durchgeführt haben. Sie stimmen zu, dass wir gegenüber Ihnen für Verluste oder Beschädigungen solcher Daten nicht haften, und Sie verzichten hiermit auf jegliches Klagerecht gegen uns aufgrund solcher Verluste oder Beschädigungen solcher Daten."
+        ]
+      },
+      {
+        "title": "ELEKTRONISCHE KOMMUNIKATION, TRANSAKTIONEN UND SIGNATUREN",
+        "paragraphs": [
+          "Der Besuch der Website, das Senden von E-Mails an uns und das Ausfüllen von Online-Formularen stellen elektronische Kommunikation dar. Sie stimmen zu, elektronische Kommunikation zu erhalten, und Sie stimmen zu, dass alle Vereinbarungen, Mitteilungen, Offenlegungen und andere Kommunikation, die wir Ihnen elektronisch, per E-Mail und auf der Website bereitstellen, alle rechtlichen Anforderungen erfüllen, dass solche Kommunikation schriftlich erfolgen muss. SIE STIMMEN HIERMIT DER VERWENDUNG ELEKTRONISCHER SIGNATUREN, VERTRÄGE, BESTELLUNGEN UND ANDERER AUFZEICHNUNGEN SOWIE DER ELEKTRONISCHEN LIEFERUNG VON MITTEILUNGEN, RICHTLINIEN UND AUFZEICHNUNGEN VON TRANSAKTIONEN ZU, DIE VON UNS ODER ÜBER DIE WEBSITE EINGELEITET ODER ABGESCHLOSSEN WERDEN. Sie verzichten hiermit auf alle Rechte oder Anforderungen gemäß Gesetzen, Vorschriften, Regeln, Verordnungen oder anderen Gesetzen in einer Gerichtsbarkeit, die eine ursprüngliche Unterschrift oder die Lieferung oder Aufbewahrung von Nicht-elektronischen Aufzeichnungen oder Zahlungen oder die Gewährung von Guthaben auf andere Weise als elektronische Mittel erfordern."
+        ]
+      },
+      {
+        "title": "California-NUTZER UND EINWOHNER",
+        "paragraphs": [
+          "Wenn eine Beschwerde bei uns nicht zufriedenstellend gelöst wird, können Sie sich schriftlich an die Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs unter 1625 North Market Blvd., Suite N 112, Sacramento, California 95834 oder telefonisch unter (800) 952-5210 oder (916) 445-1254 wenden."
+        ]
+      },
+      {
+        "title": "SONSTIGES",
+        "paragraphs": [
+          "Diese Nutzungsbedingungen und alle von uns auf der Website oder in Bezug auf die Dienstleistungen veröffentlichten Richtlinien oder Betriebsregeln stellen die gesamte Vereinbarung und das Verständnis zwischen Ihnen und uns dar. Unser Versäumnis, ein Recht oder eine Bestimmung dieser Nutzungsbedingungen auszuüben oder durchzusetzen, gilt nicht als Verzicht auf dieses Recht oder diese Bestimmung. Diese Nutzungsbedingungen gelten im vollen gesetzlich zulässigen Umfang. Wir können alle oder einige unserer Rechte und Verpflichtungen jederzeit auf andere übertragen. Wir sind nicht für Verluste, Schäden, Verzögerungen oder Versäumnisse verantwortlich oder haftbar, die durch eine außerhalb unserer angemessenen Kontrolle liegende Ursache verursacht wurden.",
+          "Wenn eine Bestimmung oder ein Teil einer Bestimmung dieser Nutzungsbedingungen als rechtswidrig, nichtig oder nicht durchsetzbar gilt, wird diese Bestimmung oder ein Teil der Bestimmung als von diesen Nutzungsbedingungen trennbar angesehen und beeinträchtigt nicht die Gültigkeit und Durchsetzbarkeit der verbleibenden Bestimmungen. Es besteht kein Gemeinschaftsunternehmen, keine Partnerschaft, kein Beschäftigungs- oder Vertretungsverhältnis zwischen Ihnen und uns als Ergebnis dieser Nutzungsbedingungen oder der Nutzung der Dienstleistungen. Sie stimmen zu, dass diese Nutzungsbedingungen nicht aufgrund der Tatsache gegen uns ausgelegt werden, dass wir sie entworfen haben. Sie verzichten hiermit auf alle Einwände, die Sie möglicherweise aufgrund der elektronischen Form dieser Nutzungsbedingungen und des Fehlens von Unterschriften der Parteien zur Ausführung dieser Nutzungsbedingungen haben."
+        ]
+      },
+      {
+        "title": "KONTAKTIEREN SIE UNS",
+        "paragraphs": [
+          "Um eine Beschwerde bezüglich der Website oder der Dienstleistungen zu lösen oder weitere Informationen zur Nutzung der Website oder der Dienstleistungen zu erhalten, kontaktieren Sie uns bitte über unsere Kontaktseite: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "privacyPolicy": {
+    "title": "Datenschutzrichtlinie",
+    "updatedAt": "Aktualisiert am 22.01.2026.",
+    "sections": [
+      {
+        "title": "Datenschutzrichtlinie",
+        "paragraphs": [
+          "Openspace.Social",
+          "(„wir“, „unser“ oder „uns“) verpflichtet sich, Ihre Privatsphäre zu schützen. In dieser Datenschutzrichtlinie wird erläutert, wie Ihre persönlichen Daten von Openspace.Social erfasst, verwendet und offengelegt werden.",
+          "Diese Datenschutzrichtlinie gilt für unsere Website und mobile Anwendung (iOS und Android): Openspacelive.com Website und Openspace.Social die mobile Anwendung (iOS und Android) und die zugehörigen Subdomains (zusammen unser „Dienst“) sowie unsere Anwendung Openspace.Social.",
+          "Indem Sie auf unseren Service zugreifen oder ihn nutzen, erklären Sie, dass Sie unsere Erfassung, Speicherung, Nutzung und Offenlegung Ihrer persönlichen Daten, wie in dieser Datenschutzrichtlinie und unseren Nutzungsbedingungen beschrieben, gelesen und verstanden haben und damit einverstanden sind."
+        ]
+      },
+      {
+        "title": "Definitionen und Schlüsselbegriffe",
+        "bullets": [
+          "Cookie: kleine Datenmenge, die von einer Website generiert und von Ihrem Webbrowser gespeichert wird. Es wird verwendet, um Ihren Browser zu identifizieren, Analysen bereitzustellen und Informationen über Sie zu speichern, wie z. B. Ihre Sprachpräferenz oder Anmeldeinformationen.",
+          "Unternehmen: Wenn in dieser Richtlinie „Unternehmen“, „wir“, „uns“ oder „unser“ erwähnt wird, bezieht es sich auf Openspace, das gemäß dieser Datenschutzrichtlinie für Ihre Daten verantwortlich ist.",
+          "Land: wo Openspace oder die Eigentümer/Gründer von Openspace ansässig sind, in diesem Fall Kanada.",
+          "Kunde: bezieht sich auf das Unternehmen, die Organisation oder die Person, die sich für die Nutzung des Openspace-Dienstes anmeldet, um die Beziehungen zu Ihren Verbrauchern oder Dienstnutzern zu verwalten.",
+          "Gerät: jedes mit dem Internet verbundene Gerät wie ein Telefon, Tablet, Computer oder jedes andere Gerät, das zum Besuch von Openspace und zur Nutzung der Dienste verwendet werden kann.",
+          "IP-Adresse: Jedem mit dem Internet verbundenen Gerät wird eine Nummer zugewiesen, die als Internet Protocol (IP)-Adresse bezeichnet wird. Diese Nummern werden normalerweise in geografischen Blöcken vergeben. Eine IP-Adresse kann häufig verwendet werden, um den Standort zu identifizieren, von dem aus ein Gerät eine Verbindung zum Internet herstellt.",
+          "Personal: bezieht sich auf Personen, die bei Openspace angestellt sind oder einen Vertrag mit der Erbringung einer Dienstleistung im Namen einer der Parteien haben.",
+          "Personenbezogene Daten: alle Informationen, die direkt, indirekt oder in Verbindung mit anderen Informationen – einschließlich einer persönlichen Identifikationsnummer – die Identifizierung oder Identifizierbarkeit einer natürlichen Person ermöglichen.",
+          "Dienst: bezieht sich auf den von Openspace bereitgestellten Dienst, wie in den entsprechenden Bedingungen (falls verfügbar) und auf dieser Plattform beschrieben.",
+          "Drittanbieterdienst: bezieht sich auf Werbetreibende, Wettbewerbssponsoren, Werbe- und Marketingpartner und andere, die unsere Inhalte bereitstellen oder deren Produkte oder Dienstleistungen unserer Meinung nach für Sie von Interesse sein könnten.",
+          "Website: Openspace.Social-Site, die über diese URL aufgerufen werden kann: Openspacelive.com.",
+          "Sie: eine natürliche oder juristische Person, die bei Openspace zur Nutzung der Dienste registriert ist."
+        ]
+      },
+      {
+        "title": "Welche Informationen sammeln wir?",
+        "paragraphs": [
+          "Wir erfassen Informationen von Ihnen, wenn Sie unseren Service besuchen, sich registrieren, eine Bestellung aufgeben, unseren Newsletter abonnieren, an einer Umfrage teilnehmen oder ein Formular ausfüllen."
+        ],
+        "bullets": [
+          "Name / Benutzername",
+          "Telefonnummern",
+          "E-Mail-Adressen",
+          "Postanschriften",
+          "Rechnungsadressen",
+          "Debit-/Kreditkartennummern",
+          "Alter",
+          "Passwort"
+        ]
+      },
+      {
+        "title": "Wie verwenden wir die von uns erfassten Informationen?",
+        "bullets": [
+          "Um Ihr Erlebnis zu personalisieren (Ihre Informationen helfen uns, besser auf Ihre individuellen Bedürfnisse einzugehen).",
+          "Um unseren Service zu verbessern (wir sind kontinuierlich bestrebt, unser Serviceangebot auf der Grundlage der Informationen und Rückmeldungen, die wir von Ihnen erhalten, zu verbessern).",
+          "Um den Kundenservice zu verbessern (Ihre Informationen helfen uns, effektiver auf Ihre Kundendienstanfragen und Supportbedürfnisse zu reagieren).",
+          "Um Transaktionen zu verarbeiten.",
+          "Um einen Wettbewerb, eine Werbeaktion, eine Umfrage oder eine andere Website-Funktion zu verwalten.",
+          "Um regelmäßig E-Mails zu versenden."
+        ]
+      },
+      {
+        "title": "Wann verwenden wir Kundeninformationen von Dritten?",
+        "paragraphs": [
+          "Wir erhalten einige Informationen von Dritten, wenn Sie mit uns Kontakt aufnehmen. Wenn Sie uns beispielsweise Ihre E-Mail-Adresse mitteilen, um Interesse daran zu bekunden, unser Kunde zu werden, erhalten wir Informationen von einem Dritten, der uns automatisierte Betrugserkennungsdienste zur Verfügung stellt. Gelegentlich erfassen wir auch Informationen, die auf Social-Media-Websites öffentlich zugänglich gemacht werden. Sie können steuern, wie viele Ihrer Informationen von Social-Media-Websites veröffentlicht werden, indem Sie diese Websites besuchen und Ihre Datenschutzeinstellungen ändern."
+        ]
+      },
+      {
+        "title": "Geben wir die von uns erfassten Informationen an Dritte weiter?",
+        "paragraphs": [
+          "Wir können die von uns gesammelten persönlichen und nicht persönlichen Informationen an Dritte weitergeben, beispielsweise Werbetreibende, Wettbewerbssponsoren, Werbe- und Marketingpartner und andere, die unsere Inhalte bereitstellen oder deren Produkte oder Dienstleistungen unserer Meinung nach für Sie von Interesse sein könnten. Wir geben sie möglicherweise auch an unsere aktuellen und zukünftigen verbundenen Unternehmen und Geschäftspartner weiter. Wenn wir an einer Fusion, einem Vermögensverkauf oder einer anderen Unternehmensumstrukturierung beteiligt sind, können wir Ihre persönlichen und nicht personenbezogenen Daten auch an unsere Rechtsnachfolger weitergeben oder übermitteln.",
+          "Wir beauftragen möglicherweise vertrauenswürdige Drittanbieter mit der Ausführung von Funktionen und der Bereitstellung von Dienstleistungen für uns, wie z. B. Hosting und Wartung unserer Server und unseres Dienstes, Datenbankspeicherung und -verwaltung, E-Mail-Verwaltung, Speichermarketing, Kreditkartenabwicklung, Kundenservice und Erfüllung von Bestellungen für Produkte und Dienstleistungen, die Sie über unsere Plattform erwerben können. Wir werden Ihre personenbezogenen Daten und möglicherweise einige nicht personenbezogene Daten wahrscheinlich an diese Dritten weitergeben, damit diese diese Dienste für uns und für Sie erbringen können.",
+          "Wir können Teile unserer Protokolldateidaten, einschließlich IP-Adressen, zu Analysezwecken an Dritte wie Webanalysepartner, Anwendungsentwickler und Werbenetzwerke weitergeben. Wenn Ihre IP-Adresse weitergegeben wird, kann sie zur Schätzung des allgemeinen Standorts und anderer technischer Daten verwendet werden, z. B. zur Verbindungsgeschwindigkeit, dazu, ob Sie den Dienst an einem freigegebenen Standort besucht haben, und zum Typ des Geräts, mit dem Sie den Dienst besucht haben. Sie können Informationen über unsere Werbung und das, was Sie auf dem Dienst sehen, zusammenfassen und dann Prüfungen, Recherchen und Berichte für uns und unsere Werbetreibenden bereitstellen.",
+          "Wir können persönliche und nicht-personenbezogene Daten über Sie auch an Regierungs- oder Strafverfolgungsbeamte oder private Parteien weitergeben, wenn wir dies nach unserem alleinigen Ermessen für notwendig oder angemessen halten, um auf Ansprüche zu reagieren, rechtliche Verfahren (einschließlich Vorladungen einzuleiten), unsere Rechte und Interessen oder die eines Dritten zu schützen, die Sicherheit der Öffentlichkeit oder einer anderen Person zu gewährleisten, illegale, unethische oder rechtlich anfechtbare Aktivitäten zu verhindern oder zu stoppen oder um anderweitig geltende Gerichtsbeschlüsse, Gesetze, Regeln und Vorschriften einzuhalten."
+        ]
+      },
+      {
+        "title": "Wo und wann werden Informationen von Kunden und Endbenutzern gesammelt?",
+        "paragraphs": [
+          "Wir erfassen personenbezogene Daten, die Sie uns übermitteln. Wir können wie oben beschrieben auch personenbezogene Daten über Sie von Dritten erhalten."
+        ]
+      },
+      {
+        "title": "Wie verwenden wir Ihre E-Mail-Adresse?",
+        "paragraphs": [
+          "Durch die Angabe Ihrer E-Mail-Adresse in diesem Formular erklären Sie sich damit einverstanden, E-Mails von uns zu erhalten. Sie können Ihre Teilnahme an jeder dieser E-Mail-Listen jederzeit kündigen, indem Sie auf den Abmeldelink oder eine andere Abmeldeoption klicken, die in der jeweiligen E-Mail enthalten ist. Wir senden E-Mails nur an Personen, die uns autorisiert haben, sie entweder direkt oder über einen Dritten zu kontaktieren. Wir versenden keine unerwünschten Werbe-E-Mails, da wir Spam genauso hassen wie Sie.",
+          "Durch die Übermittlung Ihrer E-Mail-Adresse erklären Sie sich außerdem damit einverstanden, dass wir Ihre E-Mail-Adresse für die Zielgruppenausrichtung auf Websites wie Facebook verwenden, wo wir bestimmten Personen, die sich für den Erhalt von Mitteilungen von uns entschieden haben, individuelle Werbung anzeigen. E-Mail-Adressen, die nur über die Bestellabwicklungsseite übermittelt werden, werden ausschließlich zum Zweck der Zusendung von Informationen und Aktualisierungen im Zusammenhang mit Ihrer Bestellung verwendet.",
+          "Wenn Sie uns jedoch dieselbe E-Mail-Adresse auf andere Weise übermittelt haben, können wir sie für jeden der in dieser Richtlinie genannten Zwecke verwenden. Hinweis: Wenn Sie sich zu irgendeinem Zeitpunkt vom Erhalt zukünftiger E-Mails abmelden möchten, finden Sie am Ende jeder E-Mail detaillierte Anweisungen zum Abbestellen."
+        ]
+      },
+      {
+        "title": "Könnten meine Daten in andere Länder übertragen werden?",
+        "paragraphs": [
+          "Wir sind in den Vereinigten Staaten eingetragen. Informationen, die über unsere Website, durch direkte Interaktionen mit Ihnen oder durch die Nutzung unserer Hilfsdienste gesammelt werden, können von Zeit zu Zeit an unsere Büros oder Mitarbeiter oder an Dritte auf der ganzen Welt übertragen werden und können überall auf der Welt eingesehen und gehostet werden, auch in Ländern, in denen möglicherweise keine allgemein anwendbaren Gesetze gelten, die die Nutzung und Übertragung dieser Daten regeln. Im größtmöglichen gesetzlich zulässigen Umfang stimmen Sie durch die Nutzung der oben genannten Punkte der grenzüberschreitenden Übertragung und dem Hosting dieser Informationen freiwillig zu."
+        ]
+      },
+      {
+        "title": "Sind die über unseren Dienst gesammelten Informationen sicher?",
+        "paragraphs": [
+          "Wir treffen Vorkehrungen, um die Sicherheit Ihrer Daten zu schützen. Wir verfügen über physische, elektronische und verwaltungstechnische Verfahren, um Ihre Daten zu schützen, unbefugten Zugriff zu verhindern, die Datensicherheit aufrechtzuerhalten und sie korrekt zu nutzen. Allerdings sind weder Menschen noch Sicherheitssysteme, einschließlich Verschlüsselungssysteme, narrensicher. Darüber hinaus können Menschen vorsätzliche Straftaten begehen, Fehler machen oder sich nicht an Richtlinien halten. Daher unternehmen wir zwar angemessene Anstrengungen, um Ihre personenbezogenen Daten zu schützen, können deren absolute Sicherheit jedoch nicht garantieren. Wenn geltendes Recht eine nicht ausschließbare Verpflichtung zum Schutz Ihrer personenbezogenen Daten vorschreibt, erklären Sie sich damit einverstanden, dass vorsätzliches Fehlverhalten der Maßstab für die Einhaltung dieser Pflicht durch uns ist."
+        ]
+      },
+      {
+        "title": "Kann ich meine Informationen aktualisieren oder korrigieren?",
+        "paragraphs": [
+          "Die Rechte, die Sie haben, um Aktualisierungen oder Korrekturen der von uns erfassten Informationen anzufordern, hängen von Ihrer Beziehung zu uns ab. Das Personal kann seine Informationen gemäß unseren unternehmensinternen Beschäftigungsrichtlinien aktualisieren oder korrigieren.",
+          "Kunden haben das Recht, die Einschränkung bestimmter Nutzungen und Offenlegungen personenbezogener Daten zu verlangen. Sie können uns kontaktieren, um (1) Ihre personenbezogenen Daten zu aktualisieren oder zu korrigieren, (2) Ihre Präferenzen in Bezug auf Mitteilungen und andere Informationen, die Sie von uns erhalten, zu ändern oder (3) die über Sie in unseren Systemen gespeicherten personenbezogenen Daten (vorbehaltlich geltender Gesetze) zu löschen, indem Sie Ihr Konto kündigen.",
+          "Solche Aktualisierungen, Korrekturen, Änderungen und Löschungen haben keine Auswirkungen auf andere Informationen, die wir verwalten, oder auf Informationen, die wir vor der Aktualisierung, Korrektur, Änderung oder Löschung gemäß dieser Datenschutzrichtlinie an Dritte weitergegeben haben. Um Ihre Privatsphäre und Sicherheit zu schützen, können wir angemessene Maßnahmen ergreifen (z. B. die Anforderung eines eindeutigen Passworts), um Ihre Identität zu überprüfen, bevor wir Ihnen Profilzugriff gewähren oder Korrekturen vornehmen.",
+          "Sie sind für die jederzeitige Geheimhaltung Ihres individuellen Passworts und Ihrer Kontoinformationen verantwortlich. Sie sollten sich darüber im Klaren sein, dass es technisch nicht möglich ist, alle Datensätze der von Ihnen bereitgestellten Informationen aus unserem System zu entfernen. Die Notwendigkeit, unsere Systeme zu sichern, um Informationen vor unbeabsichtigtem Verlust zu schützen, bedeutet, dass eine Kopie Ihrer Informationen möglicherweise in einer nicht löschbaren Form vorliegt, die für uns möglicherweise nur schwer oder gar nicht aufzufinden ist.",
+          "Unmittelbar nach Erhalt Ihrer Anfrage werden alle personenbezogenen Daten, die in den von uns aktiv genutzten Datenbanken und anderen leicht durchsuchbaren Medien gespeichert sind, aktualisiert, korrigiert, geändert oder gelöscht, sobald und soweit dies angemessen und technisch machbar ist. Wenn Sie ein Endbenutzer sind und Informationen, die wir über Sie haben, aktualisieren, löschen oder erhalten möchten, können Sie dies tun, indem Sie sich an die Organisation wenden, bei der Sie Kunde sind."
+        ]
+      },
+      {
+        "title": "Personal",
+        "paragraphs": [
+          "Wenn Sie einer unserer Mitarbeiter oder Bewerber sind, erfassen wir Informationen, die Sie uns freiwillig zur Verfügung stellen. Wir verwenden die gesammelten Informationen für Personalzwecke, um Leistungen für Arbeitnehmer zu verwalten und Bewerber zu prüfen.",
+          "Sie können uns kontaktieren, um (1) Ihre Informationen zu aktualisieren oder zu korrigieren, (2) Ihre Präferenzen in Bezug auf Mitteilungen und andere Informationen, die Sie von uns erhalten, zu ändern oder (3) eine Aufzeichnung der Informationen zu erhalten, die wir über Sie haben. Solche Aktualisierungen, Korrekturen, Änderungen und Löschungen haben keine Auswirkungen auf andere Informationen, die wir verwalten, oder auf Informationen, die wir vor der Aktualisierung, Korrektur, Änderung oder Löschung gemäß dieser Datenschutzrichtlinie an Dritte weitergegeben haben."
+        ]
+      },
+      {
+        "title": "Verkauf des Unternehmens",
+        "paragraphs": [
+          "Wir behalten uns das Recht vor, im Falle eines Verkaufs, einer Fusion oder einer anderen Übertragung aller oder im Wesentlichen aller Vermögenswerte von uns oder einem unserer verbundenen Unternehmen oder dem Teil von uns oder einem unserer verbundenen Unternehmen, auf den sich der Service bezieht, oder für den Fall, dass wir unser Geschäft einstellen oder einen Antrag auf Insolvenz, Umstrukturierung oder ein ähnliches Verfahren gegen uns einreichen, an Dritte weiterzugeben, vorausgesetzt, dass der Dritte sich bereit erklärt, die Bedingungen dieser Datenschutzrichtlinie einzuhalten."
+        ]
+      },
+      {
+        "title": "Partner",
+        "paragraphs": [
+          "Wir können Informationen (einschließlich personenbezogener Daten) über Sie an unsere verbundenen Unternehmen weitergeben. Für die Zwecke dieser Datenschutzrichtlinie bedeutet „Unternehmenspartner“ jede natürliche oder juristische Person, die uns direkt oder indirekt kontrolliert, von uns kontrolliert wird oder unter gemeinsamer Kontrolle mit uns steht, sei es durch Eigentum oder auf andere Weise. Alle Sie betreffenden Informationen, die wir unseren verbundenen Unternehmen zur Verfügung stellen, werden von diesen verbundenen Unternehmen gemäß den Bestimmungen dieser Datenschutzrichtlinie behandelt."
+        ]
+      },
+      {
+        "title": "Wie lange bewahren wir Ihre Daten auf?",
+        "paragraphs": [
+          "Wir bewahren Ihre Daten nur so lange auf, wie wir sie benötigen, um Ihnen Dienstleistungen zu erbringen und die in dieser Richtlinie beschriebenen Zwecke zu erfüllen. Dies gilt auch für alle Personen, mit denen wir Ihre Daten teilen und die in unserem Namen Dienstleistungen erbringen. Wenn wir Ihre Daten nicht länger verwenden müssen und keine Notwendigkeit besteht, sie aufzubewahren, um unseren gesetzlichen oder behördlichen Verpflichtungen nachzukommen, werden wir sie entweder aus unseren Systemen entfernen oder sie anonymisieren, sodass wir Sie nicht identifizieren können."
+        ]
+      },
+      {
+        "title": "Wie schützen wir Ihre Daten?",
+        "paragraphs": [
+          "Wir implementieren eine Reihe von Sicherheitsmaßnahmen, um die Sicherheit Ihrer persönlichen Daten zu gewährleisten, wenn Sie eine Bestellung aufgeben oder Ihre persönlichen Daten eingeben, übermitteln oder darauf zugreifen. Wir bieten die Nutzung eines sicheren Servers an. Alle bereitgestellten sensiblen/Kreditinformationen werden über die Secure Socket Layer (SSL)-Technologie übertragen und dann verschlüsselt in die Datenbank unserer Zahlungs-Gateway-Anbieter übertragen, sodass nur diejenigen darauf zugreifen können, die über besondere Zugriffsrechte auf solche Systeme verfügen und die Informationen vertraulich behandeln müssen.",
+          "Nach einer Transaktion werden Ihre privaten Daten (Kreditkarten, Sozialversicherungsnummern, Finanzdaten usw.) niemals gespeichert. Wir können jedoch die absolute Sicherheit der von Ihnen an uns übermittelten Informationen nicht gewährleisten oder garantieren oder garantieren, dass Ihre Informationen im Rahmen des Dienstes nicht durch einen Verstoß gegen unsere physischen, technischen oder verwaltungstechnischen Schutzmaßnahmen abgerufen, offengelegt, verändert oder zerstört werden."
+        ]
+      },
+      {
+        "title": "Geltendes Recht",
+        "paragraphs": [
+          "Für diese Vereinbarung und Ihre Nutzung unseres Dienstes gelten die Gesetze der Vereinigten Staaten, mit Ausnahme der Kollisionsnormen. Ihre Nutzung unseres Dienstes unterliegt möglicherweise auch anderen lokalen, staatlichen, nationalen oder internationalen Gesetzen."
+        ]
+      },
+      {
+        "title": "Ihre Zustimmung",
+        "paragraphs": [
+          "Indem Sie unseren Service nutzen, ein Konto registrieren oder einen Kauf tätigen, stimmen Sie dieser Datenschutzrichtlinie zu."
+        ]
+      },
+      {
+        "title": "Links zu anderen Websites",
+        "paragraphs": [
+          "Diese Datenschutzrichtlinie gilt nur für die Dienste. Die Dienste können Links zu anderen Websites enthalten, die nicht von Openspace.Social betrieben oder kontrolliert werden. Wir sind nicht für den Inhalt, die Richtigkeit oder die auf solchen Websites geäußerten Meinungen verantwortlich und diese Websites werden von uns nicht auf Richtigkeit oder Vollständigkeit untersucht, überwacht oder überprüft.",
+          "Bitte beachten Sie, dass unsere Datenschutzrichtlinie nicht mehr gültig ist, wenn Sie einen Link verwenden, um von den Diensten zu einer anderen Website zu gelangen. Ihr Surfen und Ihre Interaktion auf anderen Websites, einschließlich solcher, die über einen Link auf unserer Plattform verfügen, unterliegen den eigenen Regeln und Richtlinien dieser Website. Solche Dritten können ihre eigenen Cookies oder andere Methoden verwenden, um Informationen über Sie zu sammeln."
+        ]
+      },
+      {
+        "title": "Kekse",
+        "paragraphs": [
+          "Wir verwenden „Cookies“, um die Bereiche unserer Website zu identifizieren, die Sie besucht haben. Ein Cookie ist ein kleines Datenelement, das von Ihrem Webbrowser auf Ihrem Computer oder Mobilgerät gespeichert wird. Wir verwenden Cookies, um den Inhalt, den Sie auf unserer Website sehen, zu personalisieren. Die meisten Webbrowser können so eingestellt werden, dass die Verwendung von Cookies deaktiviert wird. Wenn Sie Cookies deaktivieren, kann es jedoch sein, dass Sie auf die Funktionen unserer Website nicht richtig oder überhaupt nicht zugreifen können. Wir platzieren niemals personenbezogene Daten in Cookies."
+        ]
+      },
+      {
+        "title": "Werbung",
+        "paragraphs": [
+          "Werbung hält uns und viele der von Ihnen genutzten Websites und Dienste kostenlos. Wir arbeiten hart daran, sicherzustellen, dass Anzeigen sicher, unaufdringlich und so relevant wie möglich sind."
+        ]
+      },
+      {
+        "title": "Cookies für Werbung",
+        "paragraphs": [
+          "Cookies tragen dazu bei, Werbung effektiver zu machen. Ohne Cookies ist es für einen Werbetreibenden wirklich schwierig, seine Zielgruppe zu erreichen oder zu erfahren, wie viele Anzeigen geschaltet wurden und wie viele Klicks sie erhalten haben."
+        ]
+      },
+      {
+        "title": "Zahlungsdetails",
+        "paragraphs": [
+          "In Bezug auf alle Kreditkarten- oder anderen Zahlungsabwicklungsdaten, die Sie uns zur Verfügung gestellt haben, verpflichten wir uns, diese vertraulichen Informationen so sicher wie möglich zu speichern."
+        ]
+      },
+      {
+        "title": "Privatsphäre von Kindern",
+        "paragraphs": [
+          "Wir sprechen keine Personen unter 13 Jahren an. Wir erfassen wissentlich keine personenbezogenen Daten von Personen unter 13 Jahren. Wenn Sie ein Elternteil oder Erziehungsberechtigter sind und wissen, dass Ihr Kind uns personenbezogene Daten zur Verfügung gestellt hat, kontaktieren Sie uns bitte. Wenn uns bekannt wird, dass wir personenbezogene Daten von Personen unter 13 Jahren ohne Überprüfung der Zustimmung der Eltern erfasst haben, ergreifen wir Maßnahmen, um diese Informationen von unseren Servern zu entfernen."
+        ]
+      },
+      {
+        "title": "Änderungen unserer Datenschutzrichtlinie",
+        "paragraphs": [
+          "Wenn wir beschließen, unsere Datenschutzrichtlinie zu ändern, werden wir diese Änderungen auf dieser Seite veröffentlichen und/oder das Änderungsdatum der Datenschutzrichtlinie unten aktualisieren."
+        ]
+      },
+      {
+        "title": "Dienste Dritter",
+        "paragraphs": [
+          "Wir können Inhalte Dritter (einschließlich Daten, Informationen, Anwendungen und andere Produktdienste) anzeigen, einbinden oder zur Verfügung stellen oder Links zu Websites oder Diensten Dritter („Dienste Dritter“) bereitstellen.",
+          "Sie erkennen an und stimmen zu, dass wir nicht für die Dienste Dritter verantwortlich sind, einschließlich deren Richtigkeit, Vollständigkeit, Aktualität, Gültigkeit, Einhaltung des Urheberrechts, Rechtmäßigkeit, Anstand, Qualität oder andere Aspekte davon. Wir übernehmen keine Haftung oder Verantwortung gegenüber Ihnen oder einer anderen natürlichen oder juristischen Person für die Dienste Dritter.",
+          "Dienste Dritter und Links dazu werden Ihnen lediglich als Annehmlichkeit zur Verfügung gestellt und Sie greifen auf sie zu und nutzen sie ausschließlich auf eigenes Risiko und unterliegen den Geschäftsbedingungen dieser Dritten."
+        ]
+      },
+      {
+        "title": "Tracking-Technologien",
+        "paragraphs": [
+          "Kekse"
+        ],
+        "bullets": [
+          "Wir verwenden Cookies, um die Leistung und Funktionalität unseres Dienstes zu verbessern, sind jedoch für deren Nutzung nicht unbedingt erforderlich. Ohne diese Cookies sind jedoch möglicherweise bestimmte Funktionen wie Videos nicht verfügbar oder Sie müssten bei jedem Besuch unseres Dienstes Ihre Anmeldedaten eingeben, da wir uns nicht daran erinnern können, dass Sie sich zuvor angemeldet haben.",
+          "Lokaler Speicher: Lokaler Speicher, manchmal auch als DOM-Speicher bezeichnet, stellt Web-Apps Methoden und Protokolle zum Speichern clientseitiger Daten bereit. Web Storage unterstützt die dauerhafte Datenspeicherung, ähnlich wie Cookies, jedoch mit einer deutlich erhöhten Kapazität und ohne Speicherung von Informationen im HTTP-Anforderungsheader.",
+          "Sitzungen: Wir verwenden „Sitzungen“, um die Bereiche unserer Website zu identifizieren, die Sie besucht haben. Eine Sitzung ist ein kleines Datenelement, das von Ihrem Webbrowser auf Ihrem Computer oder Mobilgerät gespeichert wird."
+        ]
+      },
+      {
+        "title": "Informationen zur Datenschutz-Grundverordnung (GDPR)",
+        "paragraphs": [
+          "Wir erfassen und verwenden möglicherweise Informationen von Ihnen, wenn Sie aus dem Europäischen Wirtschaftsraum (EWR) stammen. In diesem Abschnitt unserer Datenschutzrichtlinie erläutern wir, wie und warum diese Daten erfasst werden und wie wir diese Daten vor Vervielfältigung oder falscher Verwendung schützen."
+        ]
+      },
+      {
+        "title": "Was ist GDPR?",
+        "paragraphs": [
+          "GDPR ist ein EU-weites Datenschutzgesetz, das regelt, wie die Daten von EU-Bürgern durch Unternehmen geschützt werden, und die Kontrolle der EU-Bürger über ihre personenbezogenen Daten stärkt."
+        ]
+      },
+      {
+        "title": "Was sind personenbezogene Daten?",
+        "paragraphs": [
+          "Alle Daten, die sich auf eine identifizierbare oder identifizierte Person beziehen. GDPR deckt ein breites Spektrum an Informationen ab, die allein oder in Kombination mit anderen Informationen zur Identifizierung einer Person verwendet werden können. Personenbezogene Daten gehen über den Namen oder die E-Mail-Adresse einer Person hinaus. Einige Beispiele umfassen Finanzinformationen, politische Meinungen, genetische Daten, biometrische Daten, IP-Adressen, physische Adresse, sexuelle Orientierung und ethnische Zugehörigkeit.",
+          "Die Datenschutzgrundsätze umfassen Anforderungen wie:"
+        ],
+        "bullets": [
+          "Die erhobenen personenbezogenen Daten müssen auf faire, rechtmäßige und transparente Weise verarbeitet werden und dürfen nur in einer Weise verwendet werden, die eine Person vernünftigerweise erwarten würde.",
+          "Personenbezogene Daten sollten nur zur Erfüllung eines bestimmten Zwecks erhoben und nur für diesen Zweck verwendet werden. Organisationen müssen bei der Erhebung personenbezogener Daten angeben, warum sie diese benötigen.",
+          "Personenbezogene Daten sollten nicht länger gespeichert werden, als es zur Erfüllung ihres Zwecks erforderlich ist.",
+          "Personen, die unter die GDPR fallen, haben das Recht, auf ihre eigenen personenbezogenen Daten zuzugreifen. Sie können auch eine Kopie ihrer Daten anfordern und verlangen, dass ihre Daten aktualisiert, gelöscht, eingeschränkt oder in eine andere Organisation verschoben werden."
+        ]
+      },
+      {
+        "title": "Warum ist GDPR wichtig?",
+        "paragraphs": [
+          "GDPR fügt neue Anforderungen dazu hinzu, wie Unternehmen die personenbezogenen Daten von Einzelpersonen, die sie sammeln und verarbeiten, schützen sollen. Es erhöht auch den Einsatz für die Compliance, indem es die Durchsetzung verstärkt und bei Verstößen höhere Bußgelder verhängt. Abgesehen von diesen Fakten ist es einfach das Richtige."
+        ]
+      },
+      {
+        "title": "Rechte des einzelnen Datensubjekts – Datenzugriff, -übertragbarkeit und -löschung",
+        "paragraphs": [
+          "Wir sind bestrebt, unseren Kunden dabei zu helfen, die Anforderungen der Datenschutz-Grundverordnung (DSGVO) hinsichtlich der Rechte betroffener Personen zu erfüllen. Wir verarbeiten oder speichern alle personenbezogenen Daten bei vollständig geprüften, DPA-konformen Anbietern. Wir speichern Gesprächs- und personenbezogene Daten bis zu 6 Jahre lang, es sei denn, Ihr Konto wird gelöscht. In diesem Fall entsorgen wir alle Daten gemäß unseren Nutzungsbedingungen und Datenschutzrichtlinien, speichern sie jedoch nicht länger als 60 Tage.",
+          "Wenn Sie mit EU-Kunden zusammenarbeiten, müssen Sie ihnen die Möglichkeit geben, auf personenbezogene Daten zuzugreifen, sie zu aktualisieren, abzurufen und zu entfernen. Wir sind von Anfang an als Self-Service aufgestellt und haben Ihnen stets Zugriff auf Ihre Daten und die Daten Ihrer Kunden gewährt. Unser Kundensupport-Team ist für Sie da, um alle Fragen zur Arbeit mit der API zu beantworten."
+        ]
+      },
+      {
+        "title": "Einwohner Kaliforniens",
+        "paragraphs": [
+          "Das California Consumer Privacy Act (CCPA) verlangt von uns, Kategorien der von uns erfassten personenbezogenen Daten und deren Verwendung, die Kategorien von Quellen, aus denen wir personenbezogene Daten erfassen, und die Dritten, mit denen wir sie teilen, offenzulegen, was wir oben erläutert haben.",
+          "Wir sind außerdem verpflichtet, Informationen über die Rechte zu übermitteln, die Einwohnern Kaliforniens nach kalifornischem Recht zustehen. Sie können die folgenden Rechte ausüben:"
+        ],
+        "bullets": [
+          "Recht auf Auskunft und Zugang: Sie können eine überprüfbare Anfrage nach Informationen über die Kategorien personenbezogener Daten stellen, die wir erfassen, verwenden oder weitergeben. die Zwecke, für die Kategorien personenbezogener Daten von uns erfasst oder verwendet werden; die Kategorien von Quellen, aus denen wir personenbezogene Daten sammeln; und die spezifischen personenbezogenen Daten, die wir über Sie gesammelt haben.",
+          "Recht auf gleichen Service: Wir werden Sie nicht diskriminieren, wenn Sie Ihre Datenschutzrechte ausüben.",
+          "Recht auf Löschung: Sie können einen nachweisbaren Antrag auf Schließung Ihres Kontos stellen und wir werden die von uns erfassten personenbezogenen Daten über Sie löschen.",
+          "Recht zu verlangen, dass ein Unternehmen, das personenbezogene Daten eines Verbrauchers verkauft, die personenbezogenen Daten des Verbrauchers nicht verkauft."
+        ],
+        "paragraphsAfterBullets": [
+          "Wenn Sie eine Anfrage stellen, haben wir einen Monat Zeit, um Ihnen zu antworten. Wenn Sie eines dieser Rechte ausüben möchten, kontaktieren Sie uns bitte.",
+          "Wir verkaufen die persönlichen Daten unserer Benutzer nicht."
+        ]
+      },
+      {
+        "title": "California Online Privacy Protection Act (CalOPPA)",
+        "paragraphs": [
+          "CalOPPA verlangt von uns, dass wir die Kategorien der von uns erfassten personenbezogenen Daten und deren Verwendung, die Kategorien der Quellen, aus denen wir personenbezogene Daten erfassen, und die Dritten, mit denen wir sie teilen, offenlegen, was wir oben erläutert haben.",
+          "CalOPPA-Benutzer haben die folgenden Rechte:"
+        ],
+        "bullets": [
+          "Recht auf Auskunft und Zugang: Sie können eine überprüfbare Anfrage nach Informationen über die Kategorien personenbezogener Daten stellen, die wir erfassen, verwenden oder weitergeben. die Zwecke, für die Kategorien personenbezogener Daten von uns erfasst oder verwendet werden; die Kategorien von Quellen, aus denen wir personenbezogene Daten sammeln; und die spezifischen personenbezogenen Daten, die wir über Sie gesammelt haben.",
+          "Recht auf gleichen Service: Wir werden Sie nicht diskriminieren, wenn Sie Ihre Datenschutzrechte ausüben.",
+          "Recht auf Löschung: Sie können einen nachweisbaren Antrag auf Schließung Ihres Kontos stellen und wir werden die von uns erfassten personenbezogenen Daten über Sie löschen.",
+          "Recht zu verlangen, dass ein Unternehmen, das personenbezogene Daten eines Verbrauchers verkauft, die personenbezogenen Daten des Verbrauchers nicht verkauft."
+        ],
+        "paragraphsAfterBullets": [
+          "Wenn Sie eine Anfrage stellen, haben wir einen Monat Zeit, um Ihnen zu antworten. Wenn Sie eines dieser Rechte ausüben möchten, kontaktieren Sie uns bitte.",
+          "Wir verkaufen die persönlichen Daten unserer Benutzer nicht."
+        ]
+      },
+      {
+        "title": "Kontaktieren Sie uns",
+        "paragraphs": [
+          "Zögern Sie nicht, uns zu kontaktieren, wenn Sie Fragen haben.",
+          "Über diesen Link: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "guidelines": {
+    "title": "Openspace Gemeinschaftsrichtlinien",
+    "intro": "Willkommen bei Openspace. Wir freuen uns, Sie als Teil unserer lebendigen und vielfältigen Gemeinschaft zu haben. Um eine sichere und angenehme Erfahrung für alle zu gewährleisten, haben wir diese Gemeinschaftsrichtlinien aufgestellt. Bitte nehmen Sie einen Moment Zeit, sich mit ihnen vertraut zu machen, da die Verletzung dieser Richtlinien zu Strafen führen kann, einschließlich Kontoaussetzung oder Kündigung.",
+    "sections": [
+      {
+        "title": "Respekt und Freundlichkeit",
+        "body": "Behandeln Sie andere, wie Sie behandelt werden möchten. Respektieren Sie die Meinungen, Überzeugungen und Erfahrungen von Mitbenutzern. Belästigung, Mobbing, Hassrede, Diskriminierung oder irgendeine Form von Offensive Verhalten wird nicht toleriert."
+      },
+      {
+        "title": "Datenschutz und personenbezogene Daten",
+        "body": "Schützen Sie die Privatsphäre von anderen und sich selbst. Teilen Sie keine persönlichen Informationen, wie Adressen, Telefonnummern oder Finanzdetails, öffentlich auf der Plattform. Seien Sie vorsichtig, während Sie alle sensiblen Informationen in privaten Nachrichten teilen."
+      },
+      {
+        "title": "Inhalt Integrity",
+        "body": "Nur Postinhalte, die Sie haben das Recht zu teilen. Respektieren Sie Urheberrechte und geistige Eigentumsgesetze. Beteiligen Sie sich nicht an der Verbreitung falscher Informationen, irreführender Inhalte oder Spam."
+      },
+      {
+        "title": "Nudität, Gewalt und unangemessene Inhalte",
+        "body": "Openspace ist eine Plattform für Benutzer über dem Alter von 16 Jahren. Jegliche Inhalte mit expliziter Nacktheit, Gewalt, Grafik oder Erwachsenenmaterial, die sonst unangebracht sind, werden entfernt."
+      },
+      {
+        "title": "Illegale Aktivitäten",
+        "body": "Verwenden Sie Openspace nicht zur Förderung, Organisation oder Beteiligung an illegalen Aktivitäten. Dies beinhaltet, aber nicht beschränkt auf Belästigung, Bedrohungen, Drogenhandel und jede Form von Terrorismus."
+      },
+      {
+        "title": "Verkörperung",
+        "body": "Verkörpern Sie nicht andere Personen, Organisationen oder öffentliche Persönlichkeiten. Seien Sie selbst und nutzen Sie Ihre echte Identität auf der Plattform."
+      },
+      {
+        "title": "Reporting und Moderation",
+        "body": "Wenn Sie auf Inhalte oder Verhaltensweisen reagieren, die unsere Richtlinien verletzen, melden Sie sie bitte sofort. Unser Moderationsteam wird die gemeldeten Inhalte überprüfen und geeignete Maßnahmen ergreifen."
+      },
+      {
+        "title": "Minen",
+        "body": "Benutzer unter 13 Jahren sind auf Openspace nicht gestattet. Wenn Sie zwischen 16 und 18 Jahre alt sind, stellen Sie bitte sicher, dass Sie vor der Nutzung der Plattform eine elterliche Einwilligung haben."
+      },
+      {
+        "title": "Mehrere Konten",
+        "body": "Die Erstellung mehrerer Konten für schädliche Zwecke oder die Beseitigung von Strafen ist nicht erlaubt."
+      },
+      {
+        "title": "Geschäftstätigkeiten",
+        "body": "Vermeiden Sie die Verwendung von Openspace ausschließlich zu kommerziellen Zwecken, wie übermäßige Werbung oder Spamming. Verwenden Sie benannte Kanäle oder Funktionen zur Förderung von Produkten und Dienstleistungen."
+      },
+      {
+        "title": "Missbrauch von Funktionen",
+        "body": "Verwenden Sie keine Funktionen oder Funktionen von Openspace, um Unannehmlichkeiten oder Schäden an anderen Benutzern oder der Plattform selbst zu verursachen."
+      },
+      {
+        "title": "Konflikte lösen",
+        "body": "Wenn Sie Meinungsverschiedenheiten oder Konflikte mit anderen Nutzern haben, versuchen Sie, sie in respektvoller Weise zu lösen. Falls erforderlich, kontaktieren Sie unser Support-Team für Hilfe."
+      },
+      {
+        "title": "Folgen Sie lokalen Gesetzen und Verordnungen",
+        "body": "Befolgen Sie die Gesetze und Vorschriften Ihres Landes und Ihrer Gerichtsbarkeit unter Verwendung von Openspace."
+      }
+    ],
+    "outro": "Denken Sie daran, Openspace ist alles über die Schaffung eines positiven und inklusiven Raum für unsere Gemeinschaft zu verbinden, zu teilen und zu lernen. Durch diese Richtlinien tragen Sie dazu bei, für jeden ein blühendes und respektvolles Umfeld zu schaffen. Danke, dass Sie Teil von Openspace sind.",
+    "contact": "Haben Sie irgendwelche Regelbrecher oder haben Sie Fragen? Kontaktieren Sie uns bei admin@openspacelive.com"
+  }
+}

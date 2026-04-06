@@ -1,0 +1,773 @@
+{
+  "tagline": "Dit rum til at forbinde, dele og udforske.",
+  "auth": {
+    "signIn": "Log ind",
+    "signOut": "Log ud",
+    "username": "Brugernavn",
+    "usernamePlaceholder": "Indtast dit brugernavn",
+    "password": "Adgangskode",
+    "passwordPlaceholder": "Indtast din adgangskode",
+    "dontHaveAccount": "Har du ikke en konto?",
+    "getStarted": "Kom i gang",
+    "errorEmptyFields": "Indtast venligst dit brugernavn og din adgangskode.",
+    "errorLoginFailed": "Login mislykkedes. Prøv igen.",
+    "verifyEmailTitle": "Bekræft din e-mail",
+    "verifyEmailDescription": "Indtast den 6-cifrede bekræftelseskode, vi sendte til {{email}}.",
+    "verificationCodeLabel": "Bekræftelseskode",
+    "verificationCodePlaceholder": "Indtast 6-cifret kode",
+    "verifyEmailCta": "Bekræft e-mail",
+    "resendVerificationCode": "Send kode igen",
+    "continueToApp": "Fortsæt",
+    "verificationCodeSent": "Bekræftelseskode sendt. Tjek din indbakke og spam-mappe.",
+    "verificationCodeResent": "En ny bekræftelseskode blev sendt.",
+    "verificationSuccess": "Din e-mail er blevet bekræftet.",
+    "errorVerificationCodeRequired": "Indtast venligst bekræftelseskoden.",
+    "errorVerificationFailed": "E-mailbekræftelse mislykkedes. Prøv igen.",
+    "errorResendVerificationFailed": "Kunne ikke sende kode igen. Prøv igen.",
+    "errorVerificationSessionMissing": "Bekræftelsessession udløbet. Tilmeld dig igen.",
+    "wrongEmailPrompt": "Brugte du den forkerte e-mail?",
+    "goBackToSignUp": "Gå tilbage til tilmelding",
+    "yourEmail": "din e-mail",
+    "forgotPassword": "Glemt adgangskode?",
+    "forgotEmail": "Glemt e-mail?",
+    "signUpAgreementPrefix": "Ved at tilmelde dig accepterer du vores",
+    "signUpAgreementAnd": "og",
+    "recoverPasswordTitle": "Nulstil din adgangskode",
+    "recoverPasswordDescription": "Indtast din konto-e-mail, så sender vi et link til nulstilling af adgangskode.",
+    "recoveryEmailLabel": "Konto-e-mail",
+    "recoveryEmailPlaceholder": "Indtast din konto-e-mail",
+    "sendRecoveryEmail": "Send gendannelsesmail",
+    "recoverAccountTitle": "Gendan kontooplysninger",
+    "recoverAccountDescription": "Indtast dit brugernavn eller din e-mail, så sender vi dine kontooplysninger til den matchende e-mailadresse.",
+    "recoveryIdentifierLabel": "Brugernavn eller e-mail",
+    "recoveryIdentifierPlaceholder": "Indtast dit brugernavn eller din e-mail",
+    "errorRecoveryEmailRequired": "Indtast venligst din konto-e-mail.",
+    "errorRecoveryIdentifierRequired": "Indtast venligst dit brugernavn eller din e-mail.",
+    "passwordRecoverySent": "Hvis din e-mail findes, har vi sendt en mail til nulstilling af adgangskode. Tjek indbakke og spam.",
+    "passwordRecoveryFailed": "Kunne ikke sende mail til nulstilling af adgangskode. Prøv igen.",
+    "accountRecoverySent": "Hvis en konto matcher de angivne oplysninger, er en gendannelsesmail blevet sendt. Tjek indbakke og spam.",
+    "accountRecoveryFailed": "Kunne ikke sende kontogendannelsesmail. Prøv igen.",
+    "rememberedCredentials": "Kan du huske dine loginoplysninger?",
+    "backToSignIn": "Tilbage til log ind",
+    "resetPasswordTitle": "Angiv en ny adgangskode",
+    "resetPasswordDescription": "Opret en ny adgangskode til din konto.",
+    "newPasswordLabel": "Ny adgangskode",
+    "newPasswordPlaceholder": "Indtast din nye adgangskode",
+    "confirmNewPasswordLabel": "Bekræft ny adgangskode",
+    "confirmNewPasswordPlaceholder": "Indtast din nye adgangskode igen",
+    "resetPasswordButton": "Opdater adgangskode",
+    "errorResetTokenMissing": "Nulstillingslink mangler eller er ugyldigt. Anmod om et nyt.",
+    "errorResetPasswordFieldsRequired": "Indtast og bekræft venligst din nye adgangskode.",
+    "errorResetPasswordMismatch": "Adgangskoderne matcher ikke.",
+    "passwordResetSuccess": "Adgangskoden er nulstillet.",
+    "passwordResetSuccessDescription": "Du kan nu logge ind med din nye adgangskode.",
+    "passwordResetFailed": "Nulstilling af adgangskode mislykkedes. Anmod om et nyt link og prøv igen.",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Re-enter your password",
+    "alreadyHaveAccount": "Already have an account?",
+    "errorPasswordsDontMatch": "Passwords do not match.",
+    "errorRegistrationFailed": "Registration failed. Please try again.",
+    "socialContinueGoogle": "Fortsæt med Google",
+    "socialContinueApple": "Fortsæt med Apple",
+    "socialLoadingGoogle": "Connecting to Google...",
+    "socialLoadingApple": "Connecting to Apple...",
+    "socialOrDivider": "eller fortsæt med brugernavn nedenfor",
+    "socialConfigMissing": "Social login is not configured yet.",
+    "socialWebOnly": "Social login is available on web in this build.",
+    "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "socialCancelled": "Social sign-in was cancelled.",
+    "socialTimeout": "Social sign-in timed out. Please try again.",
+    "socialStateMismatch": "Security check failed. Please try again.",
+    "socialAuthFailed": "Social sign-in failed. Please try again.",
+    "socialUsernameTitle": "Vælg dit brugernavn",
+    "socialUsernameDescription": "Vælg det brugernavn, andre ser på din profil. Du kan ændre det senere.",
+    "socialUsernameCta": "Fortsæt med dette brugernavn",
+    "errorSocialSessionMissing": "Social tilmeldingssession er udløbet. Prøv igen.",
+    "errorSocialUsernameRequired": "Indtast venligst et brugernavn.",
+    "errorSocialUsernameUpdateFailed": "Kunne ikke gemme brugernavn. Prøv et andet.",
+    "needDifferentAccountPrompt": "Brug for en anden konto?",
+    "shareProfileTitle": "Del din nye profil",
+    "shareProfileDescription": "Din konto {{username}} er klar. Del den på dine favoritplatforme, før du fortsætter.",
+    "shareProfileMessage": "Jeg er lige blevet medlem af Openspace.Social som {{username}}. Kom og forbind med mig!",
+    "shareInstagram": "Instagram",
+    "shareFacebook": "Facebook",
+    "shareX": "X (Twitter)",
+    "shareBluesky": "Bluesky",
+    "shareReddit": "Reddit",
+    "shareContinueCta": "Fortsæt til Openspace",
+    "shareSkipCta": "Spring over for nu",
+    "shareSkipHint": "Du kan altid dele senere.",
+    "shareInstagramNotice": "Vi kopierede din profiltekst. Indsæt den i dit Instagram-opslag eller bio.",
+    "errorShareSessionMissing": "Delingssessionen er udløbet. Log ind igen.",
+    "newAccountLabel": "min nye konto"
+  },
+  "home": {
+    "welcomeBack": "Velkommen tilbage, {{name}}!",
+    "welcomeBackGeneric": "Velkommen tilbage!",
+    "comingSoon": "Den nye Openspace-oplevelse kommer snart.",
+    "linkedAccountsTitle": "Linked accounts",
+    "linkedAccountsDescription": "Connect your social providers to make sign-in and recovery easier.",
+    "providerGoogle": "Google",
+    "providerApple": "Apple",
+    "linkedStatusConnected": "Connected",
+    "linkedStatusWithEmail": "Connected as {{email}}",
+    "linkedStatusNotConnected": "Not connected",
+    "linkAction": "Link",
+    "unlinkAction": "Unlink",
+    "linkSuccess": "{{provider}} linked successfully.",
+    "unlinkSuccess": "{{provider}} unlinked successfully.",
+    "linkFailed": "Could not link account. Please try again.",
+    "unlinkFailed": "Could not unlink account. Please try again.",
+    "linkWebOnly": "Linking social accounts is available on web in this build.",
+    "linkConfigMissing": "Social login is not configured yet.",
+    "linkPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "linkCancelled": "Social linking was cancelled.",
+    "linkTimeout": "Social linking timed out. Please try again.",
+    "linkStateMismatch": "Security check failed. Please try again."
+  },
+  "theme": {
+    "switchToLight": "Skift til lyst tema",
+    "switchToDark": "Skift til mørkt tema"
+  },
+  "language": {
+    "select": "Vælg sprog",
+    "current": "Sprog"
+  },
+  "aboutUs": {
+    "shiftTitle": "Et socialt skift: Hvorfor canadiere ser sig om efter alternativer til amerikanske platforme",
+    "shiftBody": "Med de voksende handelsspændinger mellem Canada og USA er mange canadiere begyndt at genoverveje deres afhængighed af amerikanske sociale medieplatforme. Ud over geopolitiske bekymringer har disse platforme længe behandlet persondata som en handelsvare – ved at høste dine interesser, adfærdsmønstre, forbindelser og præferencer med henblik på profit. Openspace.Social er anderledes. Stolt canadisk prioriterer vi din sikkerhed og privatliv frem for profit. I modsætning til mainstream-platforme, der samarbejder med datamæglere, udnytter vi ikke dine data. At vælge Openspace.Social betyder at vælge en platform, der respekterer dine oplysninger og opererer med gennemsigtighed. Tilslut dig bevægelsen mod en virkelig uafhængig, privatlivsfokuseret social oplevelse.",
+    "aboutTitle": "Om Openspace.Social",
+    "about1": "Openspace.Social er en revolutionerende social netværksplatform designet til at give brugerne et forfriskende alternativ til mainstream-platforme. Det, der adskiller Openspace.Social, er dens urokkelige engagement i at fremme ægte fællesskabsforbindelser, mens brugernes privatliv prioriteres.",
+    "about2": "I en æra, hvor bekymringer om privatlivets fred er altafgørende, tager Openspace.Social en proaktiv tilgang til at beskytte brugerdata. Platformen anvender robuste privatlivsfunktioner og sikrer, at brugerne har kontrol over deres personlige oplysninger og hvem der kan få adgang til dem. Denne vægtlægning på privatliv skaber et rum, hvor enkeltpersoner frit kan udtrykke sig uden frygt for påtrængende datapraksis.",
+    "about3": "I modsætning til andre sociale netværk, der ofte prioriterer popularitetsmålinger, fokuserer Openspace.Social på at opbygge meningsfulde forbindelser i fællesskaber. Platformen opfordrer brugerne til at deltage i eller oprette fællesskaber baseret på fælles interesser, værdier eller mål. Denne fællesskabscentrerede tilgang fremmer mere autentiske interaktioner og skaber en følelse af tilhørsforhold og samarbejde.",
+    "about4": "Openspace.Social anerkender betydningen af brugerempowerment og tilbyder tilpasselige privatlivsindstillinger og værktøjer, der giver enkeltpersoner mulighed for at forme deres onlineoplevelse. Brugerne kan forbinde sig med venner, familie eller nye bekendte i et sikkert miljø og dele øjeblikke og indhold uden at gå på kompromis med deres personlige grænser.",
+    "about5": "I et digitalt landskab, hvor tillid er afgørende, fremstår Openspace.Social som et fyrtårn for gennemsigtighed og fællesskabscentrerede værdier. Ved at prioritere privatliv, meningsfulde forbindelser og brugerempowerment er Openspace.Social klar til at omdefinere den sociale netværksoplevelse for dem, der søger en mere autentisk og sikker online tilstedeværelse."
+  },
+  "footer": {
+    "customize": "Du kan tilpasse, hvad du vil se med feed-filtre, lister og cirkler.",
+    "aboutUs": "Om os",
+    "privacyPolicy": "Privatlivspolitik",
+    "termsOfUse": "Brugsvilkår",
+    "guidelines": "Retningslinjer"
+  },
+  "cookies": {
+    "title": "Vi bruger cookies",
+    "body": "Vi bruger cookies til at forbedre din oplevelse, tilpasse indhold og analysere vores trafik. Du kan vælge at acceptere eller afvise.",
+    "acceptAll": "Accepter alle",
+    "decline": "Afvis",
+    "learnMore": "Læs mere"
+  },
+  "termsOfUse": {
+    "updatedAt": "Opdateret 22-11-2023.",
+    "tableOfContentsTitle": "INDHOLDSFORTEGNELSE",
+    "tableOfContents": [
+      "1. ACCEPT AF VILKÅR",
+      "2. INTELLEKTUELLE EJENDOMSRETTIGHEDER",
+      "3. BRUGERERKLÆRINGER",
+      "4. BRUGERREGISTRERING",
+      "5. TJENESTER",
+      "6. KØB OG BETALING",
+      "7. REFUSIONSPOLITIK",
+      "8. FORBUDTE AKTIVITETER",
+      "9. BRUGERGENERERET INDHOLD",
+      "10. LICENS TIL BIDRAG",
+      "11. INDSENDELSER",
+      "12. WEBSITEADMINISTRATION",
+      "13. PRIVATLIVSPOLITIK",
+      "14. KRÆNKELSER AF OPHAVSRET",
+      "15. VARIGHED OG OPSIGELSE",
+      "16. ÆNDRINGER OG AFBRYDELSER",
+      "17. GÆLDENDE LOV",
+      "18. TVISTBILÆGGELSE",
+      "19. RETTELSER",
+      "20. ANSVARSFRASKRIVELSE",
+      "21. ANSVARSBEGRÆNSNING",
+      "22. SKADESLØSHOLDELSE",
+      "23. BRUGERDATA",
+      "24. ELEKTRONISK KOMMUNIKATION, TRANSAKTIONER OG SIGNATURER",
+      "25. California-BRUGERE OG BEBOERE",
+      "26. DIVERSE",
+      "27. KONTAKT OS"
+    ],
+    "sections": [
+      {
+        "title": "ACCEPT AF VILKÅR",
+        "paragraphs": [
+          "Disse brugsbetingelser udgør en juridisk bindende aftale indgået mellem dig, enten personligt eller på vegne af en enhed (\"du\") og Openspace (\"Virksomheden\", \"vi\", \"os\" eller \"vores\"), vedrørende din adgang til og brug af Openspacelive.com-websitet samt enhver anden medieform, mediekanal, mobilt website eller mobilapplikation relateret, linket eller på anden måde forbundet hermed (samlet \"Websitet\"). Websitet tilbyder en online markedsplads for følgende varer, produkter og/eller tjenester: Hostingtjenester (\"Tjenesterne\"). Du accepterer, at du ved at tilgå Websitet og/eller Tjenesterne har læst, forstået og accepteret at være bundet af alle disse brugsbetingelser. HVIS DU IKKE ACCEPTERER ALLE DISSE BRUGSBETINGELSER, ER DU UDTRYKKELIGT FORBUDT FRA AT BRUGE WEBSITET OG/ELLER TJENESTERNE, OG DU SKAL STRAKS OPHØRE MED AT BRUGE DEM.",
+          "Vi forbeholder os retten til efter eget skøn at foretage ændringer eller modifikationer i disse brugsbetingelser fra tid til anden. Vi vil informere dig om eventuelle ændringer ved at opdatere datoen \"Sidst opdateret\" i disse brugsbetingelser, og du giver afkald på enhver ret til at modtage specifik besked om hver sådan ændring. Sørg for at tjekke de gældende vilkår, hver gang du bruger vores Website, så du forstår, hvilke vilkår der gælder.",
+          "Websitet er ikke tilpasset til at overholde branchespecifikke regler (HIPAA, FISMA osv.), så hvis dine interaktioner er underlagt sådanne love, må du ikke bruge dette Website. Du må ikke bruge Websitet på en måde, der ville krænke Gramm-Leach-Bliley Act (GLBA).",
+          "Websitet er beregnet til brugere, der er mindst 13 år gamle. Alle brugere, der er mindreårige i den jurisdiktion, de bor i (generelt under 18 år), skal have tilladelse fra og være under direkte opsyn af deres forælder eller værge for at bruge Websitet."
+        ]
+      },
+      {
+        "title": "INTELLEKTUELLE EJENDOMSRETTIGHEDER",
+        "paragraphs": [
+          "Medmindre andet er angivet, er Websitet og Tjenesterne vores ejendom, og al kildekode, databaser, funktionalitet, software, websitedesign, lyd, video, tekst, fotografier og grafik på Websitet (samlet \"Indholdet\") samt de varemærker, servicemærker og logoer deri (\"Mærkerne\") er ejet eller kontrolleret af os eller licenseret til os og er beskyttet af ophavsrets- og varemærkelove samt diverse andre intellektuelle ejendomsrettigheder og love om illoyal konkurrence i USA, internationale ophavsretslove og internationale konventioner. Indholdet og Mærkerne stilles til rådighed på Websitet \"SOM DET ER\" udelukkende til din information og personlige brug. Undtagen som udtrykkeligt angivet i disse brugsbetingelser må ingen del af Websitet eller Tjenesterne og intet Indhold eller Mærker kopieres, reproduceres, aggregeres, republiseres, uploades, postes, offentligt vises, kodes, oversættes, overføres, distribueres, sælges, licenseres eller på anden måde udnyttes til kommercielle formål uden vores udtrykkelige forudgående skriftlige tilladelse.",
+          "Forudsat at du er berettiget til at bruge Websitet, gives du en begrænset licens til at tilgå og bruge Websitet og til at downloade eller udskrive en kopi af enhver del af Indholdet, som du har fået korrekt adgang til, udelukkende til personlig, ikke-kommerciel brug. Vi forbeholder os alle rettigheder, der ikke udtrykkeligt er tildelt dig i forbindelse med Websitet, Indholdet og Mærkerne."
+        ]
+      },
+      {
+        "title": "BRUGERERKLÆRINGER",
+        "paragraphs": [
+          "Ved at bruge Websitet eller Tjenesterne erklærer og garanterer du, at: (1) alle registreringsoplysninger, du indsender, vil være sande, nøjagtige, aktuelle og fuldstændige; (2) du vil opretholde nøjagtigheden af sådanne oplysninger og straks opdatere registreringsoplysningerne efter behov; (3) du har den juridiske kapacitet og accepterer at overholde disse brugsbetingelser; (4) du ikke er under 13 år; (5) du ikke er mindreårig i den jurisdiktion, du bor i, eller hvis du er mindreårig, har du modtaget forældrenes tilladelse til at bruge Websitet; (6) du ikke vil tilgå Websitet eller Tjenesterne via automatiserede eller ikke-menneskelige midler, hvad enten det er via en bot, et script eller på anden måde; (7) du ikke vil bruge Websitet til noget ulovligt eller uautoriseret formål; og (8) din brug af Websitet eller Tjenesterne ikke vil krænke nogen gældende lov eller regulering.",
+          "Du må ikke bruge Websitet eller Tjenesterne til noget ulovligt eller uautoriseret formål, og du må heller ikke i forbindelse med brugen af Tjenesterne overtræde nogen love. Blandt uautoriserede Tjenester er følgende: rusmidler af enhver art; illegale stoffer eller andre ulovlige produkter; alkoholholdige drikkevarer; hasardspil; og pornografi eller grafisk voksenindhold, billeder eller andre voksenprodukter. Opslag af uautoriserede produkter eller indhold kan resultere i øjeblikkelig lukning af din konto og et livslangt forbud mod brug af Websitet.",
+          "Vi er en tjenesteudbyder og giver ingen erklæringer om sikkerheden, effektiviteten, tilstrækkeligheden, nøjagtigheden, tilgængeligheden, priserne, vurderingerne, anmeldelserne eller lovligheden af nogen af de oplysninger, der er indeholdt på Websitet eller de markedspladstilbud, der vises eller tilbydes via Websitet. Vi anbefaler eller godkender ingen Tjenester, og Websitet stilles til rådighed udelukkende til informations- og reklameformål."
+        ]
+      },
+      {
+        "title": "BRUGERREGISTRERING",
+        "paragraphs": [
+          "Du skal muligvis registrere dig på Websitet for at få adgang til Tjenesterne. Du accepterer at holde dit password fortroligt og vil være ansvarlig for al brug af din konto og dit password. Vi forbeholder os retten til at fjerne, generhverve eller ændre et brugernavn, du vælger, hvis vi efter vores eget skøn afgør, at det pågældende brugernavn er upassende, uanstændigt eller på anden måde stødende."
+        ]
+      },
+      {
+        "title": "TJENESTER",
+        "paragraphs": [
+          "Alle Tjenester er underlagt tilgængelighed, og vi kan ikke garantere, at Markedspladstilbud er på lager. Visse Tjenester er muligvis kun tilgængelige online via Websitet. Sådanne Tjenester kan have begrænsede mængder og er underlagt returnering eller ombytning kun i henhold til vores returpolitik. Vi forbeholder os retten til at begrænse mængderne af de Tjenester, der tilbydes eller er tilgængelige på Websitet. Alle beskrivelser eller prissætninger af Tjenesterne kan til enhver tid ændres uden varsel efter vores eget skøn. Vi forbeholder os retten til at afbryde enhver Tjeneste til enhver tid af enhver årsag. Vi garanterer ikke, at kvaliteten af nogen af de Tjenester, du køber, vil opfylde dine forventninger, eller at eventuelle fejl på Websitet vil blive rettet."
+        ]
+      },
+      {
+        "title": "KØB OG BETALING",
+        "paragraphs": [
+          "Vi accepterer følgende betalingsformer: Kontant og Stripe (kreditkort og andre). Du accepterer at give aktuelle, fuldstændige og nøjagtige købs- og kontooplysninger for alle køb af Tjenesterne foretaget via Websitet. Du accepterer endvidere straks at opdatere konto- og betalingsoplysninger, herunder e-mailadresse, betalingsmetode og udløbsdato for betalingskort, så vi kan gennemføre dine transaktioner og kontakte dig efter behov. Salgsmoms tilføjes til prisen for køb, som vi anser for nødvendigt. Vi kan ændre priser til enhver tid. Alle betalinger skal være i amerikanske dollars.",
+          "Du accepterer at betale alle gebyrer til de priser, der er gældende på tidspunktet for dine køb, samt eventuelle gældende forsendelsesgebyrer, og du giver os bemyndigelse til at debitere din valgte betalingsudbyder for sådanne beløb ved afgivelse af din ordre. Hvis din ordre er underlagt tilbagevendende gebyrer, accepterer du, at vi debiterer din betalingsmetode på tilbagevendende basis uden at kræve din forudgående godkendelse for hvert tilbagevendende opkrævning, indtil du annullerer den pågældende ordre. Vi forbeholder os retten til at rette eventuelle fejl eller fejltagelser i prissætningen, selv om vi allerede har anmodet om eller modtaget betaling. Vi forbeholder os retten til at afvise enhver ordre afgivet via Websitet."
+        ]
+      },
+      {
+        "title": "REFUSIONSPOLITIK",
+        "paragraphs": [
+          "Vi tilbyder ikke refusion for nogen af Tjenesten/Tjenesterne. Alle salg er endelige. Der vil ikke blive udstedt refusioner."
+        ]
+      },
+      {
+        "title": "FORBUDTE AKTIVITETER",
+        "paragraphs": [
+          "Du må ikke tilgå eller bruge Websitet til andet formål end det, som vi stiller Websitet til rådighed for. Websitet må ikke bruges i forbindelse med kommercielle foretagender, medmindre de specifikt er godkendt eller godkendt af os. Som bruger af Websitet accepterer du ikke at:"
+        ],
+        "bullets": [
+          "Systematisk hente data eller andet indhold fra Websitet for direkte eller indirekte at oprette eller sammensætte en samling, kompilering, database eller mappe uden skriftlig tilladelse fra os.",
+          "Narre, bedrage eller vildlede os og andre brugere, især i ethvert forsøg på at lære følsomme kontooplysninger såsom brugeradgangskoder at kende.",
+          "Forsøge at sælge, købe eller handle konti eller relaterede data.",
+          "Omgå, deaktivere eller på anden måde forstyrre sikkerhedsrelaterede funktioner på Websitet, herunder funktioner, der forhindrer eller begrænser brugen eller kopiering af Indhold, eller håndhæver begrænsninger på brugen af Websitet og/eller det deri indeholdte Indhold.",
+          "Miskreditere, skade eller på anden måde skade, efter vores opfattelse, os og/eller Websitet.",
+          "Bruge oplysninger fra Websitet til at chikanere, misbruge eller skade en anden person. Misbruge vores supporttjenester eller indsende falske rapporter om misbrug eller dårlig opførsel.",
+          "Bruge Websitet på en måde, der er uforenelig med gældende love eller regler.",
+          "Engagere sig i uautoriseret indramning af eller linking til Websitet.",
+          "Uploade eller overføre virus, trojanske heste eller andet materiale, herunder overdreven brug af store bogstaver og spamming, der forstyrrer enhver parts uafbrudte brug og nydelse af Websitet.",
+          "Engagere sig i uautoriseret automatiseret brug af systemet, såsom brug af scripts til at sende kommentarer eller beskeder, eller brug af data-mining, robotter eller lignende dataindsamlings- og udtræksværktøjer.",
+          "Slette ophavsretten eller anden meddelelse om ejendomsrettigheder fra Indhold.",
+          "Forsøge at udgive sig for en anden bruger eller person eller bruge en anden brugers brugernavn.",
+          "Uploade eller overføre materiale, der fungerer som en passiv eller aktiv informationsindsamlings- eller transmissionsmekanisme, herunder spyware eller passive indsamlingsmekanismer.",
+          "Forstyrre, afbryde eller skabe en unødvendig byrde på Websitet eller de netværk eller tjenester, der er forbundet med Websitet.",
+          "Chikanere, genere, intimidere eller true nogen af vores medarbejdere eller agenter, der leverer nogen del af Tjenesterne til dig.",
+          "Forsøge at omgå eventuelle foranstaltninger på Websitet, der er designet til at forhindre eller begrænse adgangen til Websitet eller enhver del af Websitet.",
+          "Kopiere eller tilpasse Websitets software, herunder men ikke begrænset til Flash, PHP, HTML, JavaScript eller anden kode.",
+          "Tyde, dekompilere, adskille eller reverse-engineere nogen af softwaren, der udgør eller på nogen måde udgør en del af Websitet.",
+          "Bruge en indkøbsagent eller indkøbsagent til at foretage køb på Websitet.",
+          "Foretage uautoriseret brug af Tjenesterne, herunder indsamling af brugernavne og/eller e-mailadresser fra brugere elektronisk eller på anden måde med henblik på at sende uopfordrede e-mails.",
+          "Bruge Tjenesterne som en del af ethvert forsøg på at konkurrere med os eller på anden måde bruge Websitet og/eller Indholdet til indtægtsgenererende formål eller kommercielle foretagender.",
+          "Overtræde eventuelle webstedregler som fundet i fællesskabsretningslinjerne.",
+          "Engagere sig i ulovlige aktiviteter."
+        ]
+      },
+      {
+        "title": "BRUGERGENERERET INDHOLD",
+        "paragraphs": [
+          "Websitet kan invitere dig til at chatte, bidrage til eller deltage i blogs, opslagstavler, online fora og anden funktionalitet og kan give dig mulighed for at oprette, indsende, poste, vise, overføre, udføre, offentliggøre, distribuere eller udsende indhold og materialer til os eller på Websitet, herunder men ikke begrænset til tekst, skrifter, video, lyd, fotografier, grafik, kommentarer, forslag eller personlige oplysninger eller andet materiale (samlet \"Bidrag\"). Bidrag kan ses af andre brugere af Websitet og via tredjepartswebsites. Alle Bidrag, du overfører, kan behandles som ikke-fortrolige og ikke-proprietære. Når du opretter eller gør Bidrag tilgængelige, erklærer og garanterer du hermed, at:"
+        ],
+        "bullets": [
+          "Oprettelsen, distributionen, overførslen, den offentlige visning eller udførelsen og adgang til, download eller kopiering af dine Bidrag ikke krænker og ikke vil krænke ejendomsrettighederne, herunder men ikke begrænset til ophavsret, patent, varemærke, forretningshemmelighed eller moralske rettigheder for nogen tredjepart.",
+          "Du er skaberen og ejeren af eller har de nødvendige licenser, rettigheder, samtykker, frigivelser og tilladelser til at bruge og til at give os, Websitet og andre brugere af Websitet ret til at bruge dine Bidrag på enhver måde, som Websitet og disse brugsbetingelser forudser.",
+          "Du har det skriftlige samtykke, frigivelse og/eller tilladelse fra hver enkelt identificerbar person i dine Bidrag til at bruge navnet eller ligheden på hver enkelt sådan identificerbar person for at muliggøre inkludering og brug af dine Bidrag på enhver måde, som Websitet og disse brugsbetingelser forudser.",
+          "Dine Bidrag er ikke falske, unøjagtige eller vildledende.",
+          "Dine Bidrag er ikke uopfordrede eller uautoriserede reklamer, reklamemateriale, pyramidespil, kædebreve, spam, masseudsendelser eller andre former for opfordring.",
+          "Dine Bidrag er ikke uanstændige, utugtige, liderlige, snavset, voldelige, chikanerende, injurierende, bagtalende eller på anden måde stødende.",
+          "Dine Bidrag latterliggør ikke, håner, miskrediterer, intimiderer eller misbruger nogen.",
+          "Dine Bidrag bruges ikke til at chikanere eller true nogen anden person eller til at fremme vold mod en bestemt person eller gruppe af mennesker.",
+          "Dine Bidrag overtræder ikke nogen gældende lov, regulering eller regel.",
+          "Dine Bidrag krænker ikke privatlivs- eller offentlighedsrettigheder for nogen tredjepart.",
+          "Dine Bidrag overtræder ikke nogen gældende lov vedrørende børnepornografi eller er på anden måde beregnet til at beskytte mindreåriges helbred eller velvære.",
+          "Dine Bidrag inkluderer ikke stødende kommentarer, der er forbundet med race, national oprindelse, køn, seksuel præference eller fysisk handicap.",
+          "Dine Bidrag overtræder ikke på anden måde eller linker til materiale, der overtræder nogen bestemmelse i disse brugsbetingelser eller nogen gældende lov eller regulering."
+        ],
+        "paragraphsAfterBullets": [
+          "Enhver brug af Websitet eller Tjenesterne i strid med det ovenstående udgør en overtrædelse af disse brugsbetingelser og kan resultere i bl.a. opsigelse eller suspension af din ret til at bruge Websitet og Markedspladstilbuddene."
+        ]
+      },
+      {
+        "title": "LICENS TIL BIDRAG",
+        "paragraphs": [
+          "Ved at poste dine Bidrag til enhver del af Websitet giver du automatisk, og du erklærer og garanterer, at du har ret til at give os, en ubegrænset, ubegrænset, uigenkaldelig, evig, ikke-eksklusiv, overførbar, royaltyfri, fuldt betalt, verdensomspændende ret og licens til at hoste, bruge, kopiere, reproducere, offentliggøre, sælge, genresælge, offentliggøre, udsende, omdøbe, arkivere, gemme, cache, offentligt udføre, offentligt vise, reformatere, oversætte, overføre, uddrage (helt eller delvist) og distribuere sådanne Bidrag til ethvert formål, kommercielt, reklame eller andet, og til at forberede afledte værker af eller inkorporere i andre værker sådanne Bidrag og give og give tilladelse til underlicenser af det foregående.",
+          "Vi hævder ikke nogen ejerskab over dine Bidrag. Du bevarer det fulde ejerskab af alle dine Bidrag og alle intellektuelle ejendomsrettigheder eller andre ejendomsrettigheder, der er forbundet med dine Bidrag. Vi er ikke ansvarlige for nogen udsagn eller repræsentationer i dine Bidrag, der er givet af dig på noget område på Websitet. Du er eneansvarlig for dine Bidrag til Websitet, og du accepterer udtrykkeligt at friholde os for ethvert og alt ansvar og at afstå fra enhver juridisk handling mod os vedrørende dine Bidrag.",
+          "Vi har ret til efter vores eget absolutte skøn til (1) at redigere, redigere eller på anden måde ændre Bidrag; (2) at rekategorisere Bidrag for at placere dem på mere passende steder på Websitet; og (3) at for-screene eller slette Bidrag til enhver tid og af enhver årsag uden varsel. Vi har ingen forpligtelse til at overvåge dine Bidrag."
+        ]
+      },
+      {
+        "title": "INDSENDELSER",
+        "paragraphs": [
+          "Du anerkender og accepterer, at eventuelle spørgsmål, kommentarer, forslag, idéer, feedback eller andre oplysninger vedrørende Websitet eller Tjenesterne, som du giver os, er ikke-fortrolige og skal blive vores ejendom. Vi skal eje eksklusive rettigheder, herunder alle intellektuelle ejendomsrettigheder, og skal være berettiget til ubegrænset brug og spredning af disse Indsendelser til ethvert lovligt formål, kommercielt eller andet, uden anerkendelse eller kompensation til dig. Du giver hermed afkald på alle moralske rettigheder til sådanne Indsendelser, og du garanterer hermed, at sådanne Indsendelser er originale fra dig, eller at du har ret til at indsende sådanne Indsendelser. Du accepterer, at der ikke vil være nogen recours mod os for nogen påstået eller faktisk krænkelse eller tilegnelse af nogen ejendomsret i dine Indsendelser."
+        ]
+      },
+      {
+        "title": "WEBSITEADMINISTRATION",
+        "paragraphs": [
+          "Vi forbeholder os retten, men ikke forpligtelsen, til at: (1) overvåge Websitet for overtrædelser af disse brugsbetingelser; (2) tage passende juridiske skridt over for enhver, der efter vores eget skøn overtræder loven eller disse brugsbetingelser, herunder uden begrænsning at rapportere en sådan bruger til retshåndhævende myndigheder; (3) efter vores eget skøn og uden begrænsning afslå, begrænse adgangen til, begrænse tilgængeligheden af eller deaktivere nogen af dine Bidrag eller enhver del heraf; (4) efter vores eget skøn og uden begrænsning, varsel eller ansvar at fjerne fra Websitet eller på anden måde deaktivere alle filer og indhold, der er overdrevne i størrelse eller på nogen måde er belastende for vores systemer; og (5) på anden måde administrere Websitet på en måde, der er designet til at beskytte vores rettigheder og ejendom og for at lette korrekt funktion af Websitet og Tjenesterne."
+        ]
+      },
+      {
+        "title": "PRIVATLIVSPOLITIK",
+        "paragraphs": [
+          "Vi bekymrer os om databeskyttelse og sikkerhed. Læs venligst vores privatlivspolitik. Ved at bruge Websitet eller Tjenesterne accepterer du at være bundet af vores privatlivspolitik, som er inkorporeret i disse brugsbetingelser. Vær opmærksom på, at Websitet og Tjenesterne er hostet i USA. Hvis du tilgår Websitet eller Tjenesterne fra en anden region i verden med love eller andre krav, der regulerer indsamling, brug eller videregivelse af persondata, som afviger fra gældende love i USA, overfører du dine data til USA ved din fortsatte brug af Websitet, og du accepterer, at dine data overføres til og behandles i USA.",
+          "Vi accepterer ikke bevidst, anmoder ikke om eller henvender os ikke bevidst til børn. Derfor, i overensstemmelse med den amerikanske Children's Online Privacy Protection Act, hvis vi modtager faktisk viden om, at nogen under 13 år har givet personlige oplysninger til os uden det nødvendige og verificerbare forældresamtykke, vil vi slette disse oplysninger fra Websitet så hurtigt som rimeligt praktisk muligt."
+        ]
+      },
+      {
+        "title": "KRÆNKELSER AF OPHAVSRET",
+        "paragraphs": [
+          "Vi respekterer andres intellektuelle ejendomsrettigheder. Hvis du mener, at noget materiale, der er tilgængeligt på eller via Websitet, krænker en ophavsret, du ejer eller kontrollerer, bedes du straks underrette os ved hjælp af de kontaktoplysninger, der er angivet nedenfor (en \"Underretning\"). En kopi af din Underretning vil blive sendt til den person, der har postet eller lagret det materiale, der er adresseret i Underretningen. Vær opmærksom på, at du i henhold til gældende lovgivning kan holdes ansvarlig for erstatning, hvis du afgiver væsentlige urigtige erklæringer i en Underretning. Hvis du ikke er sikker på, at materiale, der er placeret på eller linket til af Websitet, krænker din ophavsret, bør du overveje først at kontakte en advokat."
+        ]
+      },
+      {
+        "title": "VARIGHED OG OPSIGELSE",
+        "paragraphs": [
+          "Disse brugsbetingelser forbliver i fuld kraft og virkning, mens du bruger Websitet. UDEN AT BEGRÆNSE NOGEN ANDEN BESTEMMELSE I DISSE BRUGSBETINGELSER FORBEHOLDER VI OS RETTEN TIL, EFTER VORES EGET SKØN OG UDEN VARSEL ELLER ANSVAR, AT NÆGTE ADGANG TIL OG BRUG AF WEBSITET OG TJENESTERNE (HERUNDER BLOKERING AF VISSE IP-ADRESSER), TIL ENHVER PERSON AF ENHVER ÅRSAG ELLER UDEN ÅRSAG, HERUNDER UDEN BEGRÆNSNING FOR BRUD PÅ NOGEN ERKLÆRING, GARANTI ELLER FORPLIGTELSE INDEHOLDT I DISSE BRUGSBETINGELSER ELLER NOGEN GÆLDENDE LOV ELLER REGULERING. VI KAN OPSIGE DIN BRUG AF ELLER DELTAGELSE I WEBSITET OG TJENESTERNE ELLER SLETTE DIN KONTO OG ETHVERT INDHOLD ELLER OPLYSNINGER, SOM DU HAR POSTET, TIL ENHVER TID, UDEN VARSEL, EFTER VORES EGET SKØN.",
+          "Hvis vi opsiger eller suspenderer din konto af en hvilken som helst årsag, er du forbudt fra at registrere og oprette en ny konto under dit navn, et falsk eller lånt navn eller navnet på en tredjepart, selv om du måske handler på vegne af tredjeparten. Ud over at opsige eller suspendere din konto forbeholder vi os retten til at tage passende juridiske skridt, herunder uden begrænsning at søge civil, strafferetlig og foreløbig retsmiddel."
+        ]
+      },
+      {
+        "title": "ÆNDRINGER OG AFBRYDELSER",
+        "paragraphs": [
+          "Vi forbeholder os retten til at ændre, modificere eller fjerne indholdet af Websitet til enhver tid eller af enhver årsag efter vores eget skøn uden varsel. Vi har dog ingen forpligtelse til at opdatere nogen oplysninger på vores Website. Vi forbeholder os også retten til at ændre eller afbryde alle eller en del af Tjenesterne uden varsel til enhver tid. Vi vil ikke være ansvarlige over for dig eller nogen tredjepart for nogen ændring, prisændring, suspension eller afbrydelse af Websitet eller Tjenesterne.",
+          "Vi kan ikke garantere, at Websitet og Tjenesterne vil være tilgængelige til enhver tid. Vi kan opleve hardware-, software- eller andre problemer eller have behov for at udføre vedligeholdelse i forbindelse med Websitet, hvilket resulterer i afbrydelser, forsinkelser eller fejl. Du accepterer, at vi ikke er ansvarlige over for dig for tab, skade eller ulemper forårsaget af din manglende evne til at tilgå eller bruge Websitet eller Tjenesterne under eventuelle nedetider eller afbrydelse af Websitet eller Tjenesterne."
+        ]
+      },
+      {
+        "title": "GÆLDENDE LOV",
+        "paragraphs": [
+          "Disse brugsbetingelser og din brug af Websitet og Tjenesterne er underlagt og fortolkes i overensstemmelse med lovene i staten Florida gældende for aftaler indgået og fuldt ud udført inden for staten Florida, uden hensyn til dens lovvalgsregler."
+        ]
+      },
+      {
+        "title": "TVISTBILÆGGELSE",
+        "paragraphs": [
+          "Uformel forhandling: For at fremskynde løsningen og kontrollere omkostningerne ved enhver tvist, kontrovers eller krav relateret til disse brugsbetingelser accepterer parterne at forsøge at forhandle enhver tvist uformelt i mindst 30 dage, inden de indleder voldgift. Sådanne uformelle forhandlinger indledes ved skriftlig meddelelse fra den ene part til den anden part.",
+          "Bindende voldgift: Hvis parterne ikke er i stand til at løse en tvist gennem uformelle forhandlinger, vil tvisten blive løst endeligt og udelukkende gennem bindende voldgift. DU FORSTÅR, AT UDEN DENNE BESTEMMELSE VILLE DU HAVE RET TIL AT SAGSØGE I RETTEN OG FÅ EN NÆVNINGERETSSAG. Voldgiften skal indledes og gennemføres i henhold til de kommercielle voldgiftsregler fra American Arbitration Association (\"AAA\"). Voldgiften kan gennemføres personligt, ved indsendelse af dokumenter, telefonisk eller online. Undtagen hvor andet er krævet af gældende AAA-regler eller gældende lov, vil voldgiften finde sted i Miami, Florida.",
+          "Begrænsninger: Parterne accepterer, at enhver voldgift skal begrænses til tvisten mellem parterne individuelt. I det fulde omfang, det er tilladt ved lov, må ingen voldgift forenes med nogen anden procedure, der er ingen ret eller myndighed for nogen tvist til at blive voldgiftsmæssigt behandlet på klasseaktionsbasis, og der er ingen ret eller myndighed for nogen tvist til at blive fremført i en påstået repræsentativ egenskab på vegne af den brede offentlighed eller andre personer.",
+          "Undtagelser: Parterne accepterer, at følgende tvister ikke er underlagt ovenstående bestemmelser: (a) eventuelle tvister, der søger at håndhæve eller beskytte, eller vedrørende gyldigheden af nogen af en parts intellektuelle ejendomsrettigheder; (b) enhver tvist relateret til eller opstået af påstande om tyveri, piratkopiering, krænkelse af privatlivet eller uautoriseret brug; og (c) ethvert krav om foreløbigt retsmiddel."
+        ]
+      },
+      {
+        "title": "RETTELSER",
+        "paragraphs": [
+          "Der kan være oplysninger på Websitet, der indeholder typografiske fejl, unøjagtigheder eller udeladelser, der kan relatere sig til Tjenesterne, herunder beskrivelser, prissætning, tilgængelighed og diverse andre oplysninger. Vi forbeholder os retten til at rette eventuelle fejl, unøjagtigheder eller udeladelser og til at ændre eller opdatere oplysningerne på Websitet til enhver tid uden forudgående varsel."
+        ]
+      },
+      {
+        "title": "ANSVARSFRASKRIVELSE",
+        "paragraphs": [
+          "WEBSITET OG TJENESTERNE STILLES TIL RÅDIGHED PÅ ET \"SOM DET ER\" OG \"SOM TILGÆNGELIGT\" GRUNDLAG. DU ACCEPTERER, AT DIN BRUG AF WEBSITET OG VORES TJENESTER SKER PÅ DIN EGEN RISIKO. I VIDEST MULIG OMFANG TILLADT VED LOV FRASKRIVER VI OS ALLE GARANTIER, UDTRYKKELIGE ELLER UNDERFORSTÅEDE, I FORBINDELSE MED WEBSITET OG TJENESTERNE OG DIN BRUG HERAF, HERUNDER UDEN BEGRÆNSNING DE UNDERFORSTÅEDE GARANTIER FOR SALGBARHED, EGNETHED TIL ET BESTEMT FORMÅL OG IKKE-KRÆNKELSE. VI AFGIVER INGEN GARANTIER ELLER ERKLÆRINGER OM NØJAGTIGHEDEN ELLER FULDSTÆNDIGHEDEN AF WEBSITETS INDHOLD ELLER INDHOLDET PÅ NOGEN WEBSITES, DER ER LINKET TIL WEBSITET, OG VI PÅTAGER OS INTET ANSVAR ELLER ERSTATNINGSPLIGT FOR (1) FEJL, FEJLTAGELSER ELLER UNØJAGTIGHEDER I INDHOLD OG MATERIALER, (2) PERSONSKADE ELLER TINGSKADE AF ENHVER ART SOM FØLGE AF DIN ADGANG TIL OG BRUG AF WEBSITET, (3) UAUTORISERET ADGANG TIL ELLER BRUG AF VORES SIKRE SERVERE OG/ELLER ALLE PERSONLIGE OPLYSNINGER OG/ELLER FINANSIELLE OPLYSNINGER, DER ER LAGRET DERI, (4) ENHVER AFBRYDELSE ELLER OPHØR AF TRANSMISSION TIL ELLER FRA WEBSITET ELLER TJENESTERNE, (5) VIRUS, TROJANSKE HESTE ELLER LIGNENDE, DER KAN OVERFØRES TIL ELLER VIA WEBSITET AF EN TREDJEPART, OG/ELLER (6) FEJL ELLER UDELADELSER I INDHOLD OG MATERIALER ELLER FOR TAB ELLER SKADE AF ENHVER ART, DER ER OPSTÅET SOM FØLGE AF BRUGEN AF INDHOLD, DER ER POSTET, OVERFØRT ELLER PÅ ANDEN MÅDE GJORT TILGÆNGELIGT VIA WEBSITET."
+        ]
+      },
+      {
+        "title": "ANSVARSBEGRÆNSNING",
+        "paragraphs": [
+          "UNDER INGEN OMSTÆNDIGHEDER VIL VI ELLER VORES DIREKTØRER, MEDARBEJDERE ELLER AGENTER VÆRE ANSVARLIGE OVER FOR DIG ELLER NOGEN TREDJEPART FOR NOGEN DIREKTE, INDIREKTE, FØLGE-, EKSEMPLARISK, HÆNDELIG, SÆRLIG ELLER STRAFFENDE ERSTATNING, HERUNDER MISTET FORTJENESTE, MISTET OMSÆTNING, TAB AF DATA ELLER ANDEN SKADE, DER OPSTÅR FRA DIN BRUG AF WEBSITET ELLER TJENESTERNE, SELV OM VI ER BLEVET INFORMERET OM MULIGHEDEN FOR SÅDANNE SKADER. UANSET HVAD DER MÅTTE FREMGÅ HERAF, VIL VORES ANSVAR OVER FOR DIG FOR ENHVER ÅRSAG OG UANSET HANDLINGSFORMEN TIL ENHVER TID VÆRE BEGRÆNSET TIL $0,00 USD. VISSE AMERIKANSKE STATSLOVE OG INTERNATIONALE LOVE TILLADER IKKE BEGRÆNSNINGER PÅ UNDERFORSTÅEDE GARANTIER ELLER UDELUKKELSE ELLER BEGRÆNSNING AF VISSE SKADER. HVIS DISSE LOVE GÆLDER FOR DIG, KAN NOGLE ELLER ALLE OVENSTÅENDE ANSVARSFRASKRIVELSER ELLER BEGRÆNSNINGER IKKE GÆLDE FOR DIG, OG DU KAN HAVE YDERLIGERE RETTIGHEDER."
+        ]
+      },
+      {
+        "title": "SKADESLØSHOLDELSE",
+        "paragraphs": [
+          "Du accepterer at forsvare, holde skadesløs og friholde os, herunder vores datterselskaber, tilknyttede selskaber og alle vores respektive embedsmænd, agenter, partnere og medarbejdere, fra og mod ethvert tab, skade, ansvar, krav eller krav, herunder rimelige advokatsalærer og udgifter, fremsat af nogen tredjepart som følge af eller opstået af: (1) dine Bidrag; (2) brug af Tjenesterne; (3) brud på disse brugsbetingelser; (4) ethvert brud på dine erklæringer og garantier, der er fastsat i disse brugsbetingelser; (5) din krænkelse af tredjeparters rettigheder, herunder men ikke begrænset til intellektuelle ejendomsrettigheder; eller (6) enhver åbenlys skadelig handling over for enhver anden bruger af Websitet eller Tjenesterne, som du er kommet i kontakt med via Websitet. Uanset det foregående forbeholder vi os retten til, på din bekostning, at påtage os det eksklusive forsvar og kontrol med enhver sag, som du er forpligtet til at holde os skadesløs for, og du accepterer at samarbejde, på din bekostning, med vores forsvar af sådanne krav."
+        ]
+      },
+      {
+        "title": "BRUGERDATA",
+        "paragraphs": [
+          "Vi vil opretholde visse data, som du overfører til Websitet med henblik på at administrere Tjenesternes ydeevne samt data vedrørende din brug af Tjenesterne. Selvom vi udfører regelmæssige rutinesikkerhedskopier af data, er du eneansvarlig for alle data, som du overfører, eller som vedrører enhver aktivitet, du har udført ved hjælp af Tjenesterne. Du accepterer, at vi ikke er ansvarlige over for dig for tab eller korruption af sådanne data, og du giver hermed afkald på enhver ret til at sagsøge os som følge af sådant tab eller korruption af sådanne data."
+        ]
+      },
+      {
+        "title": "ELEKTRONISK KOMMUNIKATION, TRANSAKTIONER OG SIGNATURER",
+        "paragraphs": [
+          "Besøg på Websitet, afsendelse af e-mails til os og udfyldelse af online formularer udgør elektronisk kommunikation. Du samtykker til at modtage elektronisk kommunikation, og du accepterer, at alle aftaler, meddelelser, offentliggørelser og anden kommunikation, vi giver dig elektronisk, via e-mail og på Websitet, opfylder ethvert juridisk krav om, at sådan kommunikation skal være skriftlig. DU ACCEPTERER HERMED BRUGEN AF ELEKTRONISKE SIGNATURER, KONTRAKTER, ORDRER OG ANDRE OPTEGNELSER SAMT ELEKTRONISK LEVERING AF MEDDELELSER, POLITIKKER OG OPTEGNELSER OVER TRANSAKTIONER, DER ER INITIERET ELLER GENNEMFØRT AF OS ELLER VIA WEBSITET. Du giver hermed afkald på enhver ret eller ethvert krav i henhold til love, regler, bestemmelser, vedtægter eller andre love i nogen jurisdiktion, der kræver en original underskrift eller levering eller opbevaring af ikke-elektroniske optegnelser, eller til betalinger eller tildeling af kredit på anden måde end elektroniske midler."
+        ]
+      },
+      {
+        "title": "California-BRUGERE OG BEBOERE",
+        "paragraphs": [
+          "Hvis en klage til os ikke er tilfredsstillende løst, kan du kontakte Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs skriftligt på 1625 North Market Blvd., Suite N 112, Sacramento, California 95834 eller telefonisk på (800) 952-5210 eller (916) 445-1254."
+        ]
+      },
+      {
+        "title": "DIVERSE",
+        "paragraphs": [
+          "Disse brugsbetingelser og eventuelle politikker eller driftsregler, der er postet af os på Websitet eller i forbindelse med Tjenesterne, udgør den samlede aftale og forståelse mellem dig og os. Vores manglende udøvelse eller håndhævelse af nogen ret eller bestemmelse i disse brugsbetingelser udgør ikke et afkald på sådan ret eller bestemmelse. Disse brugsbetingelser gælder i videst mulig omfang tilladt ved lov. Vi kan overdrage enhver eller alle vores rettigheder og forpligtelser til andre til enhver tid. Vi er ikke ansvarlige for tab, skade, forsinkelse eller manglende handling forårsaget af en årsag uden for vores rimelige kontrol.",
+          "Hvis nogen bestemmelse eller del af en bestemmelse i disse brugsbetingelser anses for ulovlig, ugyldig eller ikke håndhævelig, anses denne bestemmelse eller del af bestemmelsen for adskillelig fra disse brugsbetingelser og påvirker ikke gyldigheden og håndhævelsen af de resterende bestemmelser. Der er intet joint venture, partnerskab, ansættelse eller agentforhold oprettet mellem dig og os som følge af disse brugsbetingelser eller brugen af Tjenesterne. Du accepterer, at disse brugsbetingelser ikke vil blive fortolket imod os ved at have udformet dem. Du giver hermed afkald på alle og ethvert forsvar, du måtte have baseret på den elektroniske form af disse brugsbetingelser og manglen på underskrift fra parterne heri for at udføre disse brugsbetingelser."
+        ]
+      },
+      {
+        "title": "KONTAKT OS",
+        "paragraphs": [
+          "For at løse en klage vedrørende Websitet eller Tjenesterne eller modtage yderligere oplysninger om brugen af Websitet eller Tjenesterne, bedes du kontakte os via vores kontaktside: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "privacyPolicy": {
+    "title": "Privatlivspolitik",
+    "updatedAt": "Opdateret 22-01-2026.",
+    "sections": [
+      {
+        "title": "Privatlivspolitik",
+        "paragraphs": [
+          "Openspace.Social",
+          "(\"vi\", \"vores\" eller \"os\") er forpligtet til at beskytte dit privatliv. Denne privatlivspolitik forklarer, hvordan dine personlige oplysninger indsamles, bruges og videregives af Openspace.Social.",
+          "Denne privatlivspolitik gælder for vores websted og mobilapplikation (iOS og Android): Openspacelive.com websted og Openspace.Social mobilapplikationen (iOS og Android) og dets tilknyttede underdomæner (samlet vores \"Service\") sammen med vores applikation, Openspace.Social.",
+          "Ved at tilgå eller bruge vores Tjeneste tilkendegiver du, at du har læst, forstået og accepterer vores indsamling, opbevaring, brug og videregivelse af dine personlige oplysninger som beskrevet i denne fortrolighedspolitik og vores Servicevilkår."
+        ]
+      },
+      {
+        "title": "Definitioner og nøglebegreber",
+        "bullets": [
+          "Cookie: lille mængde data genereret af et websted og gemt af din webbrowser. Det bruges til at identificere din browser, levere analyser, huske oplysninger om dig, såsom din sprogpræference eller loginoplysninger.",
+          "Virksomhed: når denne politik nævner \"Virksomhed\", \"vi\", \"os\" eller \"vores\", henviser det til Openspace, der er ansvarlig for dine oplysninger i henhold til denne privatlivspolitik.",
+          "Land: hvor Openspace eller ejerne/stifterne af Openspace er baseret, i dette tilfælde er Canada.",
+          "Kunde: henviser til den virksomhed, organisation eller person, der tilmelder sig for at bruge Openspace-tjenesten til at administrere relationerne til dine forbrugere eller tjenestebrugere.",
+          "Enhed: enhver internetforbundet enhed såsom en telefon, tablet, computer eller enhver anden enhed, der kan bruges til at besøge Openspace og bruge tjenesterne.",
+          "IP-adresse: Hver enhed, der er tilsluttet internettet, tildeles et nummer, der kaldes en IP-adresse (Internet Protocol). Disse numre er normalt tildelt i geografiske blokke. En IP-adresse kan ofte bruges til at identificere den placering, hvorfra en enhed opretter forbindelse til internettet.",
+          "Personale: refererer til de personer, der er ansat i Openspace eller er på kontrakt for at udføre en tjeneste på vegne af en af ​​parterne.",
+          "Persondata: enhver information, der direkte, indirekte eller i forbindelse med andre oplysninger - herunder et personligt identifikationsnummer - muliggør identifikation eller identificerbarhed af en fysisk person.",
+          "Service: henviser til den service, der leveres af Openspace som beskrevet i de relative vilkår (hvis tilgængelig) og på denne platform.",
+          "Tredjepartstjeneste: refererer til annoncører, konkurrencesponsorer, salgsfremmende og marketingpartnere og andre, der leverer vores indhold, eller hvis produkter eller tjenester vi tror kan interessere dig.",
+          "Websted: Openspace.Social websted, som kan tilgås via denne URL: Openspacelive.com.",
+          "Dig: en person eller enhed, der er registreret hos Openspace for at bruge tjenesterne."
+        ]
+      },
+      {
+        "title": "Hvilke oplysninger indsamler vi?",
+        "paragraphs": [
+          "Vi indsamler oplysninger fra dig, når du besøger vores service, registrerer dig, afgiver en ordre, tilmelder dig vores nyhedsbrev, besvarer en undersøgelse eller udfylder en formular."
+        ],
+        "bullets": [
+          "Navn / Brugernavn",
+          "Telefonnumre",
+          "E-mail-adresser",
+          "Postadresser",
+          "Faktureringsadresser",
+          "Debet-/kreditkortnumre",
+          "Alder",
+          "Adgangskode"
+        ]
+      },
+      {
+        "title": "Hvordan bruger vi de oplysninger, vi indsamler?",
+        "bullets": [
+          "For at tilpasse din oplevelse (dine oplysninger hjælper os til bedre at reagere på dine individuelle behov).",
+          "For at forbedre vores service (vi stræber konstant efter at forbedre vores servicetilbud baseret på de oplysninger og feedback, vi modtager fra dig).",
+          "For at forbedre kundeservice (dine oplysninger hjælper os med at reagere mere effektivt på dine kundeserviceanmodninger og supportbehov).",
+          "At behandle transaktioner.",
+          "For at administrere en konkurrence, promovering, undersøgelse eller anden sidefunktion.",
+          "At sende periodiske e-mails."
+        ]
+      },
+      {
+        "title": "Hvornår bruger vi kundeoplysninger fra tredjeparter?",
+        "paragraphs": [
+          "Vi modtager nogle oplysninger fra tredjeparter, når du kontakter os. For eksempel, når du indsender din e-mailadresse til os for at vise interesse i at blive vores kunde, modtager vi oplysninger fra en tredjepart, der leverer automatisk svindeldetektionstjenester til os. Vi indsamler også lejlighedsvis information, der er offentligt tilgængelig på sociale mediers hjemmesider. Du kan kontrollere, hvor meget af dine oplysninger sociale medier-websteder offentliggør ved at besøge disse websteder og ændre dine privatlivsindstillinger."
+        ]
+      },
+      {
+        "title": "Deler vi de oplysninger, vi indsamler, med tredjeparter?",
+        "paragraphs": [
+          "Vi kan dele de oplysninger, som vi indsamler, både personlige og ikke-personlige, med tredjeparter, såsom annoncører, konkurrencesponsorer, salgsfremmende og marketingpartnere og andre, der leverer vores indhold, eller hvis produkter eller tjenester vi tror kan interessere dig. Vi kan også dele det med vores nuværende og fremtidige tilknyttede virksomheder og forretningspartnere, og hvis vi er involveret i en fusion, salg af aktiver eller anden virksomhedsomlægning, kan vi også dele eller overføre dine personlige og ikke-personlige oplysninger til vores efterfølgere i interesse.",
+          "Vi kan engagere betroede tredjepartstjenesteudbydere til at udføre funktioner og levere tjenester til os, såsom hosting og vedligeholdelse af vores servere og vores service, databaseopbevaring og -administration, e-mailadministration, lagermarkedsføring, kreditkortbehandling, kundeservice og opfyldelse af ordrer for produkter og tjenester, du måtte købe via vores platform. Vi vil sandsynligvis dele dine personlige oplysninger, og muligvis nogle ikke-personlige oplysninger, med disse tredjeparter for at sætte dem i stand til at udføre disse tjenester for os og for dig.",
+          "Vi kan dele dele af vores logfildata, herunder IP-adresser, til analyseformål med tredjeparter såsom webanalysepartnere, applikationsudviklere og annoncenetværk. Hvis din IP-adresse er delt, kan den bruges til at estimere generel placering og anden teknologi, såsom forbindelseshastighed, om du har besøgt tjenesten på en delt placering, og typen af ​​enhed, der bruges til at besøge tjenesten. De kan samle oplysninger om vores annoncering og hvad du ser på tjenesten og derefter levere revision, research og rapportering til os og vores annoncører.",
+          "Vi kan også videregive personlige og ikke-personlige oplysninger om dig til regerings- eller retshåndhævende embedsmænd eller private parter, som vi efter eget skøn mener er nødvendige eller passende for at reagere på krav, juridiske processer (inklusive stævninger), for at beskytte vores rettigheder og interesser eller en tredjeparts, offentlighedens eller enhver persons sikkerhed, for at forhindre eller standse enhver ulovlig, uetisk handling, lovbestemmelse, lovbestemmelse, lovbestemmelse eller lovlig kendelse. og regler."
+        ]
+      },
+      {
+        "title": "Hvor og hvornår indsamles oplysninger fra kunder og slutbrugere?",
+        "paragraphs": [
+          "Vi vil indsamle personlige oplysninger, som du sender til os. Vi kan også modtage personlige oplysninger om dig fra tredjeparter som beskrevet ovenfor."
+        ]
+      },
+      {
+        "title": "Hvordan bruger vi din e-mailadresse?",
+        "paragraphs": [
+          "Ved at indsende din e-mailadresse på denne formular, accepterer du at modtage e-mails fra os. Du kan til enhver tid annullere din deltagelse i en af ​​disse e-mail-lister ved at klikke på frameldingslinket eller anden afmeldingsmulighed, der er inkluderet i den respektive e-mail. Vi sender kun e-mails til personer, der har givet os tilladelse til at kontakte dem, enten direkte eller gennem en tredjepart. Vi sender ikke uopfordrede kommercielle e-mails, fordi vi hader spam lige så meget som dig.",
+          "Ved at indsende din e-mail-adresse accepterer du også at give os tilladelse til at bruge din e-mailadresse til kundemålretning på websteder som Facebook, hvor vi viser tilpasset annoncering til specifikke personer, der har tilmeldt sig at modtage kommunikation fra os. E-mailadresser, der kun indsendes via ordrebehandlingssiden, vil udelukkende blive brugt med det formål at sende dig oplysninger og opdateringer vedrørende din ordre.",
+          "Hvis du imidlertid har givet os den samme e-mail via en anden metode, kan vi bruge den til ethvert af de formål, der er angivet i denne politik. Bemærk: Hvis du på noget tidspunkt ønsker at afmelde modtagelse af fremtidige e-mails, inkluderer vi detaljerede afmeldingsinstruktioner nederst i hver e-mail."
+        ]
+      },
+      {
+        "title": "Kan mine oplysninger overføres til andre lande?",
+        "paragraphs": [
+          "Vi er inkorporeret i USA. Oplysninger indsamlet via vores hjemmeside, gennem direkte interaktioner med dig eller fra brug af vores hjælpetjenester kan fra tid til anden overføres til vores kontorer eller personale eller til tredjeparter, der er placeret i hele verden, og kan ses og hostes overalt i verden, herunder lande, der muligvis ikke har generelle love, der regulerer brugen og overførslen af ​​sådanne data. I det fulde omfang tilladt af gældende lovgivning, ved at bruge nogen af ​​ovenstående, giver du frivilligt samtykke til grænseoverskridende overførsel og hosting af sådanne oplysninger."
+        ]
+      },
+      {
+        "title": "Er de oplysninger, der indsamles gennem vores service, sikre?",
+        "paragraphs": [
+          "Vi tager forholdsregler for at beskytte dine oplysningers sikkerhed. Vi har fysiske, elektroniske og ledelsesmæssige procedurer til at hjælpe med at beskytte, forhindre uautoriseret adgang, opretholde datasikkerheden og bruge dine oplysninger korrekt. Men hverken mennesker eller sikkerhedssystemer er idiotsikre, herunder krypteringssystemer. Derudover kan folk begå forsætlige forbrydelser, begå fejl eller undlade at følge politikker. Selvom vi gør en rimelig indsats for at beskytte dine personlige oplysninger, kan vi derfor ikke garantere deres absolutte sikkerhed. Hvis gældende lovgivning pålægger en ikke-fraskrivelig pligt til at beskytte dine personlige oplysninger, accepterer du, at forsætlig uredelighed vil være de standarder, der bruges til at måle vores overholdelse af denne pligt."
+        ]
+      },
+      {
+        "title": "Kan jeg opdatere eller rette mine oplysninger?",
+        "paragraphs": [
+          "De rettigheder, du har til at anmode om opdateringer eller rettelser af de oplysninger, vi indsamler, afhænger af dit forhold til os. Personale kan opdatere eller rette deres oplysninger som beskrevet i vores interne virksomheds ansættelsespolitikker.",
+          "Kunder har ret til at anmode om begrænsning af visse anvendelser og videregivelser af personligt identificerbare oplysninger. Du kan kontakte os for at (1) opdatere eller rette dine personligt identificerbare oplysninger, (2) ændre dine præferencer med hensyn til kommunikation og andre oplysninger, du modtager fra os, eller (3) slette de personligt identificerbare oplysninger, der opbevares om dig på vores systemer (underlagt gældende lovgivning), ved at annullere din konto.",
+          "Sådanne opdateringer, rettelser, ændringer og sletninger vil ikke have nogen effekt på andre oplysninger, som vi opbevarer, eller oplysninger, som vi har givet til tredjeparter i overensstemmelse med denne fortrolighedspolitik forud for en sådan opdatering, rettelse, ændring eller sletning. For at beskytte dit privatliv og din sikkerhed kan vi tage rimelige skridt (såsom at anmode om en unik adgangskode) for at bekræfte din identitet, før vi giver dig profiladgang eller foretager rettelser.",
+          "Du er til enhver tid ansvarlig for at opretholde hemmeligholdelsen af ​​din unikke adgangskode og kontooplysninger. Du skal være opmærksom på, at det ikke er teknologisk muligt at fjerne enhver registrering af de oplysninger, du har givet os, fra vores system. Behovet for at sikkerhedskopiere vores systemer for at beskytte oplysninger mod utilsigtet tab betyder, at en kopi af dine oplysninger kan eksistere i en form, der ikke kan slettes, og som kan være svær eller umulig for os at finde.",
+          "Straks efter at have modtaget din anmodning, vil alle personlige oplysninger, der er gemt i databaser, vi aktivt bruger, og andre let søgbare medier, blive opdateret, rettet, ændret eller slettet, alt efter hvad der er relevant, så snart og i det omfang, det er rimeligt og teknisk muligt. Hvis du er slutbruger og ønsker at opdatere, slette eller modtage enhver information, vi har om dig, kan du gøre det ved at kontakte den organisation, som du er kunde hos."
+        ]
+      },
+      {
+        "title": "Personale",
+        "paragraphs": [
+          "Hvis du er en af ​​vores arbejdere eller ansøgere, indsamler vi oplysninger, som du frivilligt giver os. Vi bruger de indsamlede oplysninger til Human Resources-formål for at administrere fordele til arbejdere og screene ansøgere.",
+          "Du kan kontakte os for at (1) opdatere eller rette dine oplysninger, (2) ændre dine præferencer med hensyn til kommunikation og andre oplysninger, du modtager fra os, eller (3) modtage en registrering af de oplysninger, vi har om dig. Sådanne opdateringer, rettelser, ændringer og sletninger vil ikke have nogen effekt på andre oplysninger, som vi opbevarer, eller oplysninger, som vi har givet til tredjeparter i overensstemmelse med denne fortrolighedspolitik forud for en sådan opdatering, rettelse, ændring eller sletning."
+        ]
+      },
+      {
+        "title": "Salg af virksomhed",
+        "paragraphs": [
+          "Vi forbeholder os retten til at overføre oplysninger til en tredjepart i tilfælde af et salg, fusion eller anden overførsel af alle eller i det væsentlige alle aktiver i os eller nogen af dets tilknyttede virksomheder, eller den del af os eller nogen af dets tilknyttede virksomheder, som tjenesten vedrører, eller i tilfælde af at vi ophører med vores forretning eller indgiver en begæring eller har indgivet en lignende konkurs eller har indgivet en lignende konkurs eller har indgivet en lignende sag mod os, accepterer at overholde vilkårene i denne fortrolighedspolitik."
+        ]
+      },
+      {
+        "title": "Tilknyttede selskaber",
+        "paragraphs": [
+          "Vi kan videregive oplysninger (herunder personlige oplysninger) om dig til vores Corporate Affiliates. Med henblik på denne fortrolighedspolitik betyder \"virksomhedsassocieret virksomhed\" enhver person eller enhed, som direkte eller indirekte kontrollerer, kontrolleres af eller er under fælles kontrol med os, hvad enten det er af ejerskab eller på anden måde. Enhver information vedrørende dig, som vi giver til vores virksomhedsassocierede virksomheder, vil blive behandlet af disse virksomhedsassocierede virksomheder i overensstemmelse med vilkårene i denne privatlivspolitik."
+        ]
+      },
+      {
+        "title": "Hvor længe opbevarer vi dine oplysninger?",
+        "paragraphs": [
+          "Vi opbevarer kun dine oplysninger, så længe vi har brug for dem for at yde service til dig og opfylde de formål, der er beskrevet i denne politik. Dette er også tilfældet for alle, som vi deler dine oplysninger med, og som udfører tjenester på vores vegne. Når vi ikke længere behøver at bruge dine oplysninger, og der ikke er behov for, at vi opbevarer dem for at overholde vores juridiske eller regulatoriske forpligtelser, vil vi enten fjerne dem fra vores systemer eller depersonalisere dem, så vi ikke kan identificere dig."
+        ]
+      },
+      {
+        "title": "Hvordan beskytter vi dine oplysninger?",
+        "paragraphs": [
+          "Vi implementerer en række sikkerhedsforanstaltninger for at opretholde sikkerheden af ​​dine personlige oplysninger, når du afgiver en ordre eller indtaster, indsender eller får adgang til dine personlige oplysninger. Vi tilbyder brug af en sikker server. Alle leverede følsomme/kreditoplysninger transmitteres via Secure Socket Layer (SSL) teknologi og krypteres derefter ind i vores betalingsgateway-udbyderes database for kun at være tilgængelige for dem, der er autoriseret med særlige adgangsrettigheder til sådanne systemer, og er forpligtet til at holde oplysningerne fortrolige.",
+          "Efter en transaktion opbevares dine private oplysninger (kreditkort, cpr-numre, økonomi osv.) aldrig i arkivet. Vi kan dog ikke sikre eller garantere den absolutte sikkerhed af enhver information, du sender til os, eller garantere, at dine oplysninger på tjenesten ikke kan tilgås, afsløres, ændres eller ødelægges ved brud på nogen af ​​vores fysiske, tekniske eller ledelsesmæssige sikkerhedsforanstaltninger."
+        ]
+      },
+      {
+        "title": "Gældende lov",
+        "paragraphs": [
+          "Lovene i USA, med undtagelse af dets regler om lovkonflikter, skal regulere denne aftale og din brug af vores service. Din brug af vores service kan også være underlagt andre lokale, statslige, nationale eller internationale love."
+        ]
+      },
+      {
+        "title": "Dit samtykke",
+        "paragraphs": [
+          "Ved at bruge vores service, registrere en konto eller foretage et køb, accepterer du denne fortrolighedspolitik."
+        ]
+      },
+      {
+        "title": "Links til andre websteder",
+        "paragraphs": [
+          "Denne privatlivspolitik gælder kun for tjenesterne. Tjenesterne kan indeholde links til andre websteder, der ikke drives eller kontrolleres af Openspace.Social. Vi er ikke ansvarlige for indhold, nøjagtighed eller meninger udtrykt på sådanne websteder, og sådanne websteder bliver ikke undersøgt, overvåget eller kontrolleret for nøjagtighed eller fuldstændighed af os.",
+          "Husk, at når du bruger et link til at gå fra tjenesterne til et andet websted, er vores privatlivspolitik ikke længere i kraft. Din browsing og interaktion på ethvert andet websted, inklusive dem, der har et link på vores platform, er underlagt det pågældende websteds egne regler og politikker. Sådanne tredjeparter kan bruge deres egne cookies eller andre metoder til at indsamle oplysninger om dig."
+        ]
+      },
+      {
+        "title": "Cookies",
+        "paragraphs": [
+          "Vi bruger \"cookies\" til at identificere de områder på vores hjemmeside, som du har besøgt. En cookie er et lille stykke data, der lagres på din computer eller mobilenhed af din webbrowser. Vi bruger cookies til at personliggøre det indhold, du ser på vores hjemmeside. De fleste webbrowsere kan indstilles til at deaktivere brugen af ​​cookies. Men hvis du deaktiverer cookies, kan du muligvis ikke få adgang til funktionaliteten på vores hjemmeside korrekt eller overhovedet. Vi placerer aldrig personligt identificerbare oplysninger i cookies."
+        ]
+      },
+      {
+        "title": "Annoncering",
+        "paragraphs": [
+          "Annoncering holder os og mange af de websteder og tjenester, du bruger, gratis. Vi arbejder hårdt på at sikre, at annoncer er sikre, diskrete og så relevante som muligt."
+        ]
+      },
+      {
+        "title": "Cookies til annoncering",
+        "paragraphs": [
+          "Cookies hjælper med at gøre annoncering mere effektiv. Uden cookies er det virkelig svært for en annoncør at nå sit publikum eller at vide, hvor mange annoncer der blev vist, og hvor mange klik de modtog."
+        ]
+      },
+      {
+        "title": "Betalingsoplysninger",
+        "paragraphs": [
+          "Med hensyn til kreditkort eller andre betalingsbehandlingsoplysninger, du har givet os, forpligter vi os til, at disse fortrolige oplysninger vil blive opbevaret på den mest sikre måde som muligt."
+        ]
+      },
+      {
+        "title": "Børns privatliv",
+        "paragraphs": [
+          "Vi henvender os ikke til nogen under 13 år. Vi indsamler ikke bevidst personligt identificerbare oplysninger fra nogen under 13 år. Hvis du er forælder eller værge, og du er klar over, at dit barn har givet os personlige data, bedes du kontakte os. Hvis vi bliver opmærksomme på, at vi har indsamlet personlige data fra nogen under 13 år uden bekræftelse af forældrenes samtykke, tager vi skridt til at fjerne disse oplysninger fra vores servere."
+        ]
+      },
+      {
+        "title": "Ændringer til vores privatlivspolitik",
+        "paragraphs": [
+          "Hvis vi beslutter at ændre vores privatlivspolitik, vil vi offentliggøre disse ændringer på denne side og/eller opdatere ændringsdatoen for privatlivspolitikken nedenfor."
+        ]
+      },
+      {
+        "title": "Tredjepartstjenester",
+        "paragraphs": [
+          "Vi kan vise, inkludere eller gøre tilgængeligt tredjepartsindhold (herunder data, information, applikationer og andre produkttjenester) eller levere links til tredjepartswebsteder eller -tjenester (\"tredjepartstjenester\").",
+          "Du anerkender og accepterer, at vi ikke er ansvarlige for nogen tredjepartstjenester, herunder deres nøjagtighed, fuldstændighed, aktualitet, gyldighed, overholdelse af copyright, lovlighed, anstændighed, kvalitet eller andre aspekter heraf. Vi påtager os og skal ikke have noget ansvar eller ansvar over for dig eller nogen anden person eller enhed for nogen tredjepartstjenester.",
+          "Tredjepartstjenester og links dertil leveres udelukkende som en bekvemmelighed for dig, og du får adgang til og bruger dem helt på egen risiko og underlagt sådanne tredjeparters vilkår og betingelser."
+        ]
+      },
+      {
+        "title": "Sporingsteknologier",
+        "paragraphs": [
+          "Cookies"
+        ],
+        "bullets": [
+          "Vi bruger cookies til at forbedre ydeevnen og funktionaliteten af ​​vores tjeneste, men er ikke afgørende for deres brug. Uden disse cookies kan visse funktioner som videoer dog blive utilgængelige, eller du vil blive bedt om at indtaste dine loginoplysninger, hver gang du besøger vores tjeneste, da vi ikke ville være i stand til at huske, at du tidligere havde logget ind.",
+          "Lokal lagring: Lokal lagring, nogle gange kendt som DOM-lagring, giver webapps metoder og protokoller til lagring af data på klientsiden. Weblagring understøtter vedvarende datalagring, der ligner cookies, men med en stærkt forbedret kapacitet og ingen information gemt i HTTP-anmodningshovedet.",
+          "Sessioner: Vi bruger \"Sessioner\" til at identificere de områder på vores hjemmeside, som du har besøgt. En session er et lille stykke data, der lagres på din computer eller mobilenhed af din webbrowser."
+        ]
+      },
+      {
+        "title": "Oplysninger om den generelle databeskyttelsesforordning (GDPR)",
+        "paragraphs": [
+          "Vi indsamler og bruger muligvis oplysninger fra dig, hvis du er fra Det Europæiske Økonomiske Samarbejdsområde (EØS), og i dette afsnit af vores privatlivspolitik forklarer vi, hvordan og hvorfor disse data indsamles, og hvordan vi opbevarer disse data under beskyttelse mod at blive replikeret eller brugt på den forkerte måde."
+        ]
+      },
+      {
+        "title": "Hvad er GDPR?",
+        "paragraphs": [
+          "GDPR er en EU-dækkende privatlivs- og databeskyttelseslov, der regulerer, hvordan EU-borgeres data beskyttes af virksomheder og øger den kontrol, EU-borgere har over deres personlige data."
+        ]
+      },
+      {
+        "title": "Hvad er personlige data?",
+        "paragraphs": [
+          "Alle data, der vedrører en identificerbar eller identificeret person. GDPR dækker et bredt spektrum af oplysninger, der kan bruges alene eller i kombination med andre oplysninger til at identificere en person. Personlige data strækker sig ud over en persons navn eller e-mailadresse. Nogle eksempler omfatter økonomiske oplysninger, politiske holdninger, genetiske data, biometriske data, IP-adresser, fysisk adresse, seksuel orientering og etnicitet.",
+          "Databeskyttelsesprincipperne omfatter krav som:"
+        ],
+        "bullets": [
+          "Personoplysninger, der indsamles, skal behandles på en retfærdig, lovlig og gennemsigtig måde og bør kun bruges på en måde, som en person med rimelighed kan forvente.",
+          "Personoplysninger bør kun indsamles for at opfylde et bestemt formål, og de bør kun bruges til det formål. Organisationer skal specificere, hvorfor de har brug for personlige data, når de indsamler dem.",
+          "Personoplysninger bør ikke opbevares længere end nødvendigt for at opfylde deres formål.",
+          "Personer omfattet af GDPR har ret til at få adgang til deres egne personlige data. De kan også anmode om en kopi af deres data, og at deres data bliver opdateret, slettet, begrænset eller flyttet til en anden organisation."
+        ]
+      },
+      {
+        "title": "Hvorfor er GDPR vigtig?",
+        "paragraphs": [
+          "GDPR tilføjer nye krav til, hvordan virksomheder skal beskytte enkeltpersoners personlige data, som de indsamler og behandler. Det øger også indsatsen for overholdelse ved at øge håndhævelsen og pålægge større bøder for overtrædelse. Ud over disse fakta er det simpelthen det rigtige at gøre."
+        ]
+      },
+      {
+        "title": "Individuelle registreredes rettigheder - dataadgang, portabilitet og sletning",
+        "paragraphs": [
+          "Vi er forpligtet til at hjælpe vores kunder med at opfylde kravene til registreredes rettigheder i GDPR. Vi behandler eller opbevarer alle personlige data hos fuldt kontrollerede, DPA-kompatible leverandører. Vi gemmer samtale og personlige data i op til 6 år, medmindre din konto slettes. I så fald bortskaffer vi alle data i overensstemmelse med vores servicevilkår og privatlivspolitik, men vi opbevarer dem ikke længere end 60 dage.",
+          "Hvis du arbejder med EU-kunder, skal du være i stand til at give dem mulighed for at få adgang til, opdatere, hente og fjerne personlige data. Vi er fra starten sat op som selvbetjening og har altid givet dig adgang til dine data og dine kunders data. Vores kundesupportteam er her for at besvare eventuelle spørgsmål, du måtte have om arbejdet med API."
+        ]
+      },
+      {
+        "title": "Californiens beboere",
+        "paragraphs": [
+          "California Consumer Privacy Act (CCPA) kræver, at vi afslører kategorier af personlige oplysninger, vi indsamler, og hvordan vi bruger dem, kategorierne af kilder, som vi indsamler personlige oplysninger fra, og de tredjeparter, som vi deler dem med, som vi har forklaret ovenfor.",
+          "Vi er også forpligtet til at kommunikere oplysninger om rettigheder, som indbyggere i Californien har i henhold til californisk lovgivning. Du kan udøve følgende rettigheder:"
+        ],
+        "bullets": [
+          "Ret til viden og adgang: Du kan indsende en verificerbar anmodning om oplysninger vedrørende de kategorier af personlige oplysninger, vi indsamler, bruger eller deler; de formål, hvortil kategorier af personlige oplysninger indsamles eller bruges af os; kategorierne af kilder, hvorfra vi indsamler personlige oplysninger; og de specifikke stykker af personlige oplysninger, vi har indsamlet om dig.",
+          "Ret til lige service: Vi vil ikke diskriminere dig, hvis du udøver dine privatlivsrettigheder.",
+          "Ret til sletning: Du kan indsende en verificerbar anmodning om at lukke din konto, og vi sletter personlige oplysninger om dig, som vi har indsamlet.",
+          "Ret til at anmode om, at en virksomhed, der sælger en forbrugers personoplysninger, ikke sælger forbrugerens personoplysninger."
+        ],
+        "paragraphsAfterBullets": [
+          "Hvis du fremsætter en anmodning, har vi en måned til at svare dig. Hvis du ønsker at udøve nogen af ​​disse rettigheder, bedes du kontakte os.",
+          "Vi sælger ikke vores brugeres personlige oplysninger."
+        ]
+      },
+      {
+        "title": "California Online Privacy Protection Act (CalOPPA)",
+        "paragraphs": [
+          "CalOPPA kræver, at vi afslører kategorier af personlige oplysninger, vi indsamler, og hvordan vi bruger dem, kategorierne af kilder, som vi indsamler personlige oplysninger fra, og de tredjeparter, som vi deler dem med, som vi har forklaret ovenfor.",
+          "CalOPPA brugere har følgende rettigheder:"
+        ],
+        "bullets": [
+          "Ret til viden og adgang: Du kan indsende en verificerbar anmodning om oplysninger vedrørende de kategorier af personlige oplysninger, vi indsamler, bruger eller deler; de formål, hvortil kategorier af personlige oplysninger indsamles eller bruges af os; kategorierne af kilder, hvorfra vi indsamler personlige oplysninger; og de specifikke stykker af personlige oplysninger, vi har indsamlet om dig.",
+          "Ret til lige service: Vi vil ikke diskriminere dig, hvis du udøver dine privatlivsrettigheder.",
+          "Ret til sletning: Du kan indsende en verificerbar anmodning om at lukke din konto, og vi sletter personlige oplysninger om dig, som vi har indsamlet.",
+          "Ret til at anmode om, at en virksomhed, der sælger en forbrugers personoplysninger, ikke sælger forbrugerens personoplysninger."
+        ],
+        "paragraphsAfterBullets": [
+          "Hvis du fremsætter en anmodning, har vi en måned til at svare dig. Hvis du ønsker at udøve nogen af ​​disse rettigheder, bedes du kontakte os.",
+          "Vi sælger ikke vores brugeres personlige oplysninger."
+        ]
+      },
+      {
+        "title": "Kontakt os",
+        "paragraphs": [
+          "Tøv ikke med at kontakte os, hvis du har spørgsmål.",
+          "Via dette link: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "guidelines": {
+    "title": "_ _ Openspace _ _ Fællesskabets retningslinjer",
+    "intro": "Velkommen til Openspace. Vi glæder os til at have dig som en del af vores pulserende og mangfoldige samfund. For at sikre en sikker og behagelig oplevelse for alle har vi fastlagt disse fællesskabsretningslinjer. Tag et øjeblik til at gøre dig bekendt med dem, da overtrædelse af disse retningslinjer kan resultere i sanktioner, herunder konto suspension eller opsigelse.",
+    "sections": [
+      {
+        "title": "Respekt og Kindness",
+        "body": "Behandl andre, som du gerne vil behandles. Respekter medbrugernes meninger, overbevisninger og erfaringer. Harassment, mobning, had tale, diskrimination, eller nogen form for offensiv adfærd vil ikke blive tolereret."
+      },
+      {
+        "title": "Privatliv og personlige oplysninger",
+        "body": "Beskyt andres og dig selv. Del ikke personlige oplysninger, såsom adresser, telefonnumre eller finansielle oplysninger, offentligt på platformen. Vær forsigtig, mens du deler følsomme oplysninger i private beskeder."
+      },
+      {
+        "title": "Indhold Integrity",
+        "body": "Kun skrive indhold, som du har ret til at dele. Respekter lovgivningen om ophavsret og intellektuel ejendomsret. Må ikke engagere sig i formidling af falske oplysninger, vildledende indhold, eller spam."
+      },
+      {
+        "title": "Nøgenhed, vold og upassende indhold",
+        "body": "_ _ Openspace _ _ er en platform for brugere over 16 år. Ethvert indhold med eksplicit nøgenhed, vold, grafisk eller voksent materiale, eller som på anden måde er upassende, vil blive fjernet."
+      },
+      {
+        "title": "Ulovlige aktiviteter",
+        "body": "Brug ikke _ _ Openspace _ _ til at fremme, organisere eller deltage i ulovlige aktiviteter. Dette omfatter, men er ikke begrænset til chikane, trusler, narkotikahandel og enhver form for terrorisme."
+      },
+      {
+        "title": "Efterligning",
+        "body": "Udgiv ikke andre personer, organisationer eller offentlige personer. Vær dig selv og brug din rigtige identitet på platformen."
+      },
+      {
+        "title": "Rapportering og moderering",
+        "body": "Hvis du støder på indhold eller adfærd, der overtræder vores retningslinjer, skal du rapportere det straks. Vores moderation team vil gennemgå det rapporterede indhold og træffe passende foranstaltninger."
+      },
+      {
+        "title": "Mindreårige",
+        "body": "Brugere under 13 år er ikke tilladt den _ _ Openspace _ _. Hvis du er mellem 16 og 18 år, skal du sikre dig, at du har forældresamtykke, før du bruger platformen."
+      },
+      {
+        "title": "Flere konti",
+        "body": "Det er ikke tilladt at oprette flere konti til vildledende formål eller at unddrage sig sanktioner."
+      },
+      {
+        "title": "Handelsaktiviteter",
+        "body": "Undgå at bruge _ _ Openspace _ _ udelukkende til kommercielle formål, såsom overdreven reklame eller spamming. Brug udpegede kanaler eller funktioner til at fremme produkter og tjenester."
+      },
+      {
+        "title": "Misbrug af funktioner",
+        "body": "Misbrug ikke nogen funktioner eller funktioner af _ _ Openspace _ _ at forårsage ulejlighed eller skade for andre brugere eller platformen selv."
+      },
+      {
+        "title": "Løsning af konflikter",
+        "body": "Hvis du har uoverensstemmelser eller konflikter med andre brugere, skal du forsøge at løse dem på en respektfuld måde. Kontakt om nødvendigt vores støttehold for at få hjælp."
+      },
+      {
+        "title": "Følg lokale love og forordninger",
+        "body": "Vedkommende efter love og regler i dit land og jurisdiktion, mens du bruger _ _ Openspace _ _."
+      }
+    ],
+    "outro": "Husk, _ _ Openspace _ _ handler om at skabe et positivt og inklusivt rum for vores samfund at forbinde, dele og lære. Ved at følge disse retningslinjer bidrager du til at skabe et blomstrende og respektfuldt miljø for alle. Tak, fordi du er med i Openspace.",
+    "contact": "Fange nogen regel breakers eller har nogen spørgsmål? Kontakt os på _ _ Openspace _ EMAIL _ _ admin@openspacelive.com"
+  }
+}

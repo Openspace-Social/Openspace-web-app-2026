@@ -1,0 +1,517 @@
+{
+  "tagline": "Votre espace pour vous connecter, partager et explorer.",
+  "auth": {
+    "signIn": "Se connecter",
+    "signOut": "Se déconnecter",
+    "username": "Nom d'utilisateur",
+    "usernamePlaceholder": "Entrez votre nom d'utilisateur",
+    "password": "Mot de passe",
+    "passwordPlaceholder": "Entrez votre mot de passe",
+    "dontHaveAccount": "Pas encore de compte ?",
+    "getStarted": "Commencer",
+    "errorEmptyFields": "Veuillez saisir votre nom d'utilisateur et votre mot de passe.",
+    "errorLoginFailed": "Connexion échouée. Veuillez réessayer.",
+    "verifyEmailTitle": "Vérifiez votre e-mail",
+    "verifyEmailDescription": "Entrez le code de vérification à 6 chiffres que nous avons envoyé à {{email}}.",
+    "verificationCodeLabel": "Code de vérification",
+    "verificationCodePlaceholder": "Entrez le code à 6 chiffres",
+    "verifyEmailCta": "Vérifier l'e-mail",
+    "resendVerificationCode": "Renvoyer le code",
+    "continueToApp": "Continuer",
+    "verificationCodeSent": "Code de vérification envoyé. Vérifiez votre boîte de réception et vos spams.",
+    "verificationCodeResent": "Un nouveau code de vérification a été envoyé.",
+    "verificationSuccess": "Votre e-mail a été vérifié avec succès.",
+    "errorVerificationCodeRequired": "Veuillez saisir le code de vérification.",
+    "errorVerificationFailed": "La vérification de l'e-mail a échoué. Veuillez réessayer.",
+    "errorResendVerificationFailed": "Impossible de renvoyer le code. Veuillez réessayer.",
+    "errorVerificationSessionMissing": "Session de vérification expirée. Veuillez vous réinscrire.",
+    "wrongEmailPrompt": "Mauvaise adresse e-mail utilisée ?",
+    "goBackToSignUp": "Retour à l'inscription",
+    "yourEmail": "votre e-mail",
+    "forgotPassword": "Mot de passe oublié ?",
+    "forgotEmail": "Email oublié ?",
+    "signUpAgreementPrefix": "En vous inscrivant, vous acceptez nos",
+    "signUpAgreementAnd": "et",
+    "recoverPasswordTitle": "Réinitialiser le mot de passe",
+    "recoverPasswordDescription": "Saisissez l'e-mail de votre compte et nous vous enverrons un lien de réinitialisation.",
+    "recoveryEmailLabel": "E-mail du compte",
+    "recoveryEmailPlaceholder": "Saisissez l'e-mail de votre compte",
+    "sendRecoveryEmail": "Envoyer l'e-mail de récupération",
+    "recoverAccountTitle": "Récupérer les informations du compte",
+    "recoverAccountDescription": "Saisissez votre nom d'utilisateur ou votre e-mail, et nous enverrons les informations du compte à l'adresse correspondante.",
+    "recoveryIdentifierLabel": "Nom d'utilisateur ou e-mail",
+    "recoveryIdentifierPlaceholder": "Saisissez votre nom d'utilisateur ou votre e-mail",
+    "errorRecoveryEmailRequired": "Veuillez saisir l'e-mail de votre compte.",
+    "errorRecoveryIdentifierRequired": "Veuillez saisir votre nom d'utilisateur ou votre e-mail.",
+    "passwordRecoverySent": "Si votre e-mail existe, nous avons envoyé un e-mail de réinitialisation. Vérifiez votre boîte de réception et vos spams.",
+    "passwordRecoveryFailed": "Impossible d'envoyer l'e-mail de réinitialisation. Veuillez réessayer.",
+    "accountRecoverySent": "Si un compte correspond aux informations fournies, un e-mail de récupération a été envoyé. Vérifiez votre boîte de réception et vos spams.",
+    "accountRecoveryFailed": "Impossible d'envoyer l'e-mail de récupération du compte. Veuillez réessayer.",
+    "rememberedCredentials": "Vous vous souvenez de vos identifiants ?",
+    "backToSignIn": "Retour à la connexion",
+    "resetPasswordTitle": "Définir un nouveau mot de passe",
+    "resetPasswordDescription": "Créez un nouveau mot de passe pour votre compte.",
+    "newPasswordLabel": "Nouveau mot de passe",
+    "newPasswordPlaceholder": "Saisissez votre nouveau mot de passe",
+    "confirmNewPasswordLabel": "Confirmer le nouveau mot de passe",
+    "confirmNewPasswordPlaceholder": "Saisissez à nouveau votre nouveau mot de passe",
+    "resetPasswordButton": "Mettre à jour le mot de passe",
+    "errorResetTokenMissing": "Le lien de réinitialisation est manquant ou invalide. Demandez-en un nouveau.",
+    "errorResetPasswordFieldsRequired": "Veuillez saisir et confirmer votre nouveau mot de passe.",
+    "errorResetPasswordMismatch": "Les mots de passe ne correspondent pas.",
+    "passwordResetSuccess": "Mot de passe réinitialisé avec succès.",
+    "passwordResetSuccessDescription": "Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+    "passwordResetFailed": "Échec de la réinitialisation du mot de passe. Demandez un nouveau lien et réessayez.",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Re-enter your password",
+    "alreadyHaveAccount": "Already have an account?",
+    "errorPasswordsDontMatch": "Passwords do not match.",
+    "errorRegistrationFailed": "Registration failed. Please try again.",
+    "socialContinueGoogle": "Continuer avec Google",
+    "socialContinueApple": "Continuer avec Apple",
+    "socialLoadingGoogle": "Connecting to Google...",
+    "socialLoadingApple": "Connecting to Apple...",
+    "socialOrDivider": "ou continuez avec votre nom d'utilisateur ci-dessous",
+    "socialConfigMissing": "Social login is not configured yet.",
+    "socialWebOnly": "Social login is available on web in this build.",
+    "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "socialCancelled": "Social sign-in was cancelled.",
+    "socialTimeout": "Social sign-in timed out. Please try again.",
+    "socialStateMismatch": "Security check failed. Please try again.",
+    "socialAuthFailed": "Social sign-in failed. Please try again.",
+    "socialUsernameTitle": "Choisissez votre nom d’utilisateur",
+    "socialUsernameDescription": "Choisissez le nom d’utilisateur que les autres verront sur votre profil. Vous pourrez le modifier plus tard.",
+    "socialUsernameCta": "Continuer avec ce nom d’utilisateur",
+    "errorSocialSessionMissing": "La session d’inscription sociale a expiré. Veuillez réessayer.",
+    "errorSocialUsernameRequired": "Veuillez saisir un nom d’utilisateur.",
+    "errorSocialUsernameUpdateFailed": "Impossible d’enregistrer le nom d’utilisateur. Veuillez en essayer un autre.",
+    "needDifferentAccountPrompt": "Besoin d’un autre compte ?",
+    "shareProfileTitle": "Partagez votre nouveau profil",
+    "shareProfileDescription": "Votre compte {{username}} est prêt. Partagez-le sur vos plateformes préférées avant de continuer.",
+    "shareProfileMessage": "Je viens de rejoindre Openspace.Social en tant que {{username}}. Venez me rejoindre !",
+    "shareInstagram": "Instagram",
+    "shareFacebook": "Facebook",
+    "shareX": "X (Twitter)",
+    "shareBluesky": "Bluesky",
+    "shareReddit": "Reddit",
+    "shareContinueCta": "Continuer vers Openspace",
+    "shareSkipCta": "Ignorer pour le moment",
+    "shareSkipHint": "Vous pourrez toujours partager plus tard.",
+    "shareInstagramNotice": "Nous avons copié le texte de votre profil. Collez-le dans votre publication ou bio Instagram.",
+    "errorShareSessionMissing": "La session de partage a expiré. Veuillez vous reconnecter.",
+    "newAccountLabel": "mon nouveau compte"
+  },
+  "home": {
+    "welcomeBack": "Bon retour, {{name}} !",
+    "welcomeBackGeneric": "Bon retour !",
+    "comingSoon": "La nouvelle expérience Openspace arrive bientôt.",
+    "linkedAccountsTitle": "Linked accounts",
+    "linkedAccountsDescription": "Connect your social providers to make sign-in and recovery easier.",
+    "providerGoogle": "Google",
+    "providerApple": "Apple",
+    "linkedStatusConnected": "Connected",
+    "linkedStatusWithEmail": "Connected as {{email}}",
+    "linkedStatusNotConnected": "Not connected",
+    "linkAction": "Link",
+    "unlinkAction": "Unlink",
+    "linkSuccess": "{{provider}} linked successfully.",
+    "unlinkSuccess": "{{provider}} unlinked successfully.",
+    "linkFailed": "Could not link account. Please try again.",
+    "unlinkFailed": "Could not unlink account. Please try again.",
+    "linkWebOnly": "Linking social accounts is available on web in this build.",
+    "linkConfigMissing": "Social login is not configured yet.",
+    "linkPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "linkCancelled": "Social linking was cancelled.",
+    "linkTimeout": "Social linking timed out. Please try again.",
+    "linkStateMismatch": "Security check failed. Please try again."
+  },
+  "theme": {
+    "switchToLight": "Passer en mode clair",
+    "switchToDark": "Passer en mode sombre"
+  },
+  "language": {
+    "select": "Choisir la langue",
+    "current": "Langue"
+  },
+  "aboutUs": {
+    "shiftTitle": "Un tournant social : pourquoi les Canadiens cherchent des alternatives aux plateformes américaines",
+    "shiftBody": "Avec les tensions commerciales croissantes entre le Canada et les États-Unis, de nombreux Canadiens reconsidèrent leur dépendance aux plateformes de médias sociaux appartenant à des Américains. Au-delà des préoccupations géopolitiques, ces plateformes traitent depuis longtemps les données personnelles comme une marchandise, récoltant vos intérêts, comportements, connexions et préférences à des fins lucratives. Openspace.Social est différent. Fièrement canadien, nous privilégions votre sécurité et votre vie privée plutôt que le profit. Contrairement aux plateformes grand public qui collaborent avec des courtiers en données, nous n'exploitons pas vos données. Choisir Openspace.Social, c'est choisir une plateforme qui respecte vos informations et fonctionne avec transparence. Rejoignez le mouvement vers une expérience sociale véritablement indépendante et axée sur la confidentialité.",
+    "aboutTitle": "À propos d'Openspace.Social",
+    "about1": "Openspace.Social est une plateforme de réseau social révolutionnaire conçue pour offrir aux utilisateurs une alternative rafraîchissante aux plateformes conventionnelles. Ce qui distingue Openspace.Social, c'est son engagement indéfectible à favoriser de véritables connexions communautaires tout en priorisant la confidentialité des utilisateurs.",
+    "about2": "À une époque où les préoccupations en matière de confidentialité sont primordiales, Openspace.Social adopte une approche proactive pour protéger les données des utilisateurs. La plateforme emploie des fonctionnalités de confidentialité robustes, garantissant que les utilisateurs ont le contrôle sur leurs informations personnelles et sur qui peut y accéder. Cet accent sur la confidentialité crée un espace où les individus peuvent s'exprimer librement sans craindre des pratiques de données intrusives.",
+    "about3": "Contrairement à d'autres réseaux sociaux qui priorisent souvent les indicateurs de popularité, Openspace.Social se concentre sur la construction de connexions significatives au sein des communautés. La plateforme encourage les utilisateurs à rejoindre ou créer des communautés basées sur des intérêts, des valeurs ou des objectifs communs. Cette approche centrée sur la communauté facilite des interactions plus authentiques, favorisant un sentiment d'appartenance et de collaboration.",
+    "about4": "Openspace.Social reconnaît l'importance de l'autonomisation des utilisateurs, en offrant des paramètres de confidentialité personnalisables et des outils permettant aux individus de façonner leur expérience en ligne. Les utilisateurs peuvent se connecter avec des amis, de la famille ou de nouvelles connaissances dans un environnement sécurisé, partageant des moments et du contenu sans compromettre leurs limites personnelles.",
+    "about5": "Dans un paysage numérique où la confiance est cruciale, Openspace.Social émerge comme un phare de transparence et de valeurs centrées sur la communauté. En priorisant la confidentialité, les connexions significatives et l'autonomisation des utilisateurs, Openspace.Social est prête à redéfinir l'expérience des réseaux sociaux pour ceux qui recherchent une présence en ligne plus authentique et sécurisée."
+  },
+  "footer": {
+    "customize": "Vous pouvez personnaliser ce que vous souhaitez voir grâce aux filtres de fil, aux listes et aux cercles.",
+    "aboutUs": "À propos",
+    "privacyPolicy": "Politique de confidentialité",
+    "termsOfUse": "Conditions d'utilisation",
+    "guidelines": "Règles de conduite"
+  },
+  "cookies": {
+    "title": "Nous utilisons des cookies",
+    "body": "Nous utilisons des cookies pour améliorer votre expérience, personnaliser le contenu et analyser notre trafic. Vous pouvez choisir d'accepter ou de refuser.",
+    "acceptAll": "Tout accepter",
+    "decline": "Refuser",
+    "learnMore": "En savoir plus"
+  },
+  "privacyPolicy": {
+    "title": "Privacy Policy",
+    "updatedAt": "Updated at 01-22-2026.",
+    "sections": [
+      {
+        "title": "Privacy Policy",
+        "paragraphs": [
+          "Openspace.Social",
+          "(\"we,\" \"our,\" or \"us\") is committed to protecting your privacy. This Privacy Policy explains how your personal information is collected, used, and disclosed by Openspace.Social.",
+          "This Privacy Policy applies to our website and mobile application (iOS and Android): Openspacelive.com website and Openspace.Social the mobile application (iOS and Android), and its associated subdomains (collectively, our \"Service\"), alongside our application, Openspace.Social.",
+          "By accessing or using our Service, you signify that you have read, understood, and agree to our collection, storage, use, and disclosure of your personal information as described in this Privacy Policy and our Terms of Service."
+        ]
+      },
+      {
+        "title": "Definitions and key terms",
+        "bullets": [
+          "Cookie: small amount of data generated by a website and saved by your web browser. It is used to identify your browser, provide analytics, remember information about you such as your language preference or login information.",
+          "Company: when this policy mentions \"Company,\" \"we,\" \"us,\" or \"our,\" it refers to Openspace, that is responsible for your information under this Privacy Policy.",
+          "Country: where Openspace or the owners/founders of Openspace are based, in this case is Canada.",
+          "Customer: refers to the company, organization or person that signs up to use the Openspace Service to manage the relationships with your consumers or service users.",
+          "Device: any internet connected device such as a phone, tablet, computer or any other device that can be used to visit Openspace and use the services.",
+          "IP address: Every device connected to the Internet is assigned a number known as an Internet protocol (IP) address. These numbers are usually assigned in geographic blocks. An IP address can often be used to identify the location from which a device is connecting to the Internet.",
+          "Personnel: refers to those individuals who are employed by Openspace or are under contract to perform a service on behalf of one of the parties.",
+          "Personal Data: any information that directly, indirectly, or in connection with other information - including a personal identification number - allows for the identification or identifiability of a natural person.",
+          "Service: refers to the service provided by Openspace as described in the relative terms (if available) and on this platform.",
+          "Third-party service: refers to advertisers, contest sponsors, promotional and marketing partners, and others who provide our content or whose products or services we think may interest you.",
+          "Website: Openspace.Social site, which can be accessed via this URL: Openspacelive.com.",
+          "You: a person or entity that is registered with Openspace to use the Services."
+        ]
+      },
+      {
+        "title": "What Information Do We Collect?",
+        "paragraphs": [
+          "We collect information from you when you visit our service, register, place an order, subscribe to our newsletter, respond to a survey or fill out a form."
+        ],
+        "bullets": [
+          "Name / Username",
+          "Phone Numbers",
+          "Email Addresses",
+          "Mailing Addresses",
+          "Billing Addresses",
+          "Debit/credit card numbers",
+          "Age",
+          "Password"
+        ]
+      },
+      {
+        "title": "How Do We Use The Information We Collect?",
+        "bullets": [
+          "To personalize your experience (your information helps us to better respond to your individual needs).",
+          "To improve our service (we continually strive to improve our service offerings based on the information and feedback we receive from you).",
+          "To improve customer service (your information helps us to more effectively respond to your customer service requests and support needs).",
+          "To process transactions.",
+          "To administer a contest, promotion, survey or other site feature.",
+          "To send periodic emails."
+        ]
+      },
+      {
+        "title": "When do we use customer information from third parties?",
+        "paragraphs": [
+          "We receive some information from third parties when you contact us. For example, when you submit your email address to us to show interest in becoming our customer, we receive information from a third party that provides automated fraud detection services to us. We also occasionally collect information that is made publicly available on social media websites. You can control how much of your information social media websites make public by visiting these websites and changing your privacy settings."
+        ]
+      },
+      {
+        "title": "Do we share the information we collect with third parties?",
+        "paragraphs": [
+          "We may share the information that we collect, both personal and non-personal, with third parties such as advertisers, contest sponsors, promotional and marketing partners, and others who provide our content or whose products or services we think may interest you. We may also share it with our current and future affiliated companies and business partners, and if we are involved in a merger, asset sale or other business reorganization, we may also share or transfer your personal and non-personal information to our successors-in-interest.",
+          "We may engage trusted third party service providers to perform functions and provide services to us, such as hosting and maintaining our servers and our service, database storage and management, e-mail management, storage marketing, credit card processing, customer service and fulfilling orders for products and services you may purchase through our platform. We will likely share your personal information, and possibly some non-personal information, with these third parties to enable them to perform these services for us and for you.",
+          "We may share portions of our log file data, including IP addresses, for analytics purposes with third parties such as web analytics partners, application developers, and ad networks. If your IP address is shared, it may be used to estimate general location and other technographics such as connection speed, whether you have visited the service in a shared location, and type of device used to visit the service. They may aggregate information about our advertising and what you see on the service and then provide auditing, research and reporting for us and our advertisers.",
+          "We may also disclose personal and non-personal information about you to government or law enforcement officials or private parties as we, in our sole discretion, believe necessary or appropriate in order to respond to claims, legal process (including subpoenas), to protect our rights and interests or those of a third party, the safety of the public or any person, to prevent or stop any illegal, unethical, or legally  actionable activity, or to otherwise comply with applicable court orders, laws, rules and regulations."
+        ]
+      },
+      {
+        "title": "Where and when is information collected from customers and end users?",
+        "paragraphs": [
+          "We will collect personal information that you submit to us. We may also receive personal information about you from third parties as described above."
+        ]
+      },
+      {
+        "title": "How Do We Use Your Email Address?",
+        "paragraphs": [
+          "By submitting your email address on this form, you agree to receive emails from us. You can cancel your participation in any of these email lists at any time by clicking on the opt-out link or other unsubscribe option that is included in the respective email. We only send emails to people who have authorized us to contact them, either directly, or through a third party. We do not send unsolicited commercial emails, because we hate spam as much as you do.",
+          "By submitting your email address, you also agree to allow us to use your email address for customer audience targeting on sites like Facebook, where we display custom advertising to specific people who have opted-in to receive communications from us. Email addresses submitted only through the order processing page will be used for the sole purpose of sending you information and updates pertaining to your order.",
+          "If, however, you have provided the same email to us through another method, we may use it for any of the purposes stated in this Policy. Note: If at any time you would like to unsubscribe from receiving future emails, we include detailed unsubscribe instructions at the bottom of each email."
+        ]
+      },
+      {
+        "title": "Could my information be transferred to other countries?",
+        "paragraphs": [
+          "We are incorporated in United States. Information collected via our website, through direct interactions with you, or from use of our help services may be transferred from time to time to our offices or personnel, or to third parties, located throughout the world, and may be viewed and hosted anywhere in the world, including countries that may not have laws of general applicability regulating the use and transfer of such data. To the fullest extent allowed by applicable law, by using any of the above, you voluntarily consent to the trans-border transfer and hosting of such information."
+        ]
+      },
+      {
+        "title": "Is the information collected through our service secure?",
+        "paragraphs": [
+          "We take precautions to protect the security of your information. We have physical, electronic, and managerial procedures to help safeguard, prevent unauthorized access, maintain data security, and correctly use your information. However, neither people nor security systems are foolproof, including encryption systems. In addition, people can commit intentional crimes, make mistakes or fail to follow policies. Therefore, while we use reasonable efforts to protect your personal information, we cannot guarantee its absolute security. If applicable law imposes any non-disclaimable duty to protect your personal information, you agree that intentional misconduct will be the standards used to measure our compliance with that duty."
+        ]
+      },
+      {
+        "title": "Can I update or correct my information?",
+        "paragraphs": [
+          "The rights you have to request updates or corrections to the information we collect depend on your relationship with us. Personnel may update or correct their information as detailed in our internal company employment policies.",
+          "Customers have the right to request the restriction of certain uses and disclosures of personally identifiable information. You can contact us in order to (1) update or correct your personally identifiable information, (2) change your preferences with respect to communications and other information you receive from us, or (3) delete the personally identifiable information maintained about you on our systems (subject to applicable law), by cancelling your account.",
+          "Such updates, corrections, changes and deletions will have no effect on other information that we maintain, or information that we have provided to third parties in accordance with this Privacy Policy prior to such update, correction, change or deletion. To protect your privacy and security, we may take reasonable steps (such as requesting a unique password) to verify your identity before granting you profile access or making corrections.",
+          "You are responsible for maintaining the secrecy of your unique password and account information at all times. You should be aware that it is not technologically possible to remove every record of the information you have provided to us from our system. The need to back up our systems to protect information from inadvertent loss means that a copy of your information may exist in a non-erasable form that may be difficult or impossible for us to locate.",
+          "Promptly after receiving your request, all personal information stored in databases we actively use, and other readily searchable media, will be updated, corrected, changed or deleted, as appropriate, as soon as and to the extent reasonably and technically practicable. If you are an end user and wish to update, delete, or receive any information we have about you, you may do so by contacting the organization of which you are a customer."
+        ]
+      },
+      {
+        "title": "Personnel",
+        "paragraphs": [
+          "If you are one of our workers or applicants, we collect information you voluntarily provide to us. We use the information collected for Human Resources purposes in order to administer benefits to workers and screen applicants.",
+          "You may contact us in order to (1) update or correct your information, (2) change your preferences with respect to communications and other information you receive from us, or (3) receive a record of the information we have relating to you. Such updates, corrections, changes and deletions will have no effect on other information that we maintain, or information that we have provided to third parties in accordance with this Privacy Policy prior to such update, correction, change or deletion."
+        ]
+      },
+      {
+        "title": "Sale of Business",
+        "paragraphs": [
+          "We reserve the right to transfer information to a third party in the event of a sale, merger or other transfer of all or substantially all of the assets of us or any of its Corporate Affiliates, or that portion of us or any of its Corporate Affiliates to which the Service relates, or in the event that we discontinue our business or file a petition or have filed against us a petition in bankruptcy, reorganization or s imilar proceeding, provided that the third party agrees to adhere to the terms of this Privacy Policy."
+        ]
+      },
+      {
+        "title": "Affiliates",
+        "paragraphs": [
+          "We may disclose information (including personal information) about you to our Corporate Affiliates. For purposes of this Privacy Policy, \"Corporate Affiliate\" means any person or entity which directly or indirectly controls, is controlled by or is under common control with us, whether by ownership or otherwise. Any information relating to you that we provide to our Corporate Affiliates will be treated by those Corporate Affiliates in accordance with the terms of this Privacy Policy."
+        ]
+      },
+      {
+        "title": "How Long Do We Keep Your Information?",
+        "paragraphs": [
+          "We keep your information only so long as we need it to provide service to you and fulfill the purposes described in this policy. This is also the case for anyone that we share your information with and who carries out services on our behalf. When we no longer need to use your information and there is no need for us to keep it to comply with our legal or regulatory obligations, we will either remove it from our systems or depersonalize it so that we cannot identify you."
+        ]
+      },
+      {
+        "title": "How Do We Protect Your Information?",
+        "paragraphs": [
+          "We implement a variety of security measures to maintain the safety of your personal information when you place an order or enter, submit, or access your personal information. We offer the use of a secure server. All supplied sensitive/credit information is transmitted via Secure Socket Layer (SSL) technology and then encrypted into our payment gateway providers database only to be accessible by those authorized with special access rights to such systems, and are required to keep the information confidential.",
+          "After a transaction, your private information (credit cards, social security numbers, financials, etc.) is never kept on file. We cannot, however, ensure or warrant the absolute security of any information you transmit to us or guarantee that your information on the Service may not be accessed, disclosed, altered, or destroyed by a breach of any of our physical, technical, or managerial safeguards."
+        ]
+      },
+      {
+        "title": "Governing Law",
+        "paragraphs": [
+          "The laws of United States, excluding its conflicts of law rules, shall govern this Agreement and your use of our service. Your use of our service may also be subject to other local, state, national, or international laws."
+        ]
+      },
+      {
+        "title": "Your Consent",
+        "paragraphs": [
+          "By using our service, registering an account, or making a purchase, you consent to this Privacy Policy."
+        ]
+      },
+      {
+        "title": "Links to Other Websites",
+        "paragraphs": [
+          "This Privacy Policy applies only to the Services. The Services may contain links to other websites not operated or controlled by Openspace.Social. We are not responsible for the content, accuracy or opinions expressed in such websites, and such websites are not investigated, monitored or checked for accuracy or completeness by us.",
+          "Please remember that when you use a link to go from the Services to another website, our Privacy Policy is no longer in effect. Your browsing and interaction on any other website, including those that have a link on our platform, is subject to that website's own rules and policies. Such third parties may use their own cookies or other methods to collect information about you."
+        ]
+      },
+      {
+        "title": "Cookies",
+        "paragraphs": [
+          "We use \"Cookies\" to identify the areas of our website that you have visited. A Cookie is a small piece of data stored on your computer or mobile device by your web browser. We use Cookies to personalize the Content that you see on our website. Most web browsers can be set to disable the use of Cookies. However, if you disable Cookies, you may not be able to access functionality on our website correctly or at all. We never place Personally Identifiable Information in Cookies."
+        ]
+      },
+      {
+        "title": "Advertising",
+        "paragraphs": [
+          "Advertising keeps us and many of the websites and services you use free of charge. We work hard to make sure that ads are safe, unobtrusive, and as relevant as possible."
+        ]
+      },
+      {
+        "title": "Cookies for Advertising",
+        "paragraphs": [
+          "Cookies help to make advertising more effective. Without cookies, it is really hard for an advertiser to reach its audience, or to know how many ads were shown and how many clicks they received."
+        ]
+      },
+      {
+        "title": "Payment Details",
+        "paragraphs": [
+          "In respect to any credit card or other payment processing details you have provided us, we commit that this confidential information will be stored in the most secure manner possible."
+        ]
+      },
+      {
+        "title": "Kids' Privacy",
+        "paragraphs": [
+          "We do not address anyone under the age of 13. We do not knowingly collect personally identifiable information from anyone under the age of 13. If you are a parent or guardian and you are aware that your child has provided us with Personal Data, please contact us. If we become aware that we have collected Personal Data from anyone under the age of 13 without verification of parental consent, we take steps to remove that information from our servers."
+        ]
+      },
+      {
+        "title": "Changes To Our Privacy Policy",
+        "paragraphs": [
+          "If we decide to change our privacy policy, we will post those changes on this page, and/or update the Privacy Policy modification date below."
+        ]
+      },
+      {
+        "title": "Third-Party Services",
+        "paragraphs": [
+          "We may display, include or make available third-party content (including data, information, applications and other products services) or provide links to third-party websites or services (\"Third-Party Services\").",
+          "You acknowledge and agree that we shall not be responsible for any Third-Party Services, including their accuracy, completeness, timeliness, validity, copyright compliance, legality, decency, quality or any other aspect thereof. We do not assume and shall not have any liability or responsibility to you or any other person or entity for any Third-Party Services.",
+          "Third-Party Services and links thereto are provided solely as a convenience to you and you access and use them entirely at your own risk and subject to such third parties' terms and conditions."
+        ]
+      },
+      {
+        "title": "Tracking Technologies",
+        "paragraphs": [
+          "Cookies"
+        ],
+        "bullets": [
+          "We use Cookies to enhance the performance and functionality of our service but are non-essential to their use. However, without these cookies, certain functionality like videos may become unavailable or you would be required to enter your login details every time you visit our service as we would not be able to remember that you had logged in previously.",
+          "Local Storage: Local Storage, sometimes known as DOM storage, provides web apps with methods and protocols for storing client-side data. Web storage supports persistent data storage, similar to cookies but with a greatly enhanced capacity and no information stored in the HTTP request header.",
+          "Sessions: We use \"Sessions\" to identify the areas of our website that you have visited. A Session is a small piece of data stored on your computer or mobile device by your web browser."
+        ]
+      },
+      {
+        "title": "Information about General Data Protection Regulation (GDPR)",
+        "paragraphs": [
+          "We may be collecting and using information from you if you are from the European Economic Area (EEA), and in this section of our Privacy Policy we explain how and why this data is collected, and how we maintain this data under protection from being replicated or used in the wrong way."
+        ]
+      },
+      {
+        "title": "What is GDPR?",
+        "paragraphs": [
+          "GDPR is an EU-wide privacy and data protection law that regulates how EU residents' data is protected by companies and enhances the control EU residents have over their personal data."
+        ]
+      },
+      {
+        "title": "What is personal data?",
+        "paragraphs": [
+          "Any data that relates to an identifiable or identified individual. GDPR covers a broad spectrum of information that could be used on its own, or in combination with other pieces of information, to identify a person. Personal data extends beyond a person's name or email address. Some examples include financial information, political opinions, genetic data, biometric data, IP addresses, physical address, sexual orientation, and ethnicity.",
+          "The Data Protection Principles include requirements such as:"
+        ],
+        "bullets": [
+          "Personal data collected must be processed in a fair, legal, and transparent way and should only be used in a way that a person would reasonably expect.",
+          "Personal data should only be collected to fulfill a specific purpose and it should only be used for that purpose. Organizations must specify why they need personal data when they collect it.",
+          "Personal data should be held no longer than necessary to fulfill its purpose.",
+          "People covered by the GDPR have the right to access their own personal data. They can also request a copy of their data, and that their data be updated, deleted, restricted, or moved to another organization."
+        ]
+      },
+      {
+        "title": "Why is GDPR important?",
+        "paragraphs": [
+          "GDPR adds new requirements regarding how companies should protect individuals' personal data that they collect and process. It also raises the stakes for compliance by increasing enforcement and imposing greater fines for breach. Beyond these facts, it is simply the right thing to do."
+        ]
+      },
+      {
+        "title": "Individual Data Subject's Rights - Data Access, Portability and Deletion",
+        "paragraphs": [
+          "We are committed to helping our customers meet the data subject rights requirements of GDPR. We process or store all personal data in fully vetted, DPA-compliant vendors. We store conversation and personal data for up to 6 years unless your account is deleted. In that case, we dispose of all data in accordance with our Terms of Service and Privacy Policy, but we will not hold it longer than 60 days.",
+          "If you are working with EU customers, you need to be able to provide them with the ability to access, update, retrieve and remove personal data. We have been set up as self-service from the start and have always given you access to your data and your customers' data. Our customer support team is here for you to answer any questions you might have about working with the API."
+        ]
+      },
+      {
+        "title": "California Residents",
+        "paragraphs": [
+          "The California Consumer Privacy Act (CCPA) requires us to disclose categories of Personal Information we collect and how we use it, the categories of sources from whom we collect Personal Information, and the third parties with whom we share it, which we have explained above.",
+          "We are also required to communicate information about rights California residents have under California law. You may exercise the following rights:"
+        ],
+        "bullets": [
+          "Right to Know and Access: You may submit a verifiable request for information regarding the categories of Personal Information we collect, use, or share; the purposes for which categories of Personal Information are collected or used by us; the categories of sources from which we collect Personal Information; and the specific pieces of Personal Information we have collected about you.",
+          "Right to Equal Service: We will not discriminate against you if you exercise your privacy rights.",
+          "Right to Delete: You may submit a verifiable request to close your account and we will delete Personal Information about you that we have collected.",
+          "Right to request that a business that sells a consumer's personal data not sell the consumer's personal data."
+        ],
+        "paragraphsAfterBullets": [
+          "If you make a request, we have one month to respond to you. If you would like to exercise any of these rights, please contact us.",
+          "We do not sell the Personal Information of our users."
+        ]
+      },
+      {
+        "title": "California Online Privacy Protection Act (CalOPPA)",
+        "paragraphs": [
+          "CalOPPA requires us to disclose categories of Personal Information we collect and how we use it, the categories of sources from whom we collect Personal Information, and the third parties with whom we share it, which we have explained above.",
+          "CalOPPA users have the following rights:"
+        ],
+        "bullets": [
+          "Right to Know and Access: You may submit a verifiable request for information regarding the categories of Personal Information we collect, use, or share; the purposes for which categories of Personal Information are collected or used by us; the categories of sources from which we collect Personal Information; and the specific pieces of Personal Information we have collected about you.",
+          "Right to Equal Service: We will not discriminate against you if you exercise your privacy rights.",
+          "Right to Delete: You may submit a verifiable request to close your account and we will delete Personal Information about you that we have collected.",
+          "Right to request that a business that sells a consumer's personal data not sell the consumer's personal data."
+        ],
+        "paragraphsAfterBullets": [
+          "If you make a request, we have one month to respond to you. If you would like to exercise any of these rights, please contact us.",
+          "We do not sell the Personal Information of our users."
+        ]
+      },
+      {
+        "title": "Contact Us",
+        "paragraphs": [
+          "Do not hesitate to contact us if you have any questions.",
+          "Via this link: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "guidelines": {
+    "title": "Lignes directrices communautaires",
+    "intro": "Bienvenue à Openspace. Nous sommes heureux de vous accueillir dans notre communauté dynamique et diversifiée. Pour assurer une expérience sûre et agréable à tous, nous avons établi ces lignes directrices communautaires. Veuillez prendre un moment pour vous familiariser avec eux, car la violation de ces directives peut entraîner des sanctions, y compris la suspension du compte ou la résiliation.",
+    "sections": [
+      {
+        "title": "Respect et bonté",
+        "body": "Traitez les autres comme vous le souhaitez. Respectez les opinions, les croyances et les expériences des autres utilisateurs. Le harcèlement, l'intimidation, les discours haineux, la discrimination ou toute forme de comportement offensant ne seront pas tolérés."
+      },
+      {
+        "title": "Confidentialité et renseignements personnels",
+        "body": "Protégez la vie privée des autres et de vous-même. Ne partagez pas de renseignements personnels, comme des adresses, des numéros de téléphone ou des détails financiers, publiquement sur la plateforme. Soyez prudent tout en partageant toute information sensible dans des messages privés."
+      },
+      {
+        "title": "Intégrité du contenu",
+        "body": "Affichez seulement le contenu que vous avez le droit de partager. Respecter les lois sur le droit d'auteur et la propriété intellectuelle. Ne vous engagez pas dans la diffusion de fausses informations, de contenu trompeur ou de spam."
+      },
+      {
+        "title": "Nudité, violence et contenu inapproprié",
+        "body": "Openspace est une plateforme pour les utilisateurs de plus de 16 ans. Tout contenu avec nudité explicite, violence, matériel graphique ou adulte, ou qui est autrement inapproprié, sera supprimé."
+      },
+      {
+        "title": "Activités illégales",
+        "body": "Ne pas utiliser Openspace pour promouvoir, organiser ou se livrer à des activités illégales. Cela comprend, sans s'y limiter, le harcèlement, les menaces, le trafic de drogues et toute forme de terrorisme."
+      },
+      {
+        "title": "Impersonnation",
+        "body": "N'imitez pas d'autres personnes, organisations ou personnalités publiques. Soyez vous-même et utilisez votre véritable identité sur la plateforme."
+      },
+      {
+        "title": "Rapports et modération",
+        "body": "Si vous rencontrez des contenus ou des comportements qui violent nos directives, veuillez les signaler immédiatement. Notre équipe de modération examinera le contenu signalé et prendra les mesures appropriées."
+      },
+      {
+        "title": "Mineurs",
+        "body": "Les utilisateurs de moins de 13 ans ne sont pas autorisés sur Openspace. Si vous avez entre 16 et 18 ans, assurez-vous d'avoir le consentement parental avant d'utiliser la plateforme."
+      },
+      {
+        "title": "Comptes multiples",
+        "body": "La création de comptes multiples à des fins trompeuses ou pour échapper aux sanctions n'est pas autorisée."
+      },
+      {
+        "title": "Activités commerciales",
+        "body": "Évitez d'utiliser Openspace uniquement à des fins commerciales, comme la publicité excessive ou le spamming. Utiliser des canaux ou des fonctionnalités désignés pour promouvoir des produits et des services."
+      },
+      {
+        "title": "Abus des caractéristiques",
+        "body": "N'abusez pas des fonctionnalités ou fonctionnalités de Openspace pour causer des désagréments ou des dommages à d'autres utilisateurs ou à la plateforme elle-même."
+      },
+      {
+        "title": "Résolution des conflits",
+        "body": "Si vous avez des désaccords ou des conflits avec d'autres utilisateurs, essayez de les résoudre avec respect. Si nécessaire, contactez notre équipe de soutien pour obtenir de l'aide."
+      },
+      {
+        "title": "Suivre les lois et règlements locaux",
+        "body": "Respecter les lois et règlements de votre pays et de votre juridiction en utilisant Openspace."
+      }
+    ],
+    "outro": "Rappelez-vous, Openspace est tout à propos de créer un espace positif et inclusif pour notre communauté pour se connecter, partager et apprendre. En suivant ces lignes directrices, vous contribuez à créer un environnement prospère et respectueux pour tous. Merci d'avoir fait partie du Openspace.",
+    "contact": "Attrapez des briseurs de règles ou avez-vous des questions? Contactez-nous à admin@openspacelive.com"
+  }
+}

@@ -1,0 +1,773 @@
+{
+  "tagline": "Your space to connect, share, and explore.",
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "username": "Username",
+    "usernamePlaceholder": "Enter your username",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "dontHaveAccount": "Don't have an account?",
+    "getStarted": "Get started",
+    "errorEmptyFields": "Please enter your username and password.",
+    "errorLoginFailed": "Login failed. Please try again.",
+    "verifyEmailTitle": "Verify your email",
+    "verifyEmailDescription": "Enter the 6-digit verification code we sent to {{email}}.",
+    "verificationCodeLabel": "Verification code",
+    "verificationCodePlaceholder": "Enter 6-digit code",
+    "verifyEmailCta": "Verify email",
+    "resendVerificationCode": "Resend code",
+    "continueToApp": "Continue",
+    "verificationCodeSent": "Verification code sent. Check your inbox and spam folder.",
+    "verificationCodeResent": "A new verification code was sent.",
+    "verificationSuccess": "Your email has been verified successfully.",
+    "errorVerificationCodeRequired": "Please enter the verification code.",
+    "errorVerificationFailed": "Email verification failed. Please try again.",
+    "errorResendVerificationFailed": "Could not resend code. Please try again.",
+    "errorVerificationSessionMissing": "Verification session expired. Please sign up again.",
+    "wrongEmailPrompt": "Used the wrong email?",
+    "goBackToSignUp": "Go back to sign up",
+    "yourEmail": "your email",
+    "forgotPassword": "Forgot password?",
+    "forgotEmail": "Forgot email?",
+    "signUpAgreementPrefix": "By signing up, you agree to our",
+    "signUpAgreementAnd": "and",
+    "recoverPasswordTitle": "Reset your password",
+    "recoverPasswordDescription": "Enter your account email and we will send you a password reset link.",
+    "recoveryEmailLabel": "Account email",
+    "recoveryEmailPlaceholder": "Enter your account email",
+    "sendRecoveryEmail": "Send recovery email",
+    "recoverAccountTitle": "Recover account details",
+    "recoverAccountDescription": "Enter your username or email and we will send your account details to the matching email address.",
+    "recoveryIdentifierLabel": "Username or email",
+    "recoveryIdentifierPlaceholder": "Enter your username or email",
+    "errorRecoveryEmailRequired": "Please enter your account email.",
+    "errorRecoveryIdentifierRequired": "Please enter your username or email.",
+    "passwordRecoverySent": "If your email exists, we sent a password reset email. Check your inbox and spam folder.",
+    "passwordRecoveryFailed": "Could not send password reset email. Please try again.",
+    "accountRecoverySent": "If an account matches the information provided, a recovery email has been sent. Check your inbox and spam folder.",
+    "accountRecoveryFailed": "Could not send account recovery email. Please try again.",
+    "rememberedCredentials": "Remembered your credentials?",
+    "backToSignIn": "Back to sign in",
+    "resetPasswordTitle": "Set a new password",
+    "resetPasswordDescription": "Create a new password for your account.",
+    "newPasswordLabel": "New password",
+    "newPasswordPlaceholder": "Enter your new password",
+    "confirmNewPasswordLabel": "Confirm new password",
+    "confirmNewPasswordPlaceholder": "Re-enter your new password",
+    "resetPasswordButton": "Update password",
+    "errorResetTokenMissing": "Reset link is missing or invalid. Request a new one.",
+    "errorResetPasswordFieldsRequired": "Please enter and confirm your new password.",
+    "errorResetPasswordMismatch": "Passwords do not match.",
+    "passwordResetSuccess": "Password reset successful.",
+    "passwordResetSuccessDescription": "You can now sign in with your new password.",
+    "passwordResetFailed": "Password reset failed. Please request a new link and try again.",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Re-enter your password",
+    "alreadyHaveAccount": "Already have an account?",
+    "errorPasswordsDontMatch": "Passwords do not match.",
+    "errorRegistrationFailed": "Registration failed. Please try again.",
+    "socialContinueGoogle": "Continue with Google",
+    "socialContinueApple": "Continue with Apple",
+    "socialLoadingGoogle": "Connecting to Google...",
+    "socialLoadingApple": "Connecting to Apple...",
+    "socialOrDivider": "or continue with username below",
+    "socialConfigMissing": "Social login is not configured yet.",
+    "socialWebOnly": "Social login is available on web in this build.",
+    "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "socialCancelled": "Social sign-in was cancelled.",
+    "socialTimeout": "Social sign-in timed out. Please try again.",
+    "socialStateMismatch": "Security check failed. Please try again.",
+    "socialAuthFailed": "Social sign-in failed. Please try again.",
+    "socialUsernameTitle": "Choose your username",
+    "socialUsernameDescription": "Pick the username people will see on your profile. You can change it later.",
+    "socialUsernameCta": "Continue with this username",
+    "errorSocialSessionMissing": "Social sign-up session expired. Please try again.",
+    "errorSocialUsernameRequired": "Please enter a username.",
+    "errorSocialUsernameUpdateFailed": "Could not save username. Please try another one.",
+    "needDifferentAccountPrompt": "Need a different account?",
+    "shareProfileTitle": "Share your new profile",
+    "shareProfileDescription": "Your account {{username}} is ready. Share it on your favorite platforms before continuing.",
+    "shareProfileMessage": "I just joined Openspace.Social as {{username}}. Come connect with me!",
+    "shareInstagram": "Instagram",
+    "shareFacebook": "Facebook",
+    "shareX": "X (Twitter)",
+    "shareBluesky": "Bluesky",
+    "shareReddit": "Reddit",
+    "shareContinueCta": "Continue to Openspace",
+    "shareSkipCta": "Skip for now",
+    "shareSkipHint": "You can always share later.",
+    "shareInstagramNotice": "We copied your profile text. Paste it in your Instagram post or bio.",
+    "errorShareSessionMissing": "Sharing session expired. Please sign in again.",
+    "newAccountLabel": "my new account"
+  },
+  "home": {
+    "welcomeBack": "Welcome back, {{name}}!",
+    "welcomeBackGeneric": "Welcome back!",
+    "comingSoon": "The new Openspace experience is coming soon.",
+    "linkedAccountsTitle": "Linked accounts",
+    "linkedAccountsDescription": "Connect your social providers to make sign-in and recovery easier.",
+    "providerGoogle": "Google",
+    "providerApple": "Apple",
+    "linkedStatusConnected": "Connected",
+    "linkedStatusWithEmail": "Connected as {{email}}",
+    "linkedStatusNotConnected": "Not connected",
+    "linkAction": "Link",
+    "unlinkAction": "Unlink",
+    "linkSuccess": "{{provider}} linked successfully.",
+    "unlinkSuccess": "{{provider}} unlinked successfully.",
+    "linkFailed": "Could not link account. Please try again.",
+    "unlinkFailed": "Could not unlink account. Please try again.",
+    "linkWebOnly": "Linking social accounts is available on web in this build.",
+    "linkConfigMissing": "Social login is not configured yet.",
+    "linkPopupBlocked": "Popup was blocked. Please allow popups and try again.",
+    "linkCancelled": "Social linking was cancelled.",
+    "linkTimeout": "Social linking timed out. Please try again.",
+    "linkStateMismatch": "Security check failed. Please try again."
+  },
+  "theme": {
+    "switchToLight": "Switch to light mode",
+    "switchToDark": "Switch to dark mode"
+  },
+  "language": {
+    "select": "Select language",
+    "current": "Language"
+  },
+  "aboutUs": {
+    "shiftTitle": "A Social Shift: Why Canadians Are Looking Beyond U.S. Platforms",
+    "shiftBody": "With growing trade tensions between Canada and the U.S., many Canadians are rethinking their reliance on American-owned social media platforms. Beyond geopolitical concerns, these platforms have long treated personal data as a commodity—harvesting your interests, behaviors, connections, and preferences for profit. Openspace.Social is different. Proudly Canadian, we prioritize your security and privacy over profit. Unlike mainstream platforms that collaborate with data brokers, we do not exploit your data. Choosing Openspace.Social means choosing a platform that respects your information and operates with transparency. Join the movement toward a truly independent, privacy-focused social experience.",
+    "aboutTitle": "About Openspace.Social",
+    "about1": "Openspace.Social is a revolutionary social network platform designed to provide users with a refreshing alternative to mainstream platforms. What sets Openspace.Social apart is its unwavering commitment to fostering genuine community connections while prioritizing user privacy.",
+    "about2": "In an era where privacy concerns are paramount, Openspace.Social takes a proactive approach to safeguarding user data. The platform employs robust privacy features, ensuring that users have control over their personal information and who can access it. This emphasis on privacy creates a space where individuals can express themselves freely without the fear of intrusive data practices.",
+    "about3": "Unlike other social networks that often prioritize popularity metrics, Openspace.Social focuses on building meaningful connections within communities. The platform encourages users to join or create communities based on shared interests, values, or goals. This community-centered approach facilitates more authentic interactions, fostering a sense of belonging and collaboration among like-minded individuals.",
+    "about4": "Openspace.Social recognizes the importance of user empowerment, offering customizable privacy settings and tools that allow individuals to curate their online experience. Users can connect with friends, family, or new acquaintances in a secure environment, sharing moments and content without compromising their personal boundaries.",
+    "about5": "In a digital landscape where trust is crucial, Openspace.Social emerges as a beacon of transparency and community-centric values. By prioritizing privacy, meaningful connections, and user empowerment, Openspace.Social is poised to redefine the social networking experience for those who seek a more authentic and secure online presence."
+  },
+  "footer": {
+    "customize": "You can customise what you want to see with feed filters, lists and circles.",
+    "aboutUs": "About us",
+    "privacyPolicy": "Privacy policy",
+    "termsOfUse": "Terms of use",
+    "guidelines": "Guidelines"
+  },
+  "cookies": {
+    "title": "We use cookies",
+    "body": "We use cookies to improve your experience, personalise content, and analyse our traffic. You can choose to accept or decline.",
+    "acceptAll": "Accept all",
+    "decline": "Decline",
+    "learnMore": "Learn more"
+  },
+  "termsOfUse": {
+    "updatedAt": "Updated at 11-22-2023.",
+    "tableOfContentsTitle": "TABLE OF CONTENTS",
+    "tableOfContents": [
+      "1. AGREEMENT TO TERMS",
+      "2. INTELLECTUAL PROPERTY RIGHTS",
+      "3. USER REPRESENTATIONS",
+      "4. USER REGISTRATION",
+      "5. SERVICES",
+      "6. PURCHASES AND PAYMENT",
+      "7. REFUNDS POLICY",
+      "8. PROHIBITED ACTIVITIES",
+      "9. USER GENERATED CONTRIBUTIONS",
+      "10. CONTRIBUTION LICENSE",
+      "11. SUBMISSIONS",
+      "12. SITE MANAGEMENT",
+      "13. PRIVACY POLICY",
+      "14. COPYRIGHT INFRINGEMENTS",
+      "15. TERM AND TERMINATION",
+      "16. MODIFICATIONS AND INTERRUPTIONS",
+      "17. GOVERNING LAW",
+      "18. DISPUTE RESOLUTION",
+      "19. CORRECTIONS",
+      "20. DISCLAIMER",
+      "21. LIMITATIONS OF LIABILITY",
+      "22. INDEMNIFICATION",
+      "23. USER DATA",
+      "24. ELECTRONIC COMMUNICATIONS, TRANSACTIONS, AND SIGNATURES",
+      "25. CALIFORNIA USERS AND RESIDENTS",
+      "26. MISCELLANEOUS",
+      "27. CONTACT US"
+    ],
+    "sections": [
+      {
+        "title": "AGREEMENT TO TERMS",
+        "paragraphs": [
+          "These Terms of Use constitute a legally binding agreement made between you, whether personally or on behalf of an entity (\"you\") and Openspace (\"Company\", \"we\", \"us\", or \"our\"), concerning your access to and use of the Openspacelive.com website as well as any other media form, media channel, mobile website or mobile application related, linked, or otherwise connected thereto (collectively, the \"Site\"). The Site provides an online marketplace for the following goods, products, and/or services: Hosting Services (the \"Services\"). You agree that by accessing the Site and/or the Services, you have read, understood, and agree to be bound by all of these Terms of Use. IF YOU DO NOT AGREE WITH ALL OF THESE TERMS OF USE, THEN YOU ARE EXPRESSLY PROHIBITED FROM USING THE SITE AND/OR THE SERVICES AND YOU MUST DISCONTINUE USE IMMEDIATELY.",
+          "We reserve the right, in our sole discretion, to make changes or modifications to these Terms of Use from time to time. We will alert you about any changes by updating the \"Last updated\" date of these Terms of Use, and you waive any right to receive specific notice of each such change. Please ensure that you check the applicable Terms every time you use our Site so that you understand which Terms apply.",
+          "The Site is not tailored to comply with industry-specific regulations (HIPAA, FISMA, etc.), so if your interactions would be subjected to such laws, you may not use this Site. You may not use the Site in a way that would violate the Gramm-Leach-Bliley Act (GLBA).",
+          "The Site is intended for users who are at least 13 years of age. All users who are minors in the jurisdiction in which they reside (generally under the age of 18) must have the permission of, and be directly supervised by, their parent or guardian to use the Site."
+        ]
+      },
+      {
+        "title": "INTELLECTUAL PROPERTY RIGHTS",
+        "paragraphs": [
+          "Unless otherwise indicated, the Site and the Services are our proprietary property and all source code, databases, functionality, software, website designs, audio, video, text, photographs, and graphics on the Site (collectively, the \"Content\") and the trademarks, service marks, and logos contained therein (the \"Marks\") are owned or controlled by us or licensed to us, and are protected by copyright and trademark laws and various other intellectual property rights and unfair competition laws of the United States, international copyright laws, and international conventions. The Content and the Marks are provided on the Site \"AS IS\" for your information and personal use only. Except as expressly provided in these Terms of Use, no part of the Site or the Services and no Content or Marks may be copied, reproduced, aggregated, republished, uploaded, posted, publicly displayed, encoded, translated, transmitted, distributed, sold, licensed, or otherwise exploited for any commercial purpose whatsoever, without our express prior written permission.",
+          "Provided that you are eligible to use the Site, you are granted a limited license to access and use the Site and to download or print a copy of any portion of the Content to which you have properly gained access solely for your personal, non-commercial use. We reserve all rights not expressly granted to you in and to the Site, the Content and the Marks."
+        ]
+      },
+      {
+        "title": "USER REPRESENTATIONS",
+        "paragraphs": [
+          "By using the Site or the Services, you represent and warrant that: (1) all registration information you submit will be true, accurate, current, and complete; (2) you will maintain the accuracy of such information and promptly update such registration information as necessary; (3) you have the legal capacity and you agree to comply with these Terms of Use; (4) you are not under the age of 13; (5) you are not a minor in the jurisdiction in which you reside, or if a minor, you have received parental permission to use the Site; (6) you will not access the Site or the Services through automated or non-human means, whether through a bot, script or otherwise; (7) you will not use the Site for any illegal or unauthorized purpose; and (8) your use of the Site or the Services will not violate any applicable law or regulation.",
+          "You may not use the Site or the Services for any illegal or unauthorized purpose nor may you, in the use of Services, violate any laws. Among unauthorized Services are the following: intoxicants of any sort; illegal drugs or other illegal products; alcoholic beverages; games of chance; and pornography or graphic adult content, images, or other adult products. Postings of any unauthorized products or content may result in immediate termination of your account and a lifetime ban from use of the Site.",
+          "We are a service provider and make no representations as to the safety, effectiveness, adequacy, accuracy, availability, prices, ratings, reviews, or legality of any of the information contained on the Site or the Marketplace Offerings displayed or offered through the Site. We do not endorse or recommend any Services and the Site is provided for informational and advertising purposes only."
+        ]
+      },
+      {
+        "title": "USER REGISTRATION",
+        "paragraphs": [
+          "You may be required to register with the Site in order to access the Services. You agree to keep your password confidential and will be responsible for all use of your account and password. We reserve the right to remove, reclaim, or change a username you select if we determine, in our sole discretion, that such username is inappropriate, obscene, or otherwise objectionable."
+        ]
+      },
+      {
+        "title": "SERVICES",
+        "paragraphs": [
+          "All Services are subject to availability, and we cannot guarantee that Marketplace Offerings will be in stock. Certain Services may be available exclusively online through the Site. Such Services may have limited quantities and are subject to return or exchange only according to our Return Policy. We reserve the right to limit the quantities of the Services offered or available on the Site. All descriptions or pricing of the Services are subject to change at any time without notice, at our sole discretion. We reserve the right to discontinue any Services at any time for any reason. We do not warrant that the quality of any of the Services purchased by you will meet your expectations or that any errors in the Site will be corrected."
+        ]
+      },
+      {
+        "title": "PURCHASES AND PAYMENT",
+        "paragraphs": [
+          "We accept the following forms of payment: Cash and Stripe (Credit Cards and Others). You agree to provide current, complete, and accurate purchase and account information for all purchases of the Services made via the Site. You further agree to promptly update account and payment information, including email address, payment method, and payment card expiration date, so that we can complete your transactions and contact you as needed. Sales tax will be added to the price of purchases as deemed required by us. We may change prices at any time. All payments shall be in U.S. dollars.",
+          "You agree to pay all charges at the prices then in effect for your purchases and any applicable shipping fees, and you authorize us to charge your chosen payment provider for any such amounts upon placing your order. If your order is subject to recurring charges, then you consent to our charging your payment method on a recurring basis without requiring your prior approval for each recurring charge, until such time as you cancel the applicable order. We reserve the right to correct any errors or mistakes in pricing, even if we have already requested or received payment. We reserve the right to refuse any order placed through the Site."
+        ]
+      },
+      {
+        "title": "REFUNDS POLICY",
+        "paragraphs": [
+          "We do not offer refunds for any of the Service/Services. All sales are final. No refunds will be issued."
+        ]
+      },
+      {
+        "title": "PROHIBITED ACTIVITIES",
+        "paragraphs": [
+          "You may not access or use the Site for any purpose other than that for which we make the Site available. The Site may not be used in connection with any commercial endeavors except those that are specifically endorsed or approved by us. As a user of the Site, you agree not to:"
+        ],
+        "bullets": [
+          "Systematically retrieve data or other content from the Site to create or compile, directly or indirectly, a collection, compilation, database, or directory without written permission from us.",
+          "Trick, defraud, or mislead us and other users, especially in any attempt to learn sensitive account information such as user passwords.",
+          "Attempt to sell, buy or trade any accounts or related data.",
+          "Circumvent, disable, or otherwise interfere with security-related features of the Site, including features that prevent or restrict the use or copying of any Content or enforce limitations on the use of the Site and/or the Content contained therein.",
+          "Disparage, tarnish, or otherwise harm, in our opinion, us and/or the Site.",
+          "Use any information obtained from the Site in order to harass, abuse, or harm another person. Make improper use of our support services or submit false reports of abuse or misconduct.",
+          "Use the Site in a manner inconsistent with any applicable laws or regulations.",
+          "Engage in unauthorized framing of or linking to the Site.",
+          "Upload or transmit viruses, Trojan horses, or other material, including excessive use of capital letters and spamming, that interferes with any party's uninterrupted use and enjoyment of the Site.",
+          "Engage in unauthorized automated use of the system, such as using scripts to send comments or messages, or using any data mining, robots, or similar data gathering and extraction tools.",
+          "Delete the copyright or other proprietary rights notice from any Content.",
+          "Attempt to impersonate another user or person or use the username of another user.",
+          "Upload or transmit any material that acts as a passive or active information collection or transmission mechanism, including spyware or passive collection mechanisms.",
+          "Interfere with, disrupt, or create an undue burden on the Site or the networks or services connected to the Site.",
+          "Harass, annoy, intimidate, or threaten any of our employees or agents engaged in providing any portion of the Services to you.",
+          "Attempt to bypass any measures of the Site designed to prevent or restrict access to the Site, or any portion of the Site.",
+          "Copy or adapt the Site's software, including but not limited to Flash, PHP, HTML, JavaScript, or other code.",
+          "Decipher, decompile, disassemble, or reverse engineer any of the software comprising or in any way making up a part of the Site.",
+          "Use a buying agent or purchasing agent to make purchases on the Site.",
+          "Make any unauthorized use of the Services, including collecting usernames and/or email addresses of users by electronic or other means for the purpose of sending unsolicited email.",
+          "Use the Services as part of any effort to compete with us or otherwise use the Site and/or the Content for any revenue-generating endeavor or commercial enterprise.",
+          "Break any site rules as found in the community guidelines.",
+          "Engage in any illegal activities."
+        ]
+      },
+      {
+        "title": "USER GENERATED CONTRIBUTIONS",
+        "paragraphs": [
+          "The Site may invite you to chat, contribute to, or participate in blogs, message boards, online forums, and other functionality, and may provide you with the opportunity to create, submit, post, display, transmit, perform, publish, distribute, or broadcast content and materials to us or on the Site, including but not limited to text, writings, video, audio, photographs, graphics, comments, suggestions, or personal information or other material (collectively, \"Contributions\"). Contributions may be viewable by other users of the Site and through third-party websites. Any Contributions you transmit may be treated as nonconfidential and non-proprietary. When you create or make available any Contributions, you thereby represent and warrant that:"
+        ],
+        "bullets": [
+          "The creation, distribution, transmission, public display, or performance, and the accessing, downloading, or copying of your Contributions do not and will not infringe the proprietary rights, including but not limited to the copyright, patent, trademark, trade secret, or moral rights of any third party.",
+          "You are the creator and owner of or have the necessary licenses, rights, consents, releases, and permissions to use and to authorize us, the Site, and other users of the Site to use your Contributions in any manner contemplated by the Site and these Terms of Use.",
+          "You have the written consent, release, and/or permission of each and every identifiable individual person in your Contributions to use the name or likeness of each and every such identifiable individual person to enable inclusion and use of your Contributions in any manner contemplated by the Site and these Terms of Use.",
+          "Your Contributions are not false, inaccurate, or misleading.",
+          "Your Contributions are not unsolicited or unauthorized advertising, promotional materials, pyramid schemes, chain letters, spam, mass mailings, or other forms of solicitation.",
+          "Your Contributions are not obscene, lewd, lascivious, filthy, violent, harassing, libelous, slanderous, or otherwise objectionable.",
+          "Your Contributions do not ridicule, mock, disparage, intimidate, or abuse anyone.",
+          "Your Contributions are not used to harass or threaten any other person and to promote violence against a specific person or class of people.",
+          "Your Contributions do not violate any applicable law, regulation, or rule.",
+          "Your Contributions do not violate the privacy or publicity rights of any third party.",
+          "Your Contributions do not violate any applicable law concerning child pornography, or otherwise intended to protect the health or well-being of minors.",
+          "Your Contributions do not include any offensive comments that are connected to race, national origin, gender, sexual preference, or physical handicap.",
+          "Your Contributions do not otherwise violate, or link to material that violates, any provision of these Terms of Use, or any applicable law or regulation."
+        ],
+        "paragraphsAfterBullets": [
+          "Any use of the Site or the Services in violation of the foregoing violates these Terms of Use and may result in, among other things, termination or suspension of your rights to use the Site and the Marketplace Offerings."
+        ]
+      },
+      {
+        "title": "CONTRIBUTION LICENSE",
+        "paragraphs": [
+          "By posting your Contributions to any part of the Site, you automatically grant, and you represent and warrant that you have the right to grant, to us an unrestricted, unlimited, irrevocable, perpetual, non-exclusive, transferable, royalty-free, fully-paid, worldwide right, and license to host, use, copy, reproduce, disclose, sell, resell, publish, broadcast, retitle, archive, store, cache, publicly perform, publicly display, reformat, translate, transmit, excerpt (in whole or in part), and distribute such Contributions for any purpose, commercial, advertising, or otherwise, and to prepare derivative works of, or incorporate into other works, such Contributions, and grant and authorize sublicenses of the foregoing.",
+          "We do not assert any ownership over your Contributions. You retain full ownership of all of your Contributions and any intellectual property rights or other proprietary rights associated with your Contributions. We are not liable for any statements or representations in your Contributions provided by you in any area on the Site. You are solely responsible for your Contributions to the Site and you expressly agree to exonerate us from any and all responsibility and to refrain from any legal action against us regarding your Contributions.",
+          "We have the right, in our sole and absolute discretion, (1) to edit, redact, or otherwise change any Contributions; (2) to re-categorize any Contributions to place them in more appropriate locations on the Site; and (3) to pre-screen or delete any Contributions at any time and for any reason, without notice. We have no obligation to monitor your Contributions."
+        ]
+      },
+      {
+        "title": "SUBMISSIONS",
+        "paragraphs": [
+          "You acknowledge and agree that any questions, comments, suggestions, ideas, feedback, or other information regarding the Site or the Services provided by you to us are non-confidential and shall become our sole property. We shall own exclusive rights, including all intellectual property rights, and shall be entitled to the unrestricted use and dissemination of these Submissions for any lawful purpose, commercial or otherwise, without acknowledgment or compensation to you. You hereby waive all moral rights to any such Submissions, and you hereby warrant that any such Submissions are original with you or that you have the right to submit such Submissions. You agree there shall be no recourse against us for any alleged or actual infringement or misappropriation of any proprietary right in your Submissions."
+        ]
+      },
+      {
+        "title": "SITE MANAGEMENT",
+        "paragraphs": [
+          "We reserve the right, but not the obligation, to: (1) monitor the Site for violations of these Terms of Use; (2) take appropriate legal action against anyone who, in our sole discretion, violates the law or these Terms of Use, including without limitation, reporting such user to law enforcement authorities; (3) in our sole discretion and without limitation, refuse, restrict access to, limit the availability of, or disable any of your Contributions or any portion thereof; (4) in our sole discretion and without limitation, notice, or liability, to remove from the Site or otherwise disable all files and content that are excessive in size or are in any way burdensome to our systems; and (5) otherwise manage the Site in a manner designed to protect our rights and property and to facilitate the proper functioning of the Site and the Services."
+        ]
+      },
+      {
+        "title": "PRIVACY POLICY",
+        "paragraphs": [
+          "We care about data privacy and security. Please review our Privacy Policy. By using the Site or the Services, you agree to be bound by our Privacy Policy, which is incorporated into these Terms of Use. Please be advised the Site and the Services are hosted in the United States. If you access the Site or the Services from any other region of the world with laws or other requirements governing personal data collection, use, or disclosure that differ from applicable laws in the United States, then through your continued use of the Site, you are transferring your data to the United States, and you agree to have your data transferred to and processed in the United States.",
+          "We do not knowingly accept, request, or solicit information from children or knowingly market to children. Therefore, in accordance with the U.S. Children's Online Privacy Protection Act, if we receive actual knowledge that anyone under the age of 13 has provided personal information to us without the requisite and verifiable parental consent, we will delete that information from the Site as quickly as is reasonably practical."
+        ]
+      },
+      {
+        "title": "COPYRIGHT INFRINGEMENTS",
+        "paragraphs": [
+          "We respect the intellectual property rights of others. If you believe that any material available on or through the Site infringes upon any copyright you own or control, please immediately notify us using the contact information provided below (a \"Notification\"). A copy of your Notification will be sent to the person who posted or stored the material addressed in the Notification. Please be advised that pursuant to applicable law you may be held liable for damages if you make material misrepresentations in a Notification. Thus, if you are not sure that material located on or linked to by the Site infringes your copyright, you should consider first contacting an attorney."
+        ]
+      },
+      {
+        "title": "TERM AND TERMINATION",
+        "paragraphs": [
+          "These Terms of Use shall remain in full force and effect while you use the Site. WITHOUT LIMITING ANY OTHER PROVISION OF THESE TERMS OF USE, WE RESERVE THE RIGHT TO, IN OUR SOLE DISCRETION AND WITHOUT NOTICE OR LIABILITY, DENY ACCESS TO AND USE OF THE SITE AND THE SERVICES (INCLUDING BLOCKING CERTAIN IP ADDRESSES), TO ANY PERSON FOR ANY REASON OR FOR NO REASON, INCLUDING WITHOUT LIMITATION FOR BREACH OF ANY REPRESENTATION, WARRANTY, OR COVENANT CONTAINED IN THESE TERMS OF USE OR OF ANY APPLICABLE LAW OR REGULATION. WE MAY TERMINATE YOUR USE OR PARTICIPATION IN THE SITE AND THE SERVICES OR DELETE YOUR ACCOUNT AND ANY CONTENT OR INFORMATION THAT YOU POSTED AT ANY TIME, WITHOUT WARNING, IN OUR SOLE DISCRETION.",
+          "If we terminate or suspend your account for any reason, you are prohibited from registering and creating a new account under your name, a fake or borrowed name, or the name of any third party, even if you may be acting on behalf of the third party. In addition to terminating or suspending your account, we reserve the right to take appropriate legal action, including without limitation pursuing civil, criminal, and injunctive redress."
+        ]
+      },
+      {
+        "title": "MODIFICATIONS AND INTERRUPTIONS",
+        "paragraphs": [
+          "We reserve the right to change, modify, or remove the contents of the Site at any time or for any reason at our sole discretion without notice. However, we have no obligation to update any information on our Site. We also reserve the right to modify or discontinue all or part of the Services without notice at any time. We will not be liable to you or any third party for any modification, price change, suspension, or discontinuance of the Site or the Services.",
+          "We cannot guarantee the Site and the Services will be available at all times. We may experience hardware, software, or other problems or need to perform maintenance related to the Site, resulting in interruptions, delays, or errors. You agree that we have no liability whatsoever for any loss, damage, or inconvenience caused by your inability to access or use the Site or the Services during any downtime or discontinuance of the Site or the Services."
+        ]
+      },
+      {
+        "title": "GOVERNING LAW",
+        "paragraphs": [
+          "These Terms of Use and your use of the Site and the Services are governed by and construed in accordance with the laws of the State of Florida applicable to agreements made and to be entirely performed within the State of Florida, without regard to its conflict of law principles."
+        ]
+      },
+      {
+        "title": "DISPUTE RESOLUTION",
+        "paragraphs": [
+          "Informal Negotiations: To expedite resolution and control the cost of any dispute, controversy, or claim related to these Terms of Use, the Parties agree to first attempt to negotiate any Dispute informally for at least 30 days before initiating arbitration. Such informal negotiations commence upon written notice from one Party to the other Party.",
+          "Binding Arbitration: If the Parties are unable to resolve a Dispute through informal negotiations, the Dispute will be finally and exclusively resolved through binding arbitration. YOU UNDERSTAND THAT WITHOUT THIS PROVISION, YOU WOULD HAVE THE RIGHT TO SUE IN COURT AND HAVE A JURY TRIAL. The arbitration shall be commenced and conducted under the Commercial Arbitration Rules of the American Arbitration Association (\"AAA\"). The arbitration may be conducted in person, through the submission of documents, by phone, or online. Except where otherwise required by the applicable AAA rules or applicable law, the arbitration will take place in Miami, Florida.",
+          "Restrictions: The Parties agree that any arbitration shall be limited to the Dispute between the Parties individually. To the full extent permitted by law, no arbitration shall be joined with any other proceeding, there is no right or authority for any Dispute to be arbitrated on a class-action basis, and there is no right or authority for any Dispute to be brought in a purported representative capacity on behalf of the general public or any other persons.",
+          "Exceptions: The Parties agree that the following Disputes are not subject to the above provisions: (a) any Disputes seeking to enforce or protect, or concerning the validity of, any of the intellectual property rights of a Party; (b) any Dispute related to, or arising from, allegations of theft, piracy, invasion of privacy, or unauthorized use; and (c) any claim for injunctive relief."
+        ]
+      },
+      {
+        "title": "CORRECTIONS",
+        "paragraphs": [
+          "There may be information on the Site that contains typographical errors, inaccuracies, or omissions that may relate to the Services, including descriptions, pricing, availability, and various other information. We reserve the right to correct any errors, inaccuracies, or omissions and to change or update the information on the Site at any time, without prior notice."
+        ]
+      },
+      {
+        "title": "DISCLAIMER",
+        "paragraphs": [
+          "THE SITE AND THE SERVICES ARE PROVIDED ON AN AS-IS AND AS-AVAILABLE BASIS. YOU AGREE THAT YOUR USE OF THE SITE AND OUR SERVICES WILL BE AT YOUR SOLE RISK. TO THE FULLEST EXTENT PERMITTED BY LAW, WE DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED, IN CONNECTION WITH THE SITE AND THE SERVICES AND YOUR USE THEREOF, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE MAKE NO WARRANTIES OR REPRESENTATIONS ABOUT THE ACCURACY OR COMPLETENESS OF THE SITE'S CONTENT OR THE CONTENT OF ANY WEBSITES LINKED TO THE SITE AND WE WILL ASSUME NO LIABILITY OR RESPONSIBILITY FOR ANY (1) ERRORS, MISTAKES, OR INACCURACIES OF CONTENT AND MATERIALS, (2) PERSONAL INJURY OR PROPERTY DAMAGE OF ANY NATURE WHATSOEVER RESULTING FROM YOUR ACCESS TO AND USE OF THE SITE, (3) ANY UNAUTHORIZED ACCESS TO OR USE OF OUR SECURE SERVERS AND/OR ANY AND ALL PERSONAL INFORMATION AND/OR FINANCIAL INFORMATION STORED THEREIN, (4) ANY INTERRUPTION OR CESSATION OF TRANSMISSION TO OR FROM THE SITE OR THE SERVICES, (5) ANY BUGS, VIRUSES, TROJAN HORSES, OR THE LIKE WHICH MAY BE TRANSMITTED TO OR THROUGH THE SITE BY ANY THIRD PARTY, AND/OR (6) ANY ERRORS OR OMISSIONS IN ANY CONTENT AND MATERIALS OR FOR ANY LOSS OR DAMAGE OF ANY KIND INCURRED AS A RESULT OF THE USE OF ANY CONTENT POSTED, TRANSMITTED, OR OTHERWISE MADE AVAILABLE VIA THE SITE."
+        ]
+      },
+      {
+        "title": "LIMITATIONS OF LIABILITY",
+        "paragraphs": [
+          "IN NO EVENT WILL WE OR OUR DIRECTORS, EMPLOYEES, OR AGENTS BE LIABLE TO YOU OR ANY THIRD PARTY FOR ANY DIRECT, INDIRECT, CONSEQUENTIAL, EXEMPLARY, INCIDENTAL, SPECIAL, OR PUNITIVE DAMAGES, INCLUDING LOST PROFIT, LOST REVENUE, LOSS OF DATA, OR OTHER DAMAGES ARISING FROM YOUR USE OF THE SITE OR THE SERVICES, EVEN IF WE HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. NOTWITHSTANDING ANYTHING TO THE CONTRARY CONTAINED HEREIN, OUR LIABILITY TO YOU FOR ANY CAUSE WHATSOEVER AND REGARDLESS OF THE FORM OF THE ACTION, WILL AT ALL TIMES BE LIMITED TO $0.00 USD. CERTAIN US STATE LAWS AND INTERNATIONAL LAWS DO NOT ALLOW LIMITATIONS ON IMPLIED WARRANTIES OR THE EXCLUSION OR LIMITATION OF CERTAIN DAMAGES. IF THESE LAWS APPLY TO YOU, SOME OR ALL OF THE ABOVE DISCLAIMERS OR LIMITATIONS MAY NOT APPLY TO YOU, AND YOU MAY HAVE ADDITIONAL RIGHTS."
+        ]
+      },
+      {
+        "title": "INDEMNIFICATION",
+        "paragraphs": [
+          "You agree to defend, indemnify, and hold us harmless, including our subsidiaries, affiliates, and all of our respective officers, agents, partners, and employees, from and against any loss, damage, liability, claim, or demand, including reasonable attorneys' fees and expenses, made by any third party due to or arising out of: (1) your Contributions; (2) use of the Services; (3) breach of these Terms of Use; (4) any breach of your representations and warranties set forth in these Terms of Use; (5) your violation of the rights of a third party, including but not limited to intellectual property rights; or (6) any overt harmful act toward any other user of the Site or the Services with whom you connected via the Site. Notwithstanding the foregoing, we reserve the right, at your expense, to assume the exclusive defense and control of any matter for which you are required to indemnify us, and you agree to cooperate, at your expense, with our defense of such claims."
+        ]
+      },
+      {
+        "title": "USER DATA",
+        "paragraphs": [
+          "We will maintain certain data that you transmit to the Site for the purpose of managing the performance of the Services, as well as data relating to your use of the Services. Although we perform regular routine backups of data, you are solely responsible for all data that you transmit or that relates to any activity you have undertaken using the Services. You agree that we shall have no liability to you for any loss or corruption of any such data, and you hereby waive any right of action against us arising from any such loss or corruption of such data."
+        ]
+      },
+      {
+        "title": "ELECTRONIC COMMUNICATIONS, TRANSACTIONS, AND SIGNATURES",
+        "paragraphs": [
+          "Visiting the Site, sending us emails, and completing online forms constitute electronic communications. You consent to receive electronic communications, and you agree that all agreements, notices, disclosures, and other communications we provide to you electronically, via email and on the Site, satisfy any legal requirement that such communication be in writing. YOU HEREBY AGREE TO THE USE OF ELECTRONIC SIGNATURES, CONTRACTS, ORDERS, AND OTHER RECORDS, AND TO ELECTRONIC DELIVERY OF NOTICES, POLICIES, AND RECORDS OF TRANSACTIONS INITIATED OR COMPLETED BY US OR VIA THE SITE. You hereby waive any rights or requirements under any statutes, regulations, rules, ordinances, or other laws in any jurisdiction which require an original signature or delivery or retention of non-electronic records, or to payments or the granting of credits by any means other than electronic means."
+        ]
+      },
+      {
+        "title": "CALIFORNIA USERS AND RESIDENTS",
+        "paragraphs": [
+          "If any complaint with us is not satisfactorily resolved, you can contact the Complaint Assistance Unit of the Division of Consumer Services of the California Department of Consumer Affairs in writing at 1625 North Market Blvd., Suite N 112, Sacramento, California 95834 or by telephone at (800) 952-5210 or (916) 445-1254."
+        ]
+      },
+      {
+        "title": "MISCELLANEOUS",
+        "paragraphs": [
+          "These Terms of Use and any policies or operating rules posted by us on the Site or in respect to the Services constitute the entire agreement and understanding between you and us. Our failure to exercise or enforce any right or provision of these Terms of Use shall not operate as a waiver of such right or provision. These Terms of Use operate to the fullest extent permissible by law. We may assign any or all of our rights and obligations to others at any time. We shall not be responsible or liable for any loss, damage, delay, or failure to act caused by any cause beyond our reasonable control.",
+          "If any provision or part of a provision of these Terms of Use is determined to be unlawful, void, or unenforceable, that provision or part of the provision is deemed severable from these Terms of Use and does not affect the validity and enforceability of any remaining provisions. There is no joint venture, partnership, employment or agency relationship created between you and us as a result of these Terms of Use or use of the Services. You agree that these Terms of Use will not be construed against us by virtue of having drafted them. You hereby waive any and all defenses you may have based on the electronic form of these Terms of Use and the lack of signing by the parties hereto to execute these Terms of Use."
+        ]
+      },
+      {
+        "title": "CONTACT US",
+        "paragraphs": [
+          "In order to resolve a complaint regarding the Site or the Services or to receive further information regarding use of the Site or the Services, please contact us using our contact page: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "privacyPolicy": {
+    "title": "Privacy Policy",
+    "updatedAt": "Updated at 01-22-2026.",
+    "sections": [
+      {
+        "title": "Privacy Policy",
+        "paragraphs": [
+          "Openspace.Social",
+          "(\"we,\" \"our,\" or \"us\") is committed to protecting your privacy. This Privacy Policy explains how your personal information is collected, used, and disclosed by Openspace.Social.",
+          "This Privacy Policy applies to our website and mobile application (iOS and Android): Openspacelive.com website and Openspace.Social the mobile application (iOS and Android), and its associated subdomains (collectively, our \"Service\"), alongside our application, Openspace.Social.",
+          "By accessing or using our Service, you signify that you have read, understood, and agree to our collection, storage, use, and disclosure of your personal information as described in this Privacy Policy and our Terms of Service."
+        ]
+      },
+      {
+        "title": "Definitions and key terms",
+        "bullets": [
+          "Cookie: small amount of data generated by a website and saved by your web browser. It is used to identify your browser, provide analytics, remember information about you such as your language preference or login information.",
+          "Company: when this policy mentions \"Company,\" \"we,\" \"us,\" or \"our,\" it refers to Openspace, that is responsible for your information under this Privacy Policy.",
+          "Country: where Openspace or the owners/founders of Openspace are based, in this case is Canada.",
+          "Customer: refers to the company, organization or person that signs up to use the Openspace Service to manage the relationships with your consumers or service users.",
+          "Device: any internet connected device such as a phone, tablet, computer or any other device that can be used to visit Openspace and use the services.",
+          "IP address: Every device connected to the Internet is assigned a number known as an Internet protocol (IP) address. These numbers are usually assigned in geographic blocks. An IP address can often be used to identify the location from which a device is connecting to the Internet.",
+          "Personnel: refers to those individuals who are employed by Openspace or are under contract to perform a service on behalf of one of the parties.",
+          "Personal Data: any information that directly, indirectly, or in connection with other information - including a personal identification number - allows for the identification or identifiability of a natural person.",
+          "Service: refers to the service provided by Openspace as described in the relative terms (if available) and on this platform.",
+          "Third-party service: refers to advertisers, contest sponsors, promotional and marketing partners, and others who provide our content or whose products or services we think may interest you.",
+          "Website: Openspace.Social site, which can be accessed via this URL: Openspacelive.com.",
+          "You: a person or entity that is registered with Openspace to use the Services."
+        ]
+      },
+      {
+        "title": "What Information Do We Collect?",
+        "paragraphs": [
+          "We collect information from you when you visit our service, register, place an order, subscribe to our newsletter, respond to a survey or fill out a form."
+        ],
+        "bullets": [
+          "Name / Username",
+          "Phone Numbers",
+          "Email Addresses",
+          "Mailing Addresses",
+          "Billing Addresses",
+          "Debit/credit card numbers",
+          "Age",
+          "Password"
+        ]
+      },
+      {
+        "title": "How Do We Use The Information We Collect?",
+        "bullets": [
+          "To personalize your experience (your information helps us to better respond to your individual needs).",
+          "To improve our service (we continually strive to improve our service offerings based on the information and feedback we receive from you).",
+          "To improve customer service (your information helps us to more effectively respond to your customer service requests and support needs).",
+          "To process transactions.",
+          "To administer a contest, promotion, survey or other site feature.",
+          "To send periodic emails."
+        ]
+      },
+      {
+        "title": "When do we use customer information from third parties?",
+        "paragraphs": [
+          "We receive some information from third parties when you contact us. For example, when you submit your email address to us to show interest in becoming our customer, we receive information from a third party that provides automated fraud detection services to us. We also occasionally collect information that is made publicly available on social media websites. You can control how much of your information social media websites make public by visiting these websites and changing your privacy settings."
+        ]
+      },
+      {
+        "title": "Do we share the information we collect with third parties?",
+        "paragraphs": [
+          "We may share the information that we collect, both personal and non-personal, with third parties such as advertisers, contest sponsors, promotional and marketing partners, and others who provide our content or whose products or services we think may interest you. We may also share it with our current and future affiliated companies and business partners, and if we are involved in a merger, asset sale or other business reorganization, we may also share or transfer your personal and non-personal information to our successors-in-interest.",
+          "We may engage trusted third party service providers to perform functions and provide services to us, such as hosting and maintaining our servers and our service, database storage and management, e-mail management, storage marketing, credit card processing, customer service and fulfilling orders for products and services you may purchase through our platform. We will likely share your personal information, and possibly some non-personal information, with these third parties to enable them to perform these services for us and for you.",
+          "We may share portions of our log file data, including IP addresses, for analytics purposes with third parties such as web analytics partners, application developers, and ad networks. If your IP address is shared, it may be used to estimate general location and other technographics such as connection speed, whether you have visited the service in a shared location, and type of device used to visit the service. They may aggregate information about our advertising and what you see on the service and then provide auditing, research and reporting for us and our advertisers.",
+          "We may also disclose personal and non-personal information about you to government or law enforcement officials or private parties as we, in our sole discretion, believe necessary or appropriate in order to respond to claims, legal process (including subpoenas), to protect our rights and interests or those of a third party, the safety of the public or any person, to prevent or stop any illegal, unethical, or legally actionable activity, or to otherwise comply with applicable court orders, laws, rules and regulations."
+        ]
+      },
+      {
+        "title": "Where and when is information collected from customers and end users?",
+        "paragraphs": [
+          "We will collect personal information that you submit to us. We may also receive personal information about you from third parties as described above."
+        ]
+      },
+      {
+        "title": "How Do We Use Your Email Address?",
+        "paragraphs": [
+          "By submitting your email address on this form, you agree to receive emails from us. You can cancel your participation in any of these email lists at any time by clicking on the opt-out link or other unsubscribe option that is included in the respective email. We only send emails to people who have authorized us to contact them, either directly, or through a third party. We do not send unsolicited commercial emails, because we hate spam as much as you do.",
+          "By submitting your email address, you also agree to allow us to use your email address for customer audience targeting on sites like Facebook, where we display custom advertising to specific people who have opted-in to receive communications from us. Email addresses submitted only through the order processing page will be used for the sole purpose of sending you information and updates pertaining to your order.",
+          "If, however, you have provided the same email to us through another method, we may use it for any of the purposes stated in this Policy. Note: If at any time you would like to unsubscribe from receiving future emails, we include detailed unsubscribe instructions at the bottom of each email."
+        ]
+      },
+      {
+        "title": "Could my information be transferred to other countries?",
+        "paragraphs": [
+          "We are incorporated in United States. Information collected via our website, through direct interactions with you, or from use of our help services may be transferred from time to time to our offices or personnel, or to third parties, located throughout the world, and may be viewed and hosted anywhere in the world, including countries that may not have laws of general applicability regulating the use and transfer of such data. To the fullest extent allowed by applicable law, by using any of the above, you voluntarily consent to the trans-border transfer and hosting of such information."
+        ]
+      },
+      {
+        "title": "Is the information collected through our service secure?",
+        "paragraphs": [
+          "We take precautions to protect the security of your information. We have physical, electronic, and managerial procedures to help safeguard, prevent unauthorized access, maintain data security, and correctly use your information. However, neither people nor security systems are foolproof, including encryption systems. In addition, people can commit intentional crimes, make mistakes or fail to follow policies. Therefore, while we use reasonable efforts to protect your personal information, we cannot guarantee its absolute security. If applicable law imposes any non-disclaimable duty to protect your personal information, you agree that intentional misconduct will be the standards used to measure our compliance with that duty."
+        ]
+      },
+      {
+        "title": "Can I update or correct my information?",
+        "paragraphs": [
+          "The rights you have to request updates or corrections to the information we collect depend on your relationship with us. Personnel may update or correct their information as detailed in our internal company employment policies.",
+          "Customers have the right to request the restriction of certain uses and disclosures of personally identifiable information. You can contact us in order to (1) update or correct your personally identifiable information, (2) change your preferences with respect to communications and other information you receive from us, or (3) delete the personally identifiable information maintained about you on our systems (subject to applicable law), by cancelling your account.",
+          "Such updates, corrections, changes and deletions will have no effect on other information that we maintain, or information that we have provided to third parties in accordance with this Privacy Policy prior to such update, correction, change or deletion. To protect your privacy and security, we may take reasonable steps (such as requesting a unique password) to verify your identity before granting you profile access or making corrections.",
+          "You are responsible for maintaining the secrecy of your unique password and account information at all times. You should be aware that it is not technologically possible to remove every record of the information you have provided to us from our system. The need to back up our systems to protect information from inadvertent loss means that a copy of your information may exist in a non-erasable form that may be difficult or impossible for us to locate.",
+          "Promptly after receiving your request, all personal information stored in databases we actively use, and other readily searchable media, will be updated, corrected, changed or deleted, as appropriate, as soon as and to the extent reasonably and technically practicable. If you are an end user and wish to update, delete, or receive any information we have about you, you may do so by contacting the organization of which you are a customer."
+        ]
+      },
+      {
+        "title": "Personnel",
+        "paragraphs": [
+          "If you are one of our workers or applicants, we collect information you voluntarily provide to us. We use the information collected for Human Resources purposes in order to administer benefits to workers and screen applicants.",
+          "You may contact us in order to (1) update or correct your information, (2) change your preferences with respect to communications and other information you receive from us, or (3) receive a record of the information we have relating to you. Such updates, corrections, changes and deletions will have no effect on other information that we maintain, or information that we have provided to third parties in accordance with this Privacy Policy prior to such update, correction, change or deletion."
+        ]
+      },
+      {
+        "title": "Sale of Business",
+        "paragraphs": [
+          "We reserve the right to transfer information to a third party in the event of a sale, merger or other transfer of all or substantially all of the assets of us or any of its Corporate Affiliates, or that portion of us or any of its Corporate Affiliates to which the Service relates, or in the event that we discontinue our business or file a petition or have filed against us a petition in bankruptcy, reorganization or similar proceeding, provided that the third party agrees to adhere to the terms of this Privacy Policy."
+        ]
+      },
+      {
+        "title": "Affiliates",
+        "paragraphs": [
+          "We may disclose information (including personal information) about you to our Corporate Affiliates. For purposes of this Privacy Policy, \"Corporate Affiliate\" means any person or entity which directly or indirectly controls, is controlled by or is under common control with us, whether by ownership or otherwise. Any information relating to you that we provide to our Corporate Affiliates will be treated by those Corporate Affiliates in accordance with the terms of this Privacy Policy."
+        ]
+      },
+      {
+        "title": "How Long Do We Keep Your Information?",
+        "paragraphs": [
+          "We keep your information only so long as we need it to provide service to you and fulfill the purposes described in this policy. This is also the case for anyone that we share your information with and who carries out services on our behalf. When we no longer need to use your information and there is no need for us to keep it to comply with our legal or regulatory obligations, we will either remove it from our systems or depersonalize it so that we cannot identify you."
+        ]
+      },
+      {
+        "title": "How Do We Protect Your Information?",
+        "paragraphs": [
+          "We implement a variety of security measures to maintain the safety of your personal information when you place an order or enter, submit, or access your personal information. We offer the use of a secure server. All supplied sensitive/credit information is transmitted via Secure Socket Layer (SSL) technology and then encrypted into our payment gateway providers database only to be accessible by those authorized with special access rights to such systems, and are required to keep the information confidential.",
+          "After a transaction, your private information (credit cards, social security numbers, financials, etc.) is never kept on file. We cannot, however, ensure or warrant the absolute security of any information you transmit to us or guarantee that your information on the Service may not be accessed, disclosed, altered, or destroyed by a breach of any of our physical, technical, or managerial safeguards."
+        ]
+      },
+      {
+        "title": "Governing Law",
+        "paragraphs": [
+          "The laws of United States, excluding its conflicts of law rules, shall govern this Agreement and your use of our service. Your use of our service may also be subject to other local, state, national, or international laws."
+        ]
+      },
+      {
+        "title": "Your Consent",
+        "paragraphs": [
+          "By using our service, registering an account, or making a purchase, you consent to this Privacy Policy."
+        ]
+      },
+      {
+        "title": "Links to Other Websites",
+        "paragraphs": [
+          "This Privacy Policy applies only to the Services. The Services may contain links to other websites not operated or controlled by Openspace.Social. We are not responsible for the content, accuracy or opinions expressed in such websites, and such websites are not investigated, monitored or checked for accuracy or completeness by us.",
+          "Please remember that when you use a link to go from the Services to another website, our Privacy Policy is no longer in effect. Your browsing and interaction on any other website, including those that have a link on our platform, is subject to that website's own rules and policies. Such third parties may use their own cookies or other methods to collect information about you."
+        ]
+      },
+      {
+        "title": "Cookies",
+        "paragraphs": [
+          "We use \"Cookies\" to identify the areas of our website that you have visited. A Cookie is a small piece of data stored on your computer or mobile device by your web browser. We use Cookies to personalize the Content that you see on our website. Most web browsers can be set to disable the use of Cookies. However, if you disable Cookies, you may not be able to access functionality on our website correctly or at all. We never place Personally Identifiable Information in Cookies."
+        ]
+      },
+      {
+        "title": "Advertising",
+        "paragraphs": [
+          "Advertising keeps us and many of the websites and services you use free of charge. We work hard to make sure that ads are safe, unobtrusive, and as relevant as possible."
+        ]
+      },
+      {
+        "title": "Cookies for Advertising",
+        "paragraphs": [
+          "Cookies help to make advertising more effective. Without cookies, it is really hard for an advertiser to reach its audience, or to know how many ads were shown and how many clicks they received."
+        ]
+      },
+      {
+        "title": "Payment Details",
+        "paragraphs": [
+          "In respect to any credit card or other payment processing details you have provided us, we commit that this confidential information will be stored in the most secure manner possible."
+        ]
+      },
+      {
+        "title": "Kids' Privacy",
+        "paragraphs": [
+          "We do not address anyone under the age of 13. We do not knowingly collect personally identifiable information from anyone under the age of 13. If you are a parent or guardian and you are aware that your child has provided us with Personal Data, please contact us. If we become aware that we have collected Personal Data from anyone under the age of 13 without verification of parental consent, we take steps to remove that information from our servers."
+        ]
+      },
+      {
+        "title": "Changes To Our Privacy Policy",
+        "paragraphs": [
+          "If we decide to change our privacy policy, we will post those changes on this page, and/or update the Privacy Policy modification date below."
+        ]
+      },
+      {
+        "title": "Third-Party Services",
+        "paragraphs": [
+          "We may display, include or make available third-party content (including data, information, applications and other products services) or provide links to third-party websites or services (\"Third-Party Services\").",
+          "You acknowledge and agree that we shall not be responsible for any Third-Party Services, including their accuracy, completeness, timeliness, validity, copyright compliance, legality, decency, quality or any other aspect thereof. We do not assume and shall not have any liability or responsibility to you or any other person or entity for any Third-Party Services.",
+          "Third-Party Services and links thereto are provided solely as a convenience to you and you access and use them entirely at your own risk and subject to such third parties' terms and conditions."
+        ]
+      },
+      {
+        "title": "Tracking Technologies",
+        "paragraphs": [
+          "Cookies"
+        ],
+        "bullets": [
+          "We use Cookies to enhance the performance and functionality of our service but are non-essential to their use. However, without these cookies, certain functionality like videos may become unavailable or you would be required to enter your login details every time you visit our service as we would not be able to remember that you had logged in previously.",
+          "Local Storage: Local Storage, sometimes known as DOM storage, provides web apps with methods and protocols for storing client-side data. Web storage supports persistent data storage, similar to cookies but with a greatly enhanced capacity and no information stored in the HTTP request header.",
+          "Sessions: We use \"Sessions\" to identify the areas of our website that you have visited. A Session is a small piece of data stored on your computer or mobile device by your web browser."
+        ]
+      },
+      {
+        "title": "Information about General Data Protection Regulation (GDPR)",
+        "paragraphs": [
+          "We may be collecting and using information from you if you are from the European Economic Area (EEA), and in this section of our Privacy Policy we explain how and why this data is collected, and how we maintain this data under protection from being replicated or used in the wrong way."
+        ]
+      },
+      {
+        "title": "What is GDPR?",
+        "paragraphs": [
+          "GDPR is an EU-wide privacy and data protection law that regulates how EU residents' data is protected by companies and enhances the control EU residents have over their personal data."
+        ]
+      },
+      {
+        "title": "What is personal data?",
+        "paragraphs": [
+          "Any data that relates to an identifiable or identified individual. GDPR covers a broad spectrum of information that could be used on its own, or in combination with other pieces of information, to identify a person. Personal data extends beyond a person's name or email address. Some examples include financial information, political opinions, genetic data, biometric data, IP addresses, physical address, sexual orientation, and ethnicity.",
+          "The Data Protection Principles include requirements such as:"
+        ],
+        "bullets": [
+          "Personal data collected must be processed in a fair, legal, and transparent way and should only be used in a way that a person would reasonably expect.",
+          "Personal data should only be collected to fulfill a specific purpose and it should only be used for that purpose. Organizations must specify why they need personal data when they collect it.",
+          "Personal data should be held no longer than necessary to fulfill its purpose.",
+          "People covered by the GDPR have the right to access their own personal data. They can also request a copy of their data, and that their data be updated, deleted, restricted, or moved to another organization."
+        ]
+      },
+      {
+        "title": "Why is GDPR important?",
+        "paragraphs": [
+          "GDPR adds new requirements regarding how companies should protect individuals' personal data that they collect and process. It also raises the stakes for compliance by increasing enforcement and imposing greater fines for breach. Beyond these facts, it is simply the right thing to do."
+        ]
+      },
+      {
+        "title": "Individual Data Subject's Rights - Data Access, Portability and Deletion",
+        "paragraphs": [
+          "We are committed to helping our customers meet the data subject rights requirements of GDPR. We process or store all personal data in fully vetted, DPA-compliant vendors. We store conversation and personal data for up to 6 years unless your account is deleted. In that case, we dispose of all data in accordance with our Terms of Service and Privacy Policy, but we will not hold it longer than 60 days.",
+          "If you are working with EU customers, you need to be able to provide them with the ability to access, update, retrieve and remove personal data. We have been set up as self-service from the start and have always given you access to your data and your customers' data. Our customer support team is here for you to answer any questions you might have about working with the API."
+        ]
+      },
+      {
+        "title": "California Residents",
+        "paragraphs": [
+          "The California Consumer Privacy Act (CCPA) requires us to disclose categories of Personal Information we collect and how we use it, the categories of sources from whom we collect Personal Information, and the third parties with whom we share it, which we have explained above.",
+          "We are also required to communicate information about rights California residents have under California law. You may exercise the following rights:"
+        ],
+        "bullets": [
+          "Right to Know and Access: You may submit a verifiable request for information regarding the categories of Personal Information we collect, use, or share; the purposes for which categories of Personal Information are collected or used by us; the categories of sources from which we collect Personal Information; and the specific pieces of Personal Information we have collected about you.",
+          "Right to Equal Service: We will not discriminate against you if you exercise your privacy rights.",
+          "Right to Delete: You may submit a verifiable request to close your account and we will delete Personal Information about you that we have collected.",
+          "Right to request that a business that sells a consumer's personal data not sell the consumer's personal data."
+        ],
+        "paragraphsAfterBullets": [
+          "If you make a request, we have one month to respond to you. If you would like to exercise any of these rights, please contact us.",
+          "We do not sell the Personal Information of our users."
+        ]
+      },
+      {
+        "title": "California Online Privacy Protection Act (CalOPPA)",
+        "paragraphs": [
+          "CalOPPA requires us to disclose categories of Personal Information we collect and how we use it, the categories of sources from whom we collect Personal Information, and the third parties with whom we share it, which we have explained above.",
+          "CalOPPA users have the following rights:"
+        ],
+        "bullets": [
+          "Right to Know and Access: You may submit a verifiable request for information regarding the categories of Personal Information we collect, use, or share; the purposes for which categories of Personal Information are collected or used by us; the categories of sources from which we collect Personal Information; and the specific pieces of Personal Information we have collected about you.",
+          "Right to Equal Service: We will not discriminate against you if you exercise your privacy rights.",
+          "Right to Delete: You may submit a verifiable request to close your account and we will delete Personal Information about you that we have collected.",
+          "Right to request that a business that sells a consumer's personal data not sell the consumer's personal data."
+        ],
+        "paragraphsAfterBullets": [
+          "If you make a request, we have one month to respond to you. If you would like to exercise any of these rights, please contact us.",
+          "We do not sell the Personal Information of our users."
+        ]
+      },
+      {
+        "title": "Contact Us",
+        "paragraphs": [
+          "Do not hesitate to contact us if you have any questions.",
+          "Via this link: https://www.openspacelive.com/contact-us/"
+        ]
+      }
+    ]
+  },
+  "guidelines": {
+    "title": "Openspace Community Guidelines",
+    "intro": "Welcome to Openspace. We are excited to have you as part of our vibrant and diverse community. To ensure a safe and enjoyable experience for everyone, we have established these Community Guidelines. Please take a moment to familiarize yourself with them, as violation of these guidelines may result in penalties, including account suspension or termination.",
+    "sections": [
+      {
+        "title": "Respect and Kindness",
+        "body": "Treat others as you would like to be treated. Respect the opinions, beliefs, and experiences of fellow users. Harassment, bullying, hate speech, discrimination, or any form of offensive behavior will not be tolerated."
+      },
+      {
+        "title": "Privacy and Personal Information",
+        "body": "Protect the privacy of others and yourself. Do not share personal information, such as addresses, phone numbers, or financial details, publicly on the platform. Be cautious while sharing any sensitive information in private messages."
+      },
+      {
+        "title": "Content Integrity",
+        "body": "Only post content that you have the right to share. Respect copyright and intellectual property laws. Do not engage in the dissemination of false information, misleading content, or spam."
+      },
+      {
+        "title": "Nudity, Violence, and Inappropriate Content",
+        "body": "Openspace is a platform for users above the age of 16. Any content featuring explicit nudity, violence, graphic or adult material, or that is otherwise inappropriate, will be removed."
+      },
+      {
+        "title": "Illegal Activities",
+        "body": "Do not use Openspace for promoting, organizing, or engaging in any illegal activities. This includes but is not limited to harassment, threats, drug trafficking, and any form of terrorism."
+      },
+      {
+        "title": "Impersonation",
+        "body": "Do not impersonate other individuals, organizations, or public figures. Be yourself and use your real identity on the platform."
+      },
+      {
+        "title": "Reporting and Moderation",
+        "body": "If you encounter content or behavior that violates our guidelines, please report it immediately. Our moderation team will review the reported content and take appropriate actions."
+      },
+      {
+        "title": "Minors",
+        "body": "Users under the age of 13 are not permitted on Openspace. If you are between 16 and 18 years old, please ensure you have parental consent before using the platform."
+      },
+      {
+        "title": "Multiple Accounts",
+        "body": "Creating multiple accounts for deceptive purposes or to evade penalties is not allowed."
+      },
+      {
+        "title": "Commercial Activities",
+        "body": "Avoid using Openspace solely for commercial purposes, such as excessive advertising or spamming. Use designated channels or features for promoting products and services."
+      },
+      {
+        "title": "Abuse of Features",
+        "body": "Do not misuse any features or functionalities of Openspace to cause inconvenience or harm to other users or the platform itself."
+      },
+      {
+        "title": "Resolving Conflicts",
+        "body": "If you have disagreements or conflicts with other users, try to resolve them in a respectful manner. If necessary, contact our support team for assistance."
+      },
+      {
+        "title": "Follow Local Laws and Regulations",
+        "body": "Abide by the laws and regulations of your country and jurisdiction while using Openspace."
+      }
+    ],
+    "outro": "Remember, Openspace is all about creating a positive and inclusive space for our community to connect, share, and learn. By following these guidelines, you contribute to building a thriving and respectful environment for everyone. Thank you for being a part of Openspace.",
+    "contact": "Catch any rule breakers or have any questions? Contact us at admin@openspacelive.com"
+  }
+}
