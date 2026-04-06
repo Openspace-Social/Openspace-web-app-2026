@@ -164,22 +164,22 @@ export const api = {
       body: JSON.stringify({ id_token: idToken }),
     }),
 
-  socialAuthApple: (idToken: string) =>
+  socialAuthApple: (idToken: string, allowCreate = false) =>
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/apple/', {
       method: 'POST',
-      body: JSON.stringify({ id_token: idToken }),
+      body: JSON.stringify({ id_token: idToken, allow_create: allowCreate }),
     }),
 
-  requestAppleSocialLinkCode: (idToken: string, email: string) =>
+  requestAppleSocialLinkCode: (idToken: string, username: string) =>
     request<unknown>('/api/auth/social/apple/link/request/', {
       method: 'POST',
-      body: JSON.stringify({ id_token: idToken, email }),
+      body: JSON.stringify({ id_token: idToken, username }),
     }).then(extractSuccessMessage),
 
-  confirmAppleSocialLink: (idToken: string, email: string, code: string) =>
+  confirmAppleSocialLink: (idToken: string, username: string, code: string) =>
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/apple/link/confirm/', {
       method: 'POST',
-      body: JSON.stringify({ id_token: idToken, email, code }),
+      body: JSON.stringify({ id_token: idToken, username, code }),
     }),
 
   getLinkedSocialIdentities: (token: string) =>

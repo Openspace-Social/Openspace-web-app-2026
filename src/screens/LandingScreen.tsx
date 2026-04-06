@@ -36,7 +36,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'shareProfile' | 'appleLinkEmail' | 'appleLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -58,7 +58,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [shareFlowToken, setShareFlowToken] = useState('');
   const [shareFlowUsername, setShareFlowUsername] = useState('');
   const [appleLinkIdToken, setAppleLinkIdToken] = useState('');
-  const [appleLinkEmail, setAppleLinkEmail] = useState('');
+  const [appleLinkUsername, setAppleLinkUsername] = useState('');
   const [appleLinkCode, setAppleLinkCode] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
@@ -280,7 +280,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setShareFlowToken('');
     setShareFlowUsername('');
     setAppleLinkIdToken('');
-    setAppleLinkEmail('');
+    setAppleLinkUsername('');
     setAppleLinkCode('');
   }
 
@@ -349,8 +349,8 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       setError('Apple session expired. Please try Apple sign in again.');
       return;
     }
-    if (!appleLinkEmail.trim()) {
-      setError('Email is required.');
+    if (!appleLinkUsername.trim()) {
+      setError('Username is required.');
       return;
     }
 
@@ -358,11 +358,35 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setNotice('');
     setLoading(true);
     try {
-      const message = await api.requestAppleSocialLinkCode(appleLinkIdToken, appleLinkEmail.trim());
+      const message = await api.requestAppleSocialLinkCode(appleLinkIdToken, appleLinkUsername.trim());
       setNotice(message || 'Verification code sent to your email.');
       setAuthMode('appleLinkVerify');
     } catch (e: any) {
       setError(e.message || 'Could not send verification code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAppleProceedOnboarding() {
+    if (!appleLinkIdToken) {
+      setError('Apple session expired. Please try Apple sign in again.');
+      return;
+    }
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const response = await api.socialAuthApple(appleLinkIdToken, true);
+      if (response.is_new_user) {
+        setSocialOnboardingToken(response.token);
+        setSocialUsername(response.username || '');
+        setAuthMode('socialUsername');
+      } else {
+        onLogin?.(response.token);
+      }
+    } catch (e: any) {
+      setError(e.message || t('auth.socialAuthFailed'));
     } finally {
       setLoading(false);
     }
@@ -373,8 +397,8 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       setError('Apple session expired. Please try Apple sign in again.');
       return;
     }
-    if (!appleLinkEmail.trim()) {
-      setError('Email is required.');
+    if (!appleLinkUsername.trim()) {
+      setError('Username is required.');
       return;
     }
     if (!appleLinkCode.trim()) {
@@ -388,7 +412,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     try {
       const response = await api.confirmAppleSocialLink(
         appleLinkIdToken,
-        appleLinkEmail.trim(),
+        appleLinkUsername.trim(),
         appleLinkCode.trim(),
       );
       onLogin?.(response.token);
@@ -609,16 +633,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       }
     } catch (e: any) {
       debugSocial('api-error', { provider, message: e?.message });
-      if (
-        provider === 'apple' &&
-        e instanceof ApiRequestError &&
-        e.code === 'apple_account_link_required'
-      ) {
+      if (provider === 'apple' && e instanceof ApiRequestError && e.code === 'apple_account_link_required') {
         setAppleLinkIdToken(idToken);
-        setAppleLinkEmail('');
+        setAppleLinkUsername('');
         setAppleLinkCode('');
-        setNotice('Looks like this Apple ID is not linked yet. Enter your existing account email to link it.');
-        setAuthMode('appleLinkEmail');
+        setNotice('We see you are using passkey, so we cannot automatically link existing accounts.');
+        setAuthMode('appleLinkAccount');
         return;
       }
       setError(e.message || t('auth.socialAuthFailed'));
@@ -712,7 +732,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   ? t('auth.verifyEmailTitle')
                   : authMode === 'socialUsername'
                     ? t('auth.socialUsernameTitle')
-                  : authMode === 'appleLinkEmail'
+                  : authMode === 'appleLinkAccount'
                     ? 'Link Existing Account'
                   : authMode === 'appleLinkVerify'
                     ? 'Verify Email Code'
@@ -1054,12 +1074,16 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 )}
               </TouchableOpacity>
             </>
-          ) : authMode === 'appleLinkEmail' ? (
+          ) : authMode === 'appleLinkAccount' ? (
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
-                Enter the email of your existing Openspace account. We'll send a verification code to link this Apple ID.
+                We see you are using passkey so we are unable to automatically link existing accounts.
+                {'\n\n'}
+                If you already have an account with us, enter your username and we will send a verification code to your email.
+                {'\n'}
+                If you do not already have an account with us, proceed to the next step.
               </Text>
-              <Text style={[styles.label, { color: c.textSecondary }]}>Email</Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>Username</Text>
               <TextInput
                 style={[
                   styles.input,
@@ -1069,13 +1093,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     color: c.textPrimary,
                   },
                 ]}
-                value={appleLinkEmail}
-                onChangeText={setAppleLinkEmail}
-                placeholder={t('auth.emailPlaceholder')}
+                value={appleLinkUsername}
+                onChangeText={setAppleLinkUsername}
+                placeholder={t('auth.usernamePlaceholder')}
                 placeholderTextColor={c.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
-                keyboardType="email-address"
                 returnKeyType="done"
                 onSubmitEditing={handleAppleLinkRequestCode}
               />
@@ -1095,11 +1118,21 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   <Text style={styles.buttonText}>Send Verification Code</Text>
                 )}
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
+                onPress={handleAppleProceedOnboarding}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
+                  Proceed To Next Step
+                </Text>
+              </TouchableOpacity>
             </>
           ) : authMode === 'appleLinkVerify' ? (
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
-                Enter the verification code sent to {appleLinkEmail || 'your email'}.
+                Enter the verification code sent to your account email for username {appleLinkUsername || ''}.
               </Text>
               <Text style={[styles.label, { color: c.textSecondary }]}>Verification Code</Text>
               <TextInput
@@ -1549,7 +1582,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </TouchableOpacity>
               </>
-            ) : authMode === 'appleLinkEmail' || authMode === 'appleLinkVerify' ? (
+            ) : authMode === 'appleLinkAccount' || authMode === 'appleLinkVerify' ? (
               <>
                 <Text style={[styles.footerText, { color: c.textMuted }]}>
                   Already linked or changed your mind?{' '}
