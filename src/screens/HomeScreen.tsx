@@ -119,7 +119,8 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
         params.set('redirect_uri', redirectUri);
         params.set('response_type', 'code id_token');
         params.set('response_mode', 'fragment');
-        params.set('scope', 'openid name email');
+        // Keep popup+hash flow for web: requesting name/email requires form_post.
+        params.set('scope', 'openid');
         params.set('nonce', nonce);
         params.set('state', state);
       }
