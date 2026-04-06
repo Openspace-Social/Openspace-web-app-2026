@@ -15,7 +15,7 @@ import {
 import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { api } from '../api/client';
+import { ApiRequestError, api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
 import AboutUsDrawer from '../components/AboutUsDrawer';
@@ -36,7 +36,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'shareProfile'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'shareProfile' | 'appleLinkEmail' | 'appleLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -57,6 +57,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [socialUsername, setSocialUsername] = useState('');
   const [shareFlowToken, setShareFlowToken] = useState('');
   const [shareFlowUsername, setShareFlowUsername] = useState('');
+  const [appleLinkIdToken, setAppleLinkIdToken] = useState('');
+  const [appleLinkEmail, setAppleLinkEmail] = useState('');
+  const [appleLinkCode, setAppleLinkCode] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
@@ -276,6 +279,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setSocialUsername('');
     setShareFlowToken('');
     setShareFlowUsername('');
+    setAppleLinkIdToken('');
+    setAppleLinkEmail('');
+    setAppleLinkCode('');
   }
 
   function switchToSignup() {
@@ -333,6 +339,61 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       setAuthMode('shareProfile');
     } catch (e: any) {
       setError(e.message || t('auth.errorSocialUsernameUpdateFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAppleLinkRequestCode() {
+    if (!appleLinkIdToken) {
+      setError('Apple session expired. Please try Apple sign in again.');
+      return;
+    }
+    if (!appleLinkEmail.trim()) {
+      setError('Email is required.');
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const message = await api.requestAppleSocialLinkCode(appleLinkIdToken, appleLinkEmail.trim());
+      setNotice(message || 'Verification code sent to your email.');
+      setAuthMode('appleLinkVerify');
+    } catch (e: any) {
+      setError(e.message || 'Could not send verification code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAppleLinkConfirm() {
+    if (!appleLinkIdToken) {
+      setError('Apple session expired. Please try Apple sign in again.');
+      return;
+    }
+    if (!appleLinkEmail.trim()) {
+      setError('Email is required.');
+      return;
+    }
+    if (!appleLinkCode.trim()) {
+      setError('Verification code is required.');
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const response = await api.confirmAppleSocialLink(
+        appleLinkIdToken,
+        appleLinkEmail.trim(),
+        appleLinkCode.trim(),
+      );
+      onLogin?.(response.token);
+    } catch (e: any) {
+      setError(e.message || 'Could not verify code and link account.');
     } finally {
       setLoading(false);
     }
@@ -527,8 +588,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setError('');
     setNotice('');
     setSocialLoadingProvider(provider);
+    let idToken = '';
     try {
-      const idToken = await openSocialPopup(provider);
+      idToken = await openSocialPopup(provider);
       debugSocial('api-submit', { provider, idTokenLength: idToken.length });
       const response = provider === 'google'
         ? await api.socialAuthGoogle(idToken)
@@ -547,6 +609,18 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       }
     } catch (e: any) {
       debugSocial('api-error', { provider, message: e?.message });
+      if (
+        provider === 'apple' &&
+        e instanceof ApiRequestError &&
+        e.code === 'apple_account_link_required'
+      ) {
+        setAppleLinkIdToken(idToken);
+        setAppleLinkEmail('');
+        setAppleLinkCode('');
+        setNotice('Looks like this Apple ID is not linked yet. Enter your existing account email to link it.');
+        setAuthMode('appleLinkEmail');
+        return;
+      }
       setError(e.message || t('auth.socialAuthFailed'));
     } finally {
       setSocialLoadingProvider(null);
@@ -638,6 +712,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   ? t('auth.verifyEmailTitle')
                   : authMode === 'socialUsername'
                     ? t('auth.socialUsernameTitle')
+                  : authMode === 'appleLinkEmail'
+                    ? 'Link Existing Account'
+                  : authMode === 'appleLinkVerify'
+                    ? 'Verify Email Code'
                   : authMode === 'shareProfile'
                     ? t('auth.shareProfileTitle')
                   : authMode === 'recoverPassword'
@@ -973,6 +1051,90 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.buttonText}>{t('auth.socialUsernameCta')}</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'appleLinkEmail' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                Enter the email of your existing Openspace account. We'll send a verification code to link this Apple ID.
+              </Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>Email</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: c.inputBackground,
+                    borderColor: c.inputBorder,
+                    color: c.textPrimary,
+                  },
+                ]}
+                value={appleLinkEmail}
+                onChangeText={setAppleLinkEmail}
+                placeholder={t('auth.emailPlaceholder')}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                returnKeyType="done"
+                onSubmitEditing={handleAppleLinkRequestCode}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  loading && styles.buttonDisabled,
+                ]}
+                onPress={handleAppleLinkRequestCode}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Send Verification Code</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'appleLinkVerify' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                Enter the verification code sent to {appleLinkEmail || 'your email'}.
+              </Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>Verification Code</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: c.inputBackground,
+                    borderColor: c.inputBorder,
+                    color: c.textPrimary,
+                  },
+                ]}
+                value={appleLinkCode}
+                onChangeText={setAppleLinkCode}
+                placeholder={t('auth.verificationCodePlaceholder')}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={handleAppleLinkConfirm}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  loading && styles.buttonDisabled,
+                ]}
+                onPress={handleAppleLinkConfirm}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Verify & Link Account</Text>
                 )}
               </TouchableOpacity>
             </>
@@ -1380,6 +1542,17 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               <>
                 <Text style={[styles.footerText, { color: c.textMuted }]}>
                   {t('auth.needDifferentAccountPrompt')}{' '}
+                </Text>
+                <TouchableOpacity onPress={switchToLogin}>
+                  <Text style={[styles.footerLink, { color: c.textLink }]}>
+                    {t('auth.backToSignIn')}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'appleLinkEmail' || authMode === 'appleLinkVerify' ? (
+              <>
+                <Text style={[styles.footerText, { color: c.textMuted }]}>
+                  Already linked or changed your mind?{' '}
                 </Text>
                 <TouchableOpacity onPress={switchToLogin}>
                   <Text style={[styles.footerLink, { color: c.textLink }]}>

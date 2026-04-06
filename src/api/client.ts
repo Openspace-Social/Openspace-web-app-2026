@@ -4,6 +4,25 @@ const API_BASE_URL = (
   'http://localhost:80'
 ).replace(/\/+$/, '');
 
+export class ApiRequestError extends Error {
+  status: number;
+  data: unknown;
+  code?: string;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.data = data;
+    if (data && typeof data === 'object') {
+      const maybeCode = (data as Record<string, unknown>).code;
+      if (typeof maybeCode === 'string' && maybeCode.trim()) {
+        this.code = maybeCode;
+      }
+    }
+  }
+}
+
 function extractErrorMessage(data: unknown): string {
   if (!data) return 'Request failed';
   if (typeof data === 'string') return data;
@@ -55,7 +74,7 @@ async function request<T>(
     : await response.text();
 
   if (!response.ok) {
-    throw new Error(extractErrorMessage(data));
+    throw new ApiRequestError(extractErrorMessage(data), response.status, data);
   }
 
   return data as T;
@@ -149,6 +168,18 @@ export const api = {
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/apple/', {
       method: 'POST',
       body: JSON.stringify({ id_token: idToken }),
+    }),
+
+  requestAppleSocialLinkCode: (idToken: string, email: string) =>
+    request<unknown>('/api/auth/social/apple/link/request/', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken, email }),
+    }).then(extractSuccessMessage),
+
+  confirmAppleSocialLink: (idToken: string, email: string, code: string) =>
+    request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/apple/link/confirm/', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken, email, code }),
     }),
 
   getLinkedSocialIdentities: (token: string) =>
