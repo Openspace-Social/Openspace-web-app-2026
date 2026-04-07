@@ -39,6 +39,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [activePost, setActivePost] = useState<FeedPost | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
   const [likedPostIds, setLikedPostIds] = useState<Record<number, boolean>>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
@@ -150,6 +151,14 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     if (!nextValue) return;
     setLocalComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), nextValue] }));
     setDraftComments((prev) => ({ ...prev, [postId]: '' }));
+  }
+
+  function openPostDetail(post: FeedPost) {
+    setActivePost(post);
+  }
+
+  function closePostDetail() {
+    setActivePost(null);
   }
 
   async function handleSharePost(post: FeedPost) {
@@ -756,6 +765,131 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
         </View>
       ) : null}
 
+      <Modal
+        visible={!!activePost}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={closePostDetail}
+      >
+        {activePost ? (
+          <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13' }]}>
+            <View style={styles.postDetailLeft}>
+              <TouchableOpacity
+                style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
+                onPress={closePostDetail}
+                activeOpacity={0.85}
+                accessibilityLabel={t('home.closeNoticeAction')}
+              >
+                <MaterialCommunityIcons name="close" size={22} color="#fff" />
+              </TouchableOpacity>
+
+              <View style={styles.postDetailMediaWrap}>
+                {activePost.media_thumbnail ? (
+                  <Image
+                    source={{ uri: activePost.media_thumbnail }}
+                    style={styles.postDetailMedia}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <View style={styles.postDetailMediaFallback}>
+                    <Text style={styles.postDetailMediaFallbackText}>{t('home.noMediaPreview')}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={[styles.postDetailRight, { backgroundColor: c.surface, borderLeftColor: c.border }]}>
+              <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
+                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                  <Text style={styles.feedAvatarLetter}>
+                    {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.feedHeaderMeta}>
+                  <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                    @{activePost.creator?.username || 'unknown'}
+                  </Text>
+                  <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                    {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
+                  </Text>
+                </View>
+              </View>
+
+              <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
+                {!!getPostText(activePost) && (
+                  <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
+                    {getPostText(activePost)}
+                  </Text>
+                )}
+
+                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
+                  <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                    {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
+                  </Text>
+                  <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                    {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
+                  </Text>
+                </View>
+
+                <View style={styles.feedActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
+                    onPress={() => toggleLike(activePost.id)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons
+                      name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
+                      size={16}
+                      color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
+                    />
+                    <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
+                      {t('home.reactAction')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    onPress={() => handleSharePost(activePost)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+                    <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
+                  {(localComments[activePost.id] || []).map((comment, index) => (
+                    <View
+                      key={`${activePost.id}-modal-comment-${index}`}
+                      style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                    >
+                      <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
+                    </View>
+                  ))}
+
+                  <View style={styles.commentComposer}>
+                    <TextInput
+                      style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                      value={draftComments[activePost.id] || ''}
+                      onChangeText={(value) => updateDraftComment(activePost.id, value)}
+                      placeholder={t('home.commentPlaceholder')}
+                      placeholderTextColor={c.placeholder}
+                    />
+                    <TouchableOpacity
+                      style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                      onPress={() => submitComment(activePost.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        ) : null}
+      </Modal>
+
       <ScrollView contentContainerStyle={styles.rootContent}>
         {loading ? (
           <ActivityIndicator color={c.primary} size="large" />
@@ -776,7 +910,12 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
               ) : (
                 <View style={styles.feedList}>
                   {feedPosts.map((post) => (
-                    <View key={`${activeFeed}-${post.id}`} style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                    <TouchableOpacity
+                      key={`${activeFeed}-${post.id}`}
+                      style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.96}
+                      onPress={() => openPostDetail(post)}
+                    >
                       <View style={styles.feedPostHeader}>
                         <View style={styles.feedHeaderLeft}>
                           <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
@@ -920,7 +1059,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
                           </View>
                         </View>
                       ) : null}
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -1184,6 +1323,80 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     padding: 32,
+  },
+  postDetailRoot: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  postDetailLeft: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    position: 'relative',
+  },
+  postDetailClose: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  postDetailMediaWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postDetailMedia: {
+    width: '100%',
+    height: '100%',
+    maxWidth: 980,
+    maxHeight: 900,
+  },
+  postDetailMediaFallback: {
+    width: '100%',
+    maxWidth: 760,
+    minHeight: 300,
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111827',
+  },
+  postDetailMediaFallbackText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  postDetailRight: {
+    width: 420,
+    maxWidth: '42%',
+    borderLeftWidth: 1,
+  },
+  postDetailHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  postDetailBody: {
+    flex: 1,
+  },
+  postDetailBodyContent: {
+    padding: 14,
+    gap: 12,
+  },
+  postDetailText: {
+    fontSize: 15,
+    lineHeight: 22,
   },
   welcomeNoticeWrap: {
     position: 'absolute',
