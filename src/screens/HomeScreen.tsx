@@ -6,10 +6,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { api, SocialIdentity, SocialProvider } from '../api/client';
+import { api, FeedPost, FeedType, SocialIdentity, SocialProvider } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 
 interface HomeScreenProps {
@@ -27,10 +28,20 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   const [linkedIdentities, setLinkedIdentities] = useState<SocialIdentity[]>([]);
   const [identitiesLoading, setIdentitiesLoading] = useState(true);
   const [providerLoading, setProviderLoading] = useState<SocialProvider | null>(null);
+  const [activeFeed, setActiveFeed] = useState<FeedType>('home');
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
   const providerOrder: SocialProvider[] = ['google', 'apple'];
+  const feedTabs: Array<{ key: FeedType; label: string }> = [
+    { key: 'home', label: 'Home' },
+    { key: 'trending', label: 'Trending' },
+    { key: 'public', label: 'Public' },
+    { key: 'explore', label: 'Explore' },
+  ];
 
   useEffect(() => {
     let active = true;
@@ -38,18 +49,23 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     Promise.all([
       api.getAuthenticatedUser(token),
       api.getLinkedSocialIdentities(token),
+      api.getFeed(token, 'home'),
     ])
-      .then(([authenticatedUser, identities]) => {
+      .then(([authenticatedUser, identities, homeFeed]) => {
         if (!active) return;
         setUser(authenticatedUser);
         setLinkedIdentities(identities);
+        setFeedPosts(homeFeed);
+        setFeedError('');
       })
       .catch(() => {
         if (!active) return;
+        setFeedError('Could not load feed right now.');
       })
       .finally(() => {
         if (!active) return;
         setLoading(false);
+        setFeedLoading(false);
         setIdentitiesLoading(false);
       });
 
@@ -57,6 +73,26 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
       active = false;
     };
   }, [token]);
+
+  async function loadFeed(feed: FeedType) {
+    setFeedLoading(true);
+    setFeedError('');
+    try {
+      const nextPosts = await api.getFeed(token, feed);
+      setFeedPosts(nextPosts);
+    } catch (e: any) {
+      setFeedPosts([]);
+      setFeedError(e.message || 'Could not load feed right now.');
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  async function handleSelectFeed(feed: FeedType) {
+    if (feed === activeFeed) return;
+    setActiveFeed(feed);
+    await loadFeed(feed);
+  }
 
   const welcomeText = user?.username
     ? t('home.welcomeBack', { name: user.username })
@@ -228,7 +264,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: c.background }]}>
+    <ScrollView style={[styles.root, { backgroundColor: c.background }]} contentContainerStyle={styles.rootContent}>
       {loading ? (
         <ActivityIndicator color={c.primary} size="large" />
       ) : (
@@ -240,8 +276,67 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
             {welcomeText}
           </Text>
           <Text style={[styles.subtitle, { color: c.textMuted }]}>
-            {t('home.comingSoon')}
+            Your timeline and discovery feeds
           </Text>
+
+          <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View style={styles.feedTabs}>
+              {feedTabs.map((tab) => {
+                const isActive = tab.key === activeFeed;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[
+                      styles.feedTab,
+                      {
+                        backgroundColor: isActive ? c.primary : c.inputBackground,
+                        borderColor: c.border,
+                      },
+                    ]}
+                    onPress={() => handleSelectFeed(tab.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.feedTabText, { color: isActive ? '#fff' : c.textPrimary }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {feedLoading ? (
+              <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+            ) : feedError ? (
+              <Text style={[styles.feedErrorText, { color: c.errorText }]}>{feedError}</Text>
+            ) : feedPosts.length === 0 ? (
+              <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
+                No posts in this feed yet.
+              </Text>
+            ) : (
+              <View style={styles.feedList}>
+                {feedPosts.map((post) => (
+                  <View key={`${activeFeed}-${post.id}`} style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                    <View style={styles.feedPostHeader}>
+                      <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                        @{post.creator?.username || 'unknown'}
+                      </Text>
+                      <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                        {post.created ? new Date(post.created).toLocaleString() : ''}
+                      </Text>
+                    </View>
+                    {post.community?.name ? (
+                      <Text style={[styles.feedCommunity, { color: c.textLink }]}>
+                        /c/{post.community.name}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.feedText, { color: c.textSecondary }]}>
+                      {post.text || '(No text content)'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
 
           {!!error && (
             <View
@@ -359,15 +454,17 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
           </TouchableOpacity>
         </>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  rootContent: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     padding: 32,
   },
   themeToggle: {
@@ -416,8 +513,74 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
-    maxWidth: 280,
+    maxWidth: 360,
     marginBottom: 18,
+  },
+  feedCard: {
+    width: '100%',
+    maxWidth: 760,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  feedTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  feedTab: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  feedTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  feedLoading: {
+    marginVertical: 16,
+  },
+  feedErrorText: {
+    fontSize: 14,
+    marginVertical: 10,
+  },
+  feedEmptyText: {
+    fontSize: 14,
+    marginVertical: 10,
+  },
+  feedList: {
+    gap: 10,
+  },
+  feedPostCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  feedPostHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  feedAuthor: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  feedDate: {
+    fontSize: 12,
+  },
+  feedCommunity: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  feedText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   errorBox: {
     width: '100%',

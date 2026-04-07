@@ -102,6 +102,42 @@ export type UpdateAuthenticatedUserPayload = {
   username?: string;
 };
 
+export type FeedType = 'home' | 'trending' | 'public' | 'explore';
+
+export type FeedPost = {
+  id: number;
+  uuid?: string;
+  text?: string;
+  created?: string;
+  creator?: {
+    username?: string;
+    name?: string;
+  };
+  community?: {
+    name?: string;
+    title?: string;
+  };
+  media_thumbnail?: string;
+};
+
+function normalizeFeedResponse(feed: FeedType, payload: unknown): FeedPost[] {
+  if (!Array.isArray(payload)) return [];
+
+  if (feed === 'home') {
+    return payload as FeedPost[];
+  }
+
+  return payload
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const wrapped = row as Record<string, unknown>;
+      const post = wrapped.post;
+      if (!post || typeof post !== 'object') return null;
+      return post as FeedPost;
+    })
+    .filter((post): post is FeedPost => !!post);
+}
+
 export const api = {
   register: (payload: RegisterPayload) =>
     request<AuthToken & { username: string }>('/api/auth/register/', {
@@ -200,4 +236,18 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ provider }),
     }).then(extractSuccessMessage),
+
+  getFeed: (token: string, feed: FeedType, count = 20) => {
+    const path = feed === 'home'
+      ? `/api/posts/?count=${count}`
+      : feed === 'trending'
+        ? `/api/posts/trending/new/?count=${count}`
+        : feed === 'public'
+          ? `/api/posts/top/?count=${count}`
+          : `/api/posts/top/?count=${count}&exclude_joined_communities=true`;
+
+    return request<unknown>(path, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((payload) => normalizeFeedResponse(feed, payload));
+  },
 };
