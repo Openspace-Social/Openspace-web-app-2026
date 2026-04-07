@@ -153,11 +153,19 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     setDraftComments((prev) => ({ ...prev, [postId]: '' }));
   }
 
+  function clearWebFocus() {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const activeEl = document.activeElement as HTMLElement | null;
+    activeEl?.blur?.();
+  }
+
   function openPostDetail(post: FeedPost) {
+    clearWebFocus();
     setActivePost(post);
   }
 
   function closePostDetail() {
+    clearWebFocus();
     setActivePost(null);
   }
 
