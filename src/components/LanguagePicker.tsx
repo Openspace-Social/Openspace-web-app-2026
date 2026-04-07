@@ -15,7 +15,11 @@ import { useTheme } from '../theme/ThemeContext';
 
 const LANGUAGE_KEY = '@openspace/language';
 
-export default function LanguagePicker() {
+interface LanguagePickerProps {
+  compact?: boolean;
+}
+
+export default function LanguagePicker({ compact = false }: LanguagePickerProps) {
   const { i18n, t } = useTranslation();
   const { theme } = useTheme();
   const c = theme.colors;
@@ -33,16 +37,24 @@ export default function LanguagePicker() {
     <>
       {/* Trigger button */}
       <TouchableOpacity
-        style={[styles.trigger, { borderColor: c.border, backgroundColor: c.surface }]}
+        style={[
+          styles.trigger,
+          compact && styles.triggerCompact,
+          { borderColor: c.border, backgroundColor: c.surface },
+        ]}
         onPress={() => setOpen(true)}
         activeOpacity={0.75}
         accessibilityLabel={t('language.current')}
       >
         <Text style={styles.triggerFlag}>{current.flag}</Text>
-        <Text style={[styles.triggerLabel, { color: c.textSecondary }]}>
-          {current.label}
-        </Text>
-        <Text style={[styles.chevron, { color: c.textMuted }]}>›</Text>
+        {!compact && (
+          <>
+            <Text style={[styles.triggerLabel, { color: c.textSecondary }]}>
+              {current.label}
+            </Text>
+            <Text style={[styles.chevron, { color: c.textMuted }]}>›</Text>
+          </>
+        )}
       </TouchableOpacity>
 
       {/* Modal */}
@@ -126,6 +138,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 6,
+  },
+  triggerCompact: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    gap: 0,
   },
   triggerFlag: {
     fontSize: 18,

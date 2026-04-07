@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   Platform,
   ScrollView,
   TextInput,
   Image,
   Linking,
+  Modal,
+  Animated,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { api, FeedPost, FeedType, SocialIdentity, SocialProvider } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import LanguagePicker from '../components/LanguagePicker';
 
 interface HomeScreenProps {
   token: string;
@@ -42,13 +46,22 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   const [localComments, setLocalComments] = useState<Record<number, string[]>>({});
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [tooltipTab, setTooltipTab] = useState<FeedType | null>(null);
+  const [showWelcomeNotice, setShowWelcomeNotice] = useState(false);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const welcomeTranslateX = useRef(new Animated.Value(-380)).current;
 
   const providerOrder: SocialProvider[] = ['google', 'apple'];
-  const feedTabs: Array<{ key: FeedType; label: string }> = [
-    { key: 'home', label: 'Home' },
-    { key: 'trending', label: 'Trending' },
-    { key: 'public', label: 'Public' },
-    { key: 'explore', label: 'Explore' },
+  const feedTabs: Array<{ key: FeedType; label: string; icon: string; tooltip: string }> = [
+    { key: 'home', label: t('home.feedTabHome'), icon: 'home-variant', tooltip: t('home.feedTabHomeTooltip') },
+    { key: 'trending', label: t('home.feedTabTrending'), icon: 'fire', tooltip: t('home.feedTabTrendingTooltip') },
+    { key: 'public', label: t('home.feedTabPublic'), icon: 'earth', tooltip: t('home.feedTabPublicTooltip') },
+    { key: 'explore', label: t('home.feedTabExplore'), icon: 'compass-outline', tooltip: t('home.feedTabExploreTooltip') },
   ];
 
   useEffect(() => {
@@ -68,7 +81,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
       })
       .catch(() => {
         if (!active) return;
-        setFeedError('Could not load feed right now.');
+        setFeedError(t('home.feedLoadError'));
       })
       .finally(() => {
         if (!active) return;
@@ -90,7 +103,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
       setFeedPosts(nextPosts);
     } catch (e: any) {
       setFeedPosts([]);
-      setFeedError(e.message || 'Could not load feed right now.');
+      setFeedError(e.message || t('home.feedLoadError'));
     } finally {
       setFeedLoading(false);
     }
@@ -146,14 +159,14 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
         if (navigator.share) {
-          await navigator.share({ title: 'Openspace post', url: shareUrl });
+          await navigator.share({ title: t('home.sharePostTitle'), url: shareUrl });
           return;
         }
         await navigator.clipboard.writeText(shareUrl);
-        setNotice('Post link copied to clipboard.');
+        setNotice(t('home.postLinkCopied'));
         return;
       } catch (e) {
-        setError('Could not share this post right now.');
+        setError(t('home.shareFailed'));
         return;
       }
     }
@@ -161,13 +174,13 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     try {
       await Linking.openURL(shareUrl);
     } catch (e) {
-      setError('Could not open share link.');
+      setError(t('home.openShareLinkFailed'));
     }
   }
 
   function openLink(url?: string) {
     if (!url) return;
-    Linking.openURL(url).catch(() => setError('Could not open link.'));
+    Linking.openURL(url).catch(() => setError(t('home.openLinkFailed')));
   }
 
   const welcomeText = user?.username
@@ -339,207 +352,579 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     }
   }
 
+  function clearTooltipTimer() {
+    if (!tooltipTimerRef.current) return;
+    clearTimeout(tooltipTimerRef.current);
+    tooltipTimerRef.current = null;
+  }
+
+  function startTooltipDelay(tabKey: FeedType) {
+    clearTooltipTimer();
+    tooltipTimerRef.current = setTimeout(() => {
+      setTooltipTab(tabKey);
+      tooltipTimerRef.current = null;
+    }, 2000);
+  }
+
+  useEffect(() => {
+    return () => clearTooltipTimer();
+  }, []);
+
+  function hideWelcomeNotice() {
+    if (welcomeTimerRef.current) {
+      clearTimeout(welcomeTimerRef.current);
+      welcomeTimerRef.current = null;
+    }
+    Animated.timing(welcomeTranslateX, {
+      toValue: -380,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setShowWelcomeNotice(false);
+    });
+  }
+
+  function showWelcomeNoticeWithAnimation() {
+    if (welcomeTimerRef.current) {
+      clearTimeout(welcomeTimerRef.current);
+      welcomeTimerRef.current = null;
+    }
+    setShowWelcomeNotice(true);
+    welcomeTranslateX.setValue(-380);
+    requestAnimationFrame(() => {
+      Animated.timing(welcomeTranslateX, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    });
+    welcomeTimerRef.current = setTimeout(() => {
+      hideWelcomeNotice();
+      welcomeTimerRef.current = null;
+    }, 7000);
+  }
+
+  useEffect(() => {
+    if (loading) return;
+    showWelcomeNoticeWithAnimation();
+
+    return () => {
+      if (welcomeTimerRef.current) {
+        clearTimeout(welcomeTimerRef.current);
+        welcomeTimerRef.current = null;
+      }
+    };
+  }, [loading, user?.username]);
+
+  function handleProfileComingSoon() {
+    setProfileMenuOpen(false);
+    setNotice(t('home.profileComingSoon'));
+  }
+
   return (
-    <ScrollView style={[styles.root, { backgroundColor: c.background }]} contentContainerStyle={styles.rootContent}>
-      {loading ? (
-        <ActivityIndicator color={c.primary} size="large" />
-      ) : (
-        <>
-          <View style={[styles.logoMark, { shadowColor: c.primaryShadow }]}>
-            <Text style={styles.logoLetter}>O</Text>
+    <View style={[styles.root, { backgroundColor: c.background }]}>
+      <View style={[styles.topNav, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
+        <View style={styles.topNavLeft}>
+          <View style={[styles.topNavBrand, { backgroundColor: c.primary }]}>
+            <Text style={styles.topNavBrandLetter}>O</Text>
           </View>
-          <Text style={[styles.welcome, { color: c.textPrimary }]}>
-            {welcomeText}
-          </Text>
-          <Text style={[styles.subtitle, { color: c.textMuted }]}>
-            Your timeline and discovery feeds
-          </Text>
+          <View style={[styles.topNavSearch, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+            <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t('home.searchPlaceholder')}
+              placeholderTextColor={c.placeholder}
+              style={[styles.topNavSearchInput, { color: c.textPrimary }]}
+            />
+          </View>
+        </View>
 
-          <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <View style={styles.feedTabs}>
-              {feedTabs.map((tab) => {
-                const isActive = tab.key === activeFeed;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[
-                      styles.feedTab,
-                      {
-                        backgroundColor: isActive ? c.primary : c.inputBackground,
-                        borderColor: c.border,
-                      },
-                    ]}
-                    onPress={() => handleSelectFeed(tab.key)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.feedTabText, { color: isActive ? '#fff' : c.textPrimary }]}>
-                      {tab.label}
+        <View style={styles.topNavCenter}>
+          {feedTabs.map((tab) => {
+            const isActive = tab.key === activeFeed;
+            return (
+              <View key={tab.key} style={styles.topNavFeedWrap}>
+                {tooltipTab === tab.key ? (
+                  <View style={[styles.feedTooltip, { backgroundColor: c.surface, borderColor: c.border }]}>
+                    <Text style={[styles.feedTooltipText, { color: c.textPrimary }]}>
+                      {tab.tooltip}
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {feedLoading ? (
-              <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
-            ) : feedError ? (
-              <Text style={[styles.feedErrorText, { color: c.errorText }]}>{feedError}</Text>
-            ) : feedPosts.length === 0 ? (
-              <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
-                No posts in this feed yet.
-              </Text>
-            ) : (
-              <View style={styles.feedList}>
-                {feedPosts.map((post) => (
-                  <View key={`${activeFeed}-${post.id}`} style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
-                    <View style={styles.feedPostHeader}>
-                      <View style={styles.feedHeaderLeft}>
-                        <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                          <Text style={styles.feedAvatarLetter}>
-                            {(post.creator?.username?.[0] || 'O').toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.feedHeaderMeta}>
-                          <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                            @{post.creator?.username || 'unknown'}
-                          </Text>
-                          <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                            {post.created ? new Date(post.created).toLocaleString() : ''}
-                          </Text>
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={[styles.followButtonText, { color: c.textLink }]}>Follow</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {post.community?.name ? (
-                      <Text style={[styles.feedCommunity, { color: c.textLink }]}>
-                        /c/{post.community.name}
-                      </Text>
-                    ) : null}
-
-                    {getPostText(post) ? (
-                      <View style={styles.feedTextWrap}>
-                        <Text style={[styles.feedText, { color: c.textSecondary }]}>
-                          {expandedPostIds[post.id]
-                            ? getPostText(post)
-                            : `${getPostText(post).slice(0, 240)}${getPostText(post).length > 240 ? '...' : ''}`}
-                        </Text>
-                        {getPostText(post).length > 240 ? (
-                          <TouchableOpacity onPress={() => toggleExpand(post.id)} activeOpacity={0.85}>
-                            <Text style={[styles.seeMoreText, { color: c.textLink }]}>
-                              {expandedPostIds[post.id] ? 'See less' : 'See more'}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    ) : null}
-
-                    {post.media_thumbnail ? (
-                      <Image source={{ uri: post.media_thumbnail }} style={styles.feedMedia} resizeMode="cover" />
-                    ) : (
-                      <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
-                        <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
-                          No media preview
-                        </Text>
-                      </View>
-                    )}
-
-                    <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-                      <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                        {getPostReactionCount(post)} reactions
-                      </Text>
-                      <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                        {getPostCommentsCount(post)} comments
-                      </Text>
-                    </View>
-
-                    <View style={styles.feedActionsRow}>
-                      <TouchableOpacity
-                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[post.id] ? c.surface : c.inputBackground }]}
-                        onPress={() => toggleLike(post.id)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialCommunityIcons
-                          name={likedPostIds[post.id] ? 'thumb-up' : 'thumb-up-outline'}
-                          size={16}
-                          color={likedPostIds[post.id] ? c.primary : c.textSecondary}
-                        />
-                        <Text style={[styles.feedActionText, { color: likedPostIds[post.id] ? c.primary : c.textSecondary }]}>
-                          React
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                        onPress={() => toggleCommentBox(post.id)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
-                        <Text style={[styles.feedActionText, { color: c.textSecondary }]}>Comment</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                        onPress={() => handleSharePost(post)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-                        <Text style={[styles.feedActionText, { color: c.textSecondary }]}>Share</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {post.links && post.links.length > 0 ? (
-                      <View style={styles.linkChipWrap}>
-                        {post.links.slice(0, 3).map((link, idx) => (
-                          <TouchableOpacity
-                            key={`${post.id}-link-${idx}`}
-                            style={[styles.linkChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                            onPress={() => openLink(link.url)}
-                            activeOpacity={0.85}
-                          >
-                            <MaterialCommunityIcons name="link-variant" size={14} color={c.textLink} />
-                            <Text style={[styles.linkChipText, { color: c.textSecondary }]}>
-                              {link.title || link.url || 'Open link'}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {commentBoxPostIds[post.id] ? (
-                      <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
-                        {(localComments[post.id] || []).map((comment, index) => (
-                          <View key={`${post.id}-comment-${index}`} style={[styles.commentBubble, { backgroundColor: c.surface, borderColor: c.border }]}>
-                            <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
-                          </View>
-                        ))}
-                        <View style={styles.commentComposer}>
-                          <TextInput
-                            style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                            value={draftComments[post.id] || ''}
-                            onChangeText={(value) => updateDraftComment(post.id, value)}
-                            placeholder="Write a comment..."
-                            placeholderTextColor={c.placeholder}
-                          />
-                          <TouchableOpacity
-                            style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                            onPress={() => submitComment(post.id)}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={styles.commentSendText}>Post</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ) : null}
                   </View>
-                ))}
+                ) : null}
+                <Pressable
+                  style={[styles.topNavFeedButton, { borderBottomColor: isActive ? c.primary : 'transparent' }]}
+                  onPress={() => {
+                    clearTooltipTimer();
+                    setTooltipTab(null);
+                    handleSelectFeed(tab.key);
+                  }}
+                  onHoverIn={() => startTooltipDelay(tab.key)}
+                  onHoverOut={() => {
+                    clearTooltipTimer();
+                    setTooltipTab((current) => (current === tab.key ? null : current));
+                  }}
+                  onLongPress={() => setTooltipTab(tab.key)}
+                  onPressOut={() => {
+                    clearTooltipTimer();
+                    setTooltipTab((current) => (current === tab.key ? null : current));
+                  }}
+                  accessibilityLabel={`${tab.label}. ${tab.tooltip}`}
+                >
+                  <MaterialCommunityIcons
+                    name={tab.icon as any}
+                    size={22}
+                    color={isActive ? c.primary : c.textMuted}
+                  />
+                </Pressable>
               </View>
-            )}
-          </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.topNavRight}>
+          <TouchableOpacity
+            style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+            onPress={() => setMenuOpen(true)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('language.select')}
+          >
+            <MaterialCommunityIcons name="grid" size={18} color={c.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
+            <MaterialCommunityIcons name="message-outline" size={18} color={c.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
+            <MaterialCommunityIcons name="bell-outline" size={18} color={c.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.topNavProfile, { backgroundColor: c.primary }]}
+            activeOpacity={0.85}
+            onPress={() => setProfileMenuOpen(true)}
+            accessibilityLabel={t('home.profileMenuTitle')}
+          >
+            <Text style={styles.topNavProfileText}>
+              {(user?.username?.[0] || 'U').toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuBackdrop}
+          activeOpacity={1}
+          onPress={() => setMenuOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.menuCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.menuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={toggleTheme}
+                activeOpacity={0.85}
+                accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+              >
+                <MaterialCommunityIcons
+                  name={isDark ? 'weather-sunny' : 'weather-night'}
+                  size={18}
+                  color={c.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: c.textSecondary }]}>
+                  {isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.menuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => {
+                  setMenuOpen(false);
+                  setLinkedAccountsOpen(true);
+                }}
+                activeOpacity={0.85}
+                accessibilityLabel={t('home.linkedAccountsTitle')}
+              >
+                <MaterialCommunityIcons
+                  name="account-cog-outline"
+                  size={18}
+                  color={c.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: c.textSecondary }]}>
+                  {t('home.linkedAccountsTitle')}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.menuLanguageWrap, { borderColor: c.border }]}>
+                <Text style={[styles.menuLabel, { color: c.textMuted }]}>
+                  {t('language.select')}
+                </Text>
+                <LanguagePicker />
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={linkedAccountsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLinkedAccountsOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuBackdrop}
+          activeOpacity={1}
+          onPress={() => setLinkedAccountsOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.linkedModalCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {t('home.linkedAccountsTitle')}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={() => setLinkedAccountsOpen(false)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.linkedSubtitle, { color: c.textMuted }]}>
+                {t('home.linkedAccountsDescription')}
+              </Text>
+
+              {identitiesLoading ? (
+                <ActivityIndicator color={c.primary} size="small" />
+              ) : (
+                <View style={styles.providerList}>
+                  {providerOrder.map((provider) => {
+                    const identity = getLinkedIdentity(provider);
+                    const isLoadingProvider = providerLoading === provider;
+                    const isLinked = !!identity;
+
+                    return (
+                      <View
+                        key={provider}
+                        style={[styles.providerRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      >
+                        <View style={styles.providerMeta}>
+                          <MaterialCommunityIcons
+                            name={getProviderIcon(provider)}
+                            size={18}
+                            color={provider === 'google' ? '#DB4437' : c.textPrimary}
+                          />
+                          <View style={styles.providerTextWrap}>
+                            <Text style={[styles.providerName, { color: c.textPrimary }]}>
+                              {getProviderName(provider)}
+                            </Text>
+                            <Text style={[styles.providerStatus, { color: c.textMuted }]}>
+                              {isLinked
+                                ? t('home.linkedStatusWithEmail', { email: identity?.email || t('home.linkedStatusConnected') })
+                                : t('home.linkedStatusNotConnected')}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.providerButton,
+                            {
+                              borderColor: c.border,
+                              backgroundColor: isLinked ? c.background : c.primary,
+                            },
+                          ]}
+                          onPress={() => (isLinked ? handleUnlinkProvider(provider) : handleLinkProvider(provider))}
+                          disabled={providerLoading !== null}
+                          activeOpacity={0.85}
+                        >
+                          {isLoadingProvider ? (
+                            <ActivityIndicator color={isLinked ? c.textPrimary : '#fff'} size="small" />
+                          ) : (
+                            <Text style={[styles.providerButtonText, { color: isLinked ? c.textPrimary : '#fff' }]}>
+                              {isLinked ? t('home.unlinkAction') : t('home.linkAction')}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={profileMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProfileMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.profileMenuBackdrop}
+          activeOpacity={1}
+          onPress={() => setProfileMenuOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.profileMenuCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <View style={[styles.profileMenuHeader, { borderBottomColor: c.border }]}>
+                <View style={[styles.profileMenuAvatar, { backgroundColor: c.primary }]}>
+                  <Text style={styles.topNavProfileText}>
+                    {(user?.username?.[0] || 'U').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.profileMenuHeaderText}>
+                  <Text style={[styles.profileMenuTitle, { color: c.textPrimary }]}>
+                    {user?.username || t('home.profileMenuTitle')}
+                  </Text>
+                  <Text style={[styles.profileMenuSubtitle, { color: c.textMuted }]}>
+                    {t('home.profileMenuTitle')}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.profileMenuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                activeOpacity={0.85}
+                onPress={handleProfileComingSoon}
+              >
+                <MaterialCommunityIcons name="account-outline" size={18} color={c.textSecondary} />
+                <Text style={[styles.profileMenuItemText, { color: c.textSecondary }]}>
+                  {t('home.viewProfileAction')}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.profileMenuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setProfileMenuOpen(false);
+                  onLogout();
+                }}
+              >
+                <MaterialCommunityIcons name="logout" size={18} color={c.logoutText} />
+                <Text style={[styles.profileMenuItemText, { color: c.logoutText }]}>
+                  {t('auth.signOut')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {showWelcomeNotice && !loading ? (
+        <View style={styles.welcomeNoticeWrap}>
+          <Animated.View
+            style={[
+              styles.welcomeNotice,
+              { backgroundColor: c.surface, borderColor: c.border, transform: [{ translateX: welcomeTranslateX }] },
+            ]}
+          >
+            <Text style={[styles.welcomeNoticeText, { color: c.textPrimary }]}>
+              {welcomeText}
+            </Text>
+            <TouchableOpacity
+              style={[styles.welcomeNoticeClose, { backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              onPress={hideWelcomeNotice}
+              accessibilityLabel={t('home.closeNoticeAction')}
+            >
+              <MaterialCommunityIcons name="close" size={16} color={c.textSecondary} />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      ) : null}
+
+      <ScrollView contentContainerStyle={styles.rootContent}>
+        {loading ? (
+          <ActivityIndicator color={c.primary} size="large" />
+        ) : (
+          <>
+            <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                {t('home.feedSubtitle')}
+              </Text>
+              {feedLoading ? (
+                <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+              ) : feedError ? (
+                <Text style={[styles.feedErrorText, { color: c.errorText }]}>{feedError}</Text>
+              ) : feedPosts.length === 0 ? (
+                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
+                  {t('home.feedEmpty')}
+                </Text>
+              ) : (
+                <View style={styles.feedList}>
+                  {feedPosts.map((post) => (
+                    <View key={`${activeFeed}-${post.id}`} style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                      <View style={styles.feedPostHeader}>
+                        <View style={styles.feedHeaderLeft}>
+                          <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                            <Text style={styles.feedAvatarLetter}>
+                              {(post.creator?.username?.[0] || 'O').toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.feedHeaderMeta}>
+                            <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                              @{post.creator?.username || 'unknown'}
+                            </Text>
+                            <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                              {post.created ? new Date(post.created).toLocaleString() : ''}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.followButtonText, { color: c.textLink }]}>{t('home.followAction')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {post.community?.name ? (
+                        <Text style={[styles.feedCommunity, { color: c.textLink }]}>
+                          /c/{post.community.name}
+                        </Text>
+                      ) : null}
+
+                      {getPostText(post) ? (
+                        <View style={styles.feedTextWrap}>
+                          <Text style={[styles.feedText, { color: c.textSecondary }]}>
+                            {expandedPostIds[post.id]
+                              ? getPostText(post)
+                              : `${getPostText(post).slice(0, 240)}${getPostText(post).length > 240 ? '...' : ''}`}
+                          </Text>
+                          {getPostText(post).length > 240 ? (
+                            <TouchableOpacity onPress={() => toggleExpand(post.id)} activeOpacity={0.85}>
+                              <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                                {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      ) : null}
+
+                      {post.media_thumbnail ? (
+                        <Image source={{ uri: post.media_thumbnail }} style={styles.feedMedia} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
+                          <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
+                            {t('home.noMediaPreview')}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
+                        <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                          {t('home.feedReactionsCount', { count: getPostReactionCount(post) })}
+                        </Text>
+                        <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                          {t('home.feedCommentsCount', { count: getPostCommentsCount(post) })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.feedActionsRow}>
+                        <TouchableOpacity
+                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[post.id] ? c.surface : c.inputBackground }]}
+                          onPress={() => toggleLike(post.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons
+                            name={likedPostIds[post.id] ? 'thumb-up' : 'thumb-up-outline'}
+                            size={16}
+                            color={likedPostIds[post.id] ? c.primary : c.textSecondary}
+                          />
+                          <Text style={[styles.feedActionText, { color: likedPostIds[post.id] ? c.primary : c.textSecondary }]}>
+                            {t('home.reactAction')}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => toggleCommentBox(post.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
+                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.commentAction')}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => handleSharePost(post)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {post.links && post.links.length > 0 ? (
+                        <View style={styles.linkChipWrap}>
+                          {post.links.slice(0, 3).map((link, idx) => (
+                            <TouchableOpacity
+                              key={`${post.id}-link-${idx}`}
+                              style={[styles.linkChip, { borderColor: c.border, backgroundColor: c.surface }]}
+                              onPress={() => openLink(link.url)}
+                              activeOpacity={0.85}
+                            >
+                              <MaterialCommunityIcons name="link-variant" size={14} color={c.textLink} />
+                              <Text style={[styles.linkChipText, { color: c.textSecondary }]}>
+                                {link.title || link.url || t('home.openLinkAction')}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {commentBoxPostIds[post.id] ? (
+                        <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
+                          {(localComments[post.id] || []).map((comment, index) => (
+                            <View key={`${post.id}-comment-${index}`} style={[styles.commentBubble, { backgroundColor: c.surface, borderColor: c.border }]}>
+                              <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
+                            </View>
+                          ))}
+                          <View style={styles.commentComposer}>
+                            <TextInput
+                              style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
+                              value={draftComments[post.id] || ''}
+                              onChangeText={(value) => updateDraftComment(post.id, value)}
+                              placeholder={t('home.commentPlaceholder')}
+                              placeholderTextColor={c.placeholder}
+                            />
+                            <TouchableOpacity
+                              style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                              onPress={() => submitComment(post.id)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
 
           {!!error && (
             <View
@@ -567,97 +952,10 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
             </View>
           )}
 
-          <View style={[styles.linkedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
-              {t('home.linkedAccountsTitle')}
-            </Text>
-            <Text style={[styles.linkedSubtitle, { color: c.textMuted }]}>
-              {t('home.linkedAccountsDescription')}
-            </Text>
-
-            {identitiesLoading ? (
-              <ActivityIndicator color={c.primary} size="small" />
-            ) : (
-              <View style={styles.providerList}>
-                {providerOrder.map((provider) => {
-                  const identity = getLinkedIdentity(provider);
-                  const isLoadingProvider = providerLoading === provider;
-                  const isLinked = !!identity;
-
-                  return (
-                    <View
-                      key={provider}
-                      style={[styles.providerRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    >
-                      <View style={styles.providerMeta}>
-                        <MaterialCommunityIcons
-                          name={getProviderIcon(provider)}
-                          size={18}
-                          color={provider === 'google' ? '#DB4437' : c.textPrimary}
-                        />
-                        <View style={styles.providerTextWrap}>
-                          <Text style={[styles.providerName, { color: c.textPrimary }]}>
-                            {getProviderName(provider)}
-                          </Text>
-                          <Text style={[styles.providerStatus, { color: c.textMuted }]}>
-                            {isLinked
-                              ? t('home.linkedStatusWithEmail', { email: identity?.email || t('home.linkedStatusConnected') })
-                              : t('home.linkedStatusNotConnected')}
-                          </Text>
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        style={[
-                          styles.providerButton,
-                          {
-                            borderColor: c.border,
-                            backgroundColor: isLinked ? c.background : c.primary,
-                          },
-                        ]}
-                        onPress={() => (isLinked ? handleUnlinkProvider(provider) : handleLinkProvider(provider))}
-                        disabled={providerLoading !== null}
-                        activeOpacity={0.85}
-                      >
-                        {isLoadingProvider ? (
-                          <ActivityIndicator color={isLinked ? c.textPrimary : '#fff'} size="small" />
-                        ) : (
-                          <Text style={[styles.providerButtonText, { color: isLinked ? c.textPrimary : '#fff' }]}>
-                            {isLinked ? t('home.unlinkAction') : t('home.linkAction')}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.logoutButton, { borderColor: c.logoutBorder }]}
-            onPress={onLogout}
-          >
-            <Text style={[styles.logoutText, { color: c.logoutText }]}>
-              {t('auth.signOut')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.surface }]}
-            onPress={toggleTheme}
-            activeOpacity={0.75}
-            accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-          >
-            <Text style={styles.themeToggleIcon}>
-              {isDark ? '☀️' : '🌙'}
-            </Text>
-            <Text style={[styles.themeToggleLabel, { color: c.textSecondary }]}>
-              {isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </ScrollView>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -665,27 +963,265 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  topNav: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    zIndex: 20,
+  },
+  topNavLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 200,
+  },
+  topNavBrand: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topNavBrandLetter: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  topNavSearch: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    maxWidth: 340,
+  },
+  topNavSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  topNavCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  topNavFeedButton: {
+    width: 72,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 3,
+  },
+  topNavFeedWrap: {
+    position: 'relative',
+  },
+  feedTooltip: {
+    position: 'absolute',
+    top: 52,
+    left: '50%',
+    transform: [{ translateX: -74 }],
+    width: 148,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    opacity: 1,
+    zIndex: 1000,
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  feedTooltipText: {
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  topNavRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flex: 1,
+    minWidth: 200,
+  },
+  topNavUtility: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topNavProfile: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topNavProfileText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: 70,
+    paddingRight: 16,
+  },
+  menuCard: {
+    width: 280,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  linkedModalCard: {
+    width: 520,
+    maxWidth: '92%',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  linkedModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  profileMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: 70,
+    paddingRight: 16,
+  },
+  profileMenuCard: {
+    width: 270,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  profileMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+  profileMenuAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileMenuHeaderText: {
+    flex: 1,
+  },
+  profileMenuTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileMenuSubtitle: {
+    fontSize: 12,
+  },
+  profileMenuItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileMenuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  menuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuLanguageWrap: {
+    borderTopWidth: 1,
+    paddingTop: 10,
+    gap: 8,
+  },
+  menuLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   rootContent: {
     alignItems: 'center',
     justifyContent: 'flex-start',
     padding: 32,
   },
-  themeToggle: {
+  welcomeNoticeWrap: {
+    position: 'absolute',
+    top: 86,
+    left: 16,
+    right: 16,
+    alignItems: 'flex-start',
+    zIndex: 1100,
+    pointerEvents: 'box-none',
+  },
+  welcomeNotice: {
+    width: 420,
+    maxWidth: '96%',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
-  themeToggleIcon: {
-    fontSize: 18,
-  },
-  themeToggleLabel: {
+  welcomeNoticeText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
+    flex: 1,
+  },
+  welcomeNoticeClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoMark: {
     width: 72,
@@ -1011,15 +1547,5 @@ const styles = StyleSheet.create({
   providerButtonText: {
     fontSize: 12,
     fontWeight: '700',
-  },
-  logoutButton: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-  },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '600',
   },
 });
