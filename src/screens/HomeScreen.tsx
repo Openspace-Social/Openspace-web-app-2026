@@ -824,7 +824,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
                       ) : null}
 
                       {post.media_thumbnail ? (
-                        <Image source={{ uri: post.media_thumbnail }} style={styles.feedMedia} resizeMode="cover" />
+                        <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
                       ) : (
                         <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
                           <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
