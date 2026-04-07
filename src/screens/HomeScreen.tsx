@@ -532,6 +532,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const profileRouteUsername = route.screen === 'profile'
     ? route.username
     : user?.username || '';
+  const hasActivePostMedia = !!activePost?.media_thumbnail;
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
@@ -875,101 +876,198 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onRequestClose={closePostDetail}
       >
         {activePost ? (
-          <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13' }]}>
-            <View style={styles.postDetailLeft}>
-              <TouchableOpacity
-                style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
-                onPress={closePostDetail}
-                activeOpacity={0.85}
-                accessibilityLabel={t('home.closeNoticeAction')}
-              >
-                <MaterialCommunityIcons name="close" size={22} color="#fff" />
-              </TouchableOpacity>
+          hasActivePostMedia ? (
+            <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13' }]}>
+              <View style={styles.postDetailLeft}>
+                <TouchableOpacity
+                  style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
+                  onPress={closePostDetail}
+                  activeOpacity={0.85}
+                  accessibilityLabel={t('home.closeNoticeAction')}
+                >
+                  <MaterialCommunityIcons name="close" size={22} color="#fff" />
+                </TouchableOpacity>
 
-              <View style={styles.postDetailMediaWrap}>
-                {activePost.media_thumbnail ? (
+                <View style={styles.postDetailMediaWrap}>
                   <Image
                     source={{ uri: activePost.media_thumbnail }}
                     style={styles.postDetailMedia}
                     resizeMode="contain"
                   />
-                ) : (
-                  <View style={styles.postDetailMediaFallback}>
-                    <Text style={styles.postDetailMediaFallbackText}>{t('home.noMediaPreview')}</Text>
+                </View>
+              </View>
+
+              <View style={[styles.postDetailRight, { backgroundColor: c.surface, borderLeftColor: c.border }]}>
+                <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
+                  <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                    <Text style={styles.feedAvatarLetter}>
+                      {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
+                    </Text>
                   </View>
-                )}
+                  <View style={styles.feedHeaderMeta}>
+                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                      @{activePost.creator?.username || 'unknown'}
+                    </Text>
+                    <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                      {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
+                    </Text>
+                  </View>
+                </View>
+
+                <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
+                  {!!getPostText(activePost) && (
+                    <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
+                      {getPostText(activePost)}
+                    </Text>
+                  )}
+
+                  <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
+                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                      {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
+                    </Text>
+                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                      {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
+                    </Text>
+                  </View>
+
+                  <View style={styles.feedActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
+                      onPress={() => toggleLike(activePost.id)}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons
+                        name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
+                        size={16}
+                        color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
+                      />
+                      <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
+                        {t('home.reactAction')}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      onPress={() => handleSharePost(activePost)}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
+                    {(localComments[activePost.id] || []).map((comment, index) => (
+                      <View
+                        key={`${activePost.id}-modal-comment-${index}`}
+                        style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                      >
+                        <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
+                      </View>
+                    ))}
+
+                    <View style={styles.commentComposer}>
+                      <TextInput
+                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                        value={draftComments[activePost.id] || ''}
+                        onChangeText={(value) => updateDraftComment(activePost.id, value)}
+                        placeholder={t('home.commentPlaceholder')}
+                        placeholderTextColor={c.placeholder}
+                      />
+                      <TouchableOpacity
+                        style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                        onPress={() => submitComment(activePost.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </ScrollView>
               </View>
             </View>
-
-            <View style={[styles.postDetailRight, { backgroundColor: c.surface, borderLeftColor: c.border }]}>
-              <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
-                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                  <Text style={styles.feedAvatarLetter}>
-                    {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.feedHeaderMeta}>
-                  <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                    @{activePost.creator?.username || 'unknown'}
-                  </Text>
-                  <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                    {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
-                  </Text>
-                </View>
-              </View>
-
-              <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
-                {!!getPostText(activePost) && (
-                  <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
-                    {getPostText(activePost)}
-                  </Text>
-                )}
-
-                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-                  <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                    {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
-                  </Text>
-                  <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                    {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
-                  </Text>
-                </View>
-
-                <View style={styles.feedActionsRow}>
-                  <TouchableOpacity
-                    style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
-                    onPress={() => toggleLike(activePost.id)}
-                    activeOpacity={0.85}
-                  >
-                    <MaterialCommunityIcons
-                      name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
-                      size={16}
-                      color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
-                    />
-                    <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
-                      {t('home.reactAction')}
+          ) : (
+            <View style={[styles.postDetailTextOnlyRoot, { backgroundColor: '#0B0E13' }]}>
+              <View style={[styles.postDetailTextOnlyCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}>
+                  <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                    <Text style={styles.feedAvatarLetter}>
+                      {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
                     </Text>
-                  </TouchableOpacity>
-
+                  </View>
+                  <View style={styles.feedHeaderMeta}>
+                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                      @{activePost.creator?.username || 'unknown'}
+                    </Text>
+                    <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                      {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
+                    </Text>
+                  </View>
                   <TouchableOpacity
-                    style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    onPress={() => handleSharePost(activePost)}
+                    style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                    onPress={closePostDetail}
                     activeOpacity={0.85}
+                    accessibilityLabel={t('home.closeNoticeAction')}
                   >
-                    <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-                    <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+                    <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
-                  {(localComments[activePost.id] || []).map((comment, index) => (
-                    <View
-                      key={`${activePost.id}-modal-comment-${index}`}
-                      style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
-                    >
-                      <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
-                    </View>
-                  ))}
+                <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
+                  {!!getPostText(activePost) && (
+                    <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
+                      {getPostText(activePost)}
+                    </Text>
+                  )}
 
+                  <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
+                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                      {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
+                    </Text>
+                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                      {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
+                    </Text>
+                  </View>
+
+                  <View style={styles.feedActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
+                      onPress={() => toggleLike(activePost.id)}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons
+                        name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
+                        size={16}
+                        color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
+                      />
+                      <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
+                        {t('home.reactAction')}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      onPress={() => handleSharePost(activePost)}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
+                    {(localComments[activePost.id] || []).map((comment, index) => (
+                      <View
+                        key={`${activePost.id}-modal-comment-${index}`}
+                        style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                      >
+                        <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
                   <View style={styles.commentComposer}>
                     <TextInput
                       style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
@@ -987,9 +1085,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                     </TouchableOpacity>
                   </View>
                 </View>
-              </ScrollView>
+              </View>
             </View>
-          </View>
+          )
         ) : (
           <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13', alignItems: 'center', justifyContent: 'center' }]}>
             <ActivityIndicator color="#fff" size="large" />
@@ -1096,13 +1194,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                         >
                           <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
                         </TouchableOpacity>
-                      ) : (
-                        <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
-                          <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
-                            {t('home.noMediaPreview')}
-                          </Text>
-                        </View>
-                      )}
+                      ) : null}
 
                       <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
                         <Text style={[styles.feedStatText, { color: c.textMuted }]}>
@@ -1466,6 +1558,32 @@ const styles = StyleSheet.create({
   postDetailRoot: {
     flex: 1,
     flexDirection: 'row',
+  },
+  postDetailTextOnlyRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  postDetailTextOnlyCard: {
+    width: '100%',
+    maxWidth: 980,
+    height: '92%',
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  postDetailTextOnlyHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  postDetailTextOnlyComposerWrap: {
+    borderTopWidth: 1,
+    padding: 12,
   },
   postDetailLeft: {
     flex: 1,
