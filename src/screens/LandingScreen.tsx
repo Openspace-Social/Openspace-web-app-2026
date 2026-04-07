@@ -637,7 +637,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
         setAppleLinkIdToken(idToken);
         setAppleLinkUsername('');
         setAppleLinkCode('');
-        setNotice('We see you are using passkey, so we cannot automatically link existing accounts.');
+        setNotice('');
         setAuthMode('appleLinkAccount');
         return;
       }
@@ -710,6 +710,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
             <Text style={[styles.tagline, { color: c.textSecondary }]}>
               {t('tagline')}
             </Text>
+            <View style={[styles.federationBadge, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+              <MaterialCommunityIcons name="lan-connect" size={17} color={c.textLink} />
+              <Text style={[styles.federationBadgeText, { color: c.textPrimary }]}>
+                Federated with the open social web
+              </Text>
+            </View>
           </View>
 
           {/* Login card */}
@@ -1083,7 +1089,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 {'\n'}
                 If you do not already have an account with us, proceed to the next step.
               </Text>
-              <Text style={[styles.label, { color: c.textSecondary }]}>Username</Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>Existing Username (Optional if this is a new account)</Text>
               <TextInput
                 style={[
                   styles.input,
@@ -1744,6 +1750,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 300,
     lineHeight: 24,
+  },
+  federationBadge: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  federationBadgeText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   card: {
     width: '100%',
