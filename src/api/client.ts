@@ -124,6 +124,14 @@ export type FeedPost = {
   links?: Array<{ url?: string; title?: string; image?: string }>;
 };
 
+function normalizeMaybeWrappedPost(payload: unknown): FeedPost | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const asObj = payload as Record<string, unknown>;
+  if (typeof asObj.id === 'number') return asObj as FeedPost;
+  if (asObj.post && typeof asObj.post === 'object') return asObj.post as FeedPost;
+  return null;
+}
+
 function normalizeFeedResponse(feed: FeedType, payload: unknown): FeedPost[] {
   if (!Array.isArray(payload)) return [];
 
@@ -254,4 +262,13 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }).then((payload) => normalizeFeedResponse(feed, payload));
   },
+
+  getPostById: (token: string, postId: number) =>
+    request<unknown>(`/api/posts/${postId}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((payload) => {
+      const normalized = normalizeMaybeWrappedPost(payload);
+      if (!normalized) throw new Error('Post not found');
+      return normalized;
+    }),
 };

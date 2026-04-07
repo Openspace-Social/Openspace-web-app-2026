@@ -1,5 +1,6 @@
 {
   "tagline": "Ditt rom for å koble til, dele og utforske.",
+  "federationBadge": "Føderert med det åpne sosiale nettet",
   "auth": {
     "signIn": "Logg inn",
     "signOut": "Logg ut",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Bytt til lyst tema",

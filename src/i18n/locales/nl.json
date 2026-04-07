@@ -1,5 +1,6 @@
 {
   "tagline": "Jouw ruimte om te verbinden, delen en verkennen.",
+  "federationBadge": "Gefedereerd met het open sociale web",
   "auth": {
     "signIn": "Inloggen",
     "signOut": "Uitloggen",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Overschakelen naar lichte modus",

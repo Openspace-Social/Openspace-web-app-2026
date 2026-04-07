@@ -1,5 +1,6 @@
 {
   "tagline": "Il tuo spazio per connetterti, condividere ed esplorare.",
+  "federationBadge": "Federato con il web sociale aperto",
   "auth": {
     "signIn": "Accedi",
     "signOut": "Esci",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Passa alla modalità chiara",

@@ -14,18 +14,25 @@ import {
   Modal,
   Animated,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { api, FeedPost, FeedType, SocialIdentity, SocialProvider } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
+import { AppRoute } from '../routing';
 
 interface HomeScreenProps {
   token: string;
   onLogout: () => void;
+  route: AppRoute;
+  onNavigate: (route: AppRoute, replace?: boolean) => void;
 }
 
-export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
+const WELCOME_NOTICE_KEY_PREFIX = '@openspace/welcome_notice_last_shown';
+const WELCOME_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
@@ -39,6 +46,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [postRouteLoading, setPostRouteLoading] = useState(false);
   const [activePost, setActivePost] = useState<FeedPost | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
   const [likedPostIds, setLikedPostIds] = useState<Record<number, boolean>>({});
@@ -96,6 +104,56 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (route.screen === 'feed') {
+      if (route.feed !== activeFeed) {
+        setActiveFeed(route.feed);
+        loadFeed(route.feed);
+      }
+      setActivePost(null);
+      return;
+    }
+
+    if (route.screen === 'post') {
+      if (activeFeed !== route.feed && route.feed) {
+        setActiveFeed(route.feed);
+        loadFeed(route.feed);
+      }
+      const postInCurrentFeed = feedPosts.find((post) => post.id === route.postId) || null;
+      setActivePost(postInCurrentFeed);
+      return;
+    }
+
+    setActivePost(null);
+  }, [route, feedPosts]);
+
+  useEffect(() => {
+    const routePostId = route.screen === 'post' ? route.postId : null;
+    if (!routePostId) return;
+    const postId = routePostId;
+    if (activePost?.id === routePostId) return;
+    let cancelled = false;
+
+    async function fetchRoutedPost() {
+      setPostRouteLoading(true);
+      try {
+        const fetchedPost = await api.getPostById(token, postId);
+        if (cancelled) return;
+        setActivePost(fetchedPost);
+      } catch {
+        if (cancelled) return;
+        setError(t('home.feedLoadError'));
+      } finally {
+        if (!cancelled) setPostRouteLoading(false);
+      }
+    }
+
+    fetchRoutedPost();
+    return () => {
+      cancelled = true;
+    };
+  }, [route, token, activePost?.id]);
+
   async function loadFeed(feed: FeedType) {
     setFeedLoading(true);
     setFeedError('');
@@ -111,9 +169,12 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   }
 
   async function handleSelectFeed(feed: FeedType) {
-    if (feed === activeFeed) return;
+    if (feed === activeFeed && route.screen === 'feed') return;
     setActiveFeed(feed);
-    await loadFeed(feed);
+    onNavigate({ screen: 'feed', feed });
+    if (feed !== activeFeed || route.screen !== 'feed') {
+      await loadFeed(feed);
+    }
   }
 
   function getPostText(post: FeedPost) {
@@ -162,11 +223,13 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   function openPostDetail(post: FeedPost) {
     clearWebFocus();
     setActivePost(post);
+    onNavigate({ screen: 'post', postId: post.id, feed: activeFeed });
   }
 
   function closePostDetail() {
     clearWebFocus();
     setActivePost(null);
+    onNavigate({ screen: 'feed', feed: activeFeed }, true);
   }
 
   async function handleSharePost(post: FeedPost) {
@@ -423,9 +486,36 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
 
   useEffect(() => {
     if (loading) return;
-    showWelcomeNoticeWithAnimation();
+    let cancelled = false;
+
+    async function maybeShowWelcomeNotice() {
+      const noticeKey = `${WELCOME_NOTICE_KEY_PREFIX}:${user?.username || 'anonymous'}`;
+      const now = Date.now();
+
+      try {
+        const stored = await AsyncStorage.getItem(noticeKey);
+        const lastShown = stored ? Number(stored) : 0;
+        const shouldShow =
+          !lastShown ||
+          Number.isNaN(lastShown) ||
+          now - lastShown >= WELCOME_NOTICE_COOLDOWN_MS;
+
+        if (!cancelled && shouldShow) {
+          showWelcomeNoticeWithAnimation();
+          await AsyncStorage.setItem(noticeKey, String(now));
+        }
+      } catch {
+        if (!cancelled) {
+          // Fail-open for UX if storage is unavailable.
+          showWelcomeNoticeWithAnimation();
+        }
+      }
+    }
+
+    maybeShowWelcomeNotice();
 
     return () => {
+      cancelled = true;
       if (welcomeTimerRef.current) {
         clearTimeout(welcomeTimerRef.current);
         welcomeTimerRef.current = null;
@@ -435,8 +525,13 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
 
   function handleProfileComingSoon() {
     setProfileMenuOpen(false);
-    setNotice(t('home.profileComingSoon'));
+    onNavigate({ screen: 'me' });
   }
+
+  const viewingProfileRoute = route.screen === 'profile' || route.screen === 'me';
+  const profileRouteUsername = route.screen === 'profile'
+    ? route.username
+    : user?.username || '';
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
@@ -774,7 +869,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
       ) : null}
 
       <Modal
-        visible={!!activePost}
+        visible={!!activePost || postRouteLoading}
         transparent={false}
         animationType="fade"
         onRequestClose={closePostDetail}
@@ -895,7 +990,11 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
               </ScrollView>
             </View>
           </View>
-        ) : null}
+        ) : (
+          <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13', alignItems: 'center', justifyContent: 'center' }]}>
+            <ActivityIndicator color="#fff" size="large" />
+          </View>
+        )}
       </Modal>
 
       <ScrollView contentContainerStyle={styles.rootContent}>
@@ -903,6 +1002,18 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
           <ActivityIndicator color={c.primary} size="large" />
         ) : (
           <>
+            {viewingProfileRoute ? (
+              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <Text style={[styles.welcome, { color: c.textPrimary }]}>
+                  @{profileRouteUsername}
+                </Text>
+                <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                  {route.screen === 'me' ? t('home.profileSelfRouteLabel') : t('home.profileRouteLabel')}
+                </Text>
+              </View>
+            ) : null}
+
+            {!viewingProfileRoute ? (
             <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
               <Text style={[styles.subtitle, { color: c.textMuted }]}>
                 {t('home.feedSubtitle')}
@@ -932,9 +1043,18 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
                             </Text>
                           </View>
                           <View style={styles.feedHeaderMeta}>
-                            <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                              @{post.creator?.username || 'unknown'}
-                            </Text>
+                            <TouchableOpacity
+                              activeOpacity={0.8}
+                              onPress={() => {
+                                const username = post.creator?.username;
+                                if (!username) return;
+                                onNavigate({ screen: 'profile', username });
+                              }}
+                            >
+                              <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                                @{post.creator?.username || 'unknown'}
+                              </Text>
+                            </TouchableOpacity>
                             <Text style={[styles.feedDate, { color: c.textMuted }]}>
                               {post.created ? new Date(post.created).toLocaleString() : ''}
                             </Text>
@@ -1072,6 +1192,7 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
                 </View>
               )}
             </View>
+            ) : null}
 
           {!!error && (
             <View

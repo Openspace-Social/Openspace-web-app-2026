@@ -1,5 +1,6 @@
 {
   "tagline": "Bağlanmak, paylaşmak ve keşfetmek için alanınız.",
+  "federationBadge": "Açık sosyal web ile federatif bağlantılı",
   "auth": {
     "signIn": "Giriş yap",
     "signOut": "Çıkış yap",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Açık moda geç",

@@ -1,5 +1,6 @@
 {
   "tagline": "Dein Raum zum Verbinden, Teilen und Entdecken.",
+  "federationBadge": "Föderiert mit dem offenen sozialen Web",
   "auth": {
     "signIn": "Anmelden",
     "signOut": "Abmelden",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Zum hellen Modus wechseln",

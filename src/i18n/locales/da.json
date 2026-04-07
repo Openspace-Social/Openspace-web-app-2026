@@ -1,5 +1,6 @@
 {
   "tagline": "Dit rum til at forbinde, dele og udforske.",
+  "federationBadge": "Forbundet med det åbne sociale web",
   "auth": {
     "signIn": "Log ind",
     "signOut": "Log ud",
@@ -158,7 +159,9 @@
     "closeNoticeAction": "Close notification",
     "profileMenuTitle": "Account",
     "viewProfileAction": "View profile",
-    "profileComingSoon": "Profile page coming soon."
+    "profileComingSoon": "Profile page coming soon.",
+    "profileRouteLabel": "Public profile view",
+    "profileSelfRouteLabel": "Your profile route"
   },
   "theme": {
     "switchToLight": "Skift til lyst tema",
