@@ -1029,11 +1029,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               ) : (
                 <View style={styles.feedList}>
                   {feedPosts.map((post) => (
-                    <TouchableOpacity
+                    <View
                       key={`${activeFeed}-${post.id}`}
                       style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      activeOpacity={0.96}
-                      onPress={() => openPostDetail(post)}
                     >
                       <View style={styles.feedPostHeader}>
                         <View style={styles.feedHeaderLeft}>
@@ -1091,7 +1089,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                       ) : null}
 
                       {post.media_thumbnail ? (
-                        <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => openPostDetail(post)}
+                          accessibilityLabel={t('home.openPostDetailAction')}
+                        >
+                          <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
+                        </TouchableOpacity>
                       ) : (
                         <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
                           <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
@@ -1127,7 +1131,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
                         <TouchableOpacity
                           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => toggleCommentBox(post.id)}
+                          onPress={() => {
+                            if (post.media_thumbnail) {
+                              toggleCommentBox(post.id);
+                            } else {
+                              openPostDetail(post);
+                            }
+                          }}
                           activeOpacity={0.85}
                         >
                           <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
@@ -1187,7 +1197,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                           </View>
                         </View>
                       ) : null}
-                    </TouchableOpacity>
+                    </View>
                   ))}
                 </View>
               )}

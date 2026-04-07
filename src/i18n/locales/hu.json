@@ -161,7 +161,8 @@
     "viewProfileAction": "View profile",
     "profileComingSoon": "Profile page coming soon.",
     "profileRouteLabel": "Public profile view",
-    "profileSelfRouteLabel": "Your profile route"
+    "profileSelfRouteLabel": "Your profile route",
+    "openPostDetailAction": "Open post details"
   },
   "theme": {
     "switchToLight": "Váltás világos módra",
