@@ -109,15 +109,19 @@ export type FeedPost = {
   uuid?: string;
   text?: string;
   created?: string;
+  comments_count?: number;
+  reactions_emoji_counts?: Array<{ count?: number }>;
   creator?: {
     username?: string;
     name?: string;
+    avatar?: string;
   };
   community?: {
     name?: string;
     title?: string;
   };
   media_thumbnail?: string;
+  links?: Array<{ url?: string; title?: string; image?: string }>;
 };
 
 function normalizeFeedResponse(feed: FeedType, payload: unknown): FeedPost[] {

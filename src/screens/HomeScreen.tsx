@@ -7,6 +7,9 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  TextInput,
+  Image,
+  Linking,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +35,11 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
+  const [likedPostIds, setLikedPostIds] = useState<Record<number, boolean>>({});
+  const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
+  const [draftComments, setDraftComments] = useState<Record<number, string>>({});
+  const [localComments, setLocalComments] = useState<Record<number, string[]>>({});
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
@@ -92,6 +100,74 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
     if (feed === activeFeed) return;
     setActiveFeed(feed);
     await loadFeed(feed);
+  }
+
+  function getPostText(post: FeedPost) {
+    return (post.text || '').trim();
+  }
+
+  function getPostReactionCount(post: FeedPost) {
+    const apiCount = (post.reactions_emoji_counts || []).reduce((sum, item) => sum + (item?.count || 0), 0);
+    const localLike = likedPostIds[post.id] ? 1 : 0;
+    return apiCount + localLike;
+  }
+
+  function getPostCommentsCount(post: FeedPost) {
+    return (post.comments_count || 0) + (localComments[post.id]?.length || 0);
+  }
+
+  function toggleExpand(postId: number) {
+    setExpandedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  }
+
+  function toggleLike(postId: number) {
+    setLikedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  }
+
+  function toggleCommentBox(postId: number) {
+    setCommentBoxPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  }
+
+  function updateDraftComment(postId: number, value: string) {
+    setDraftComments((prev) => ({ ...prev, [postId]: value }));
+  }
+
+  function submitComment(postId: number) {
+    const nextValue = (draftComments[postId] || '').trim();
+    if (!nextValue) return;
+    setLocalComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), nextValue] }));
+    setDraftComments((prev) => ({ ...prev, [postId]: '' }));
+  }
+
+  async function handleSharePost(post: FeedPost) {
+    const webBase = process.env.EXPO_PUBLIC_WEB_BASE_URL || 'https://staging.openspace.social';
+    const shareUrl = `${webBase.replace(/\/+$/, '')}/posts/${post.uuid || post.id}`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: 'Openspace post', url: shareUrl });
+          return;
+        }
+        await navigator.clipboard.writeText(shareUrl);
+        setNotice('Post link copied to clipboard.');
+        return;
+      } catch (e) {
+        setError('Could not share this post right now.');
+        return;
+      }
+    }
+
+    try {
+      await Linking.openURL(shareUrl);
+    } catch (e) {
+      setError('Could not open share link.');
+    }
+  }
+
+  function openLink(url?: string) {
+    if (!url) return;
+    Linking.openURL(url).catch(() => setError('Could not open link.'));
   }
 
   const welcomeText = user?.username
@@ -317,21 +393,148 @@ export default function HomeScreen({ token, onLogout }: HomeScreenProps) {
                 {feedPosts.map((post) => (
                   <View key={`${activeFeed}-${post.id}`} style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
                     <View style={styles.feedPostHeader}>
-                      <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                        @{post.creator?.username || 'unknown'}
-                      </Text>
-                      <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                        {post.created ? new Date(post.created).toLocaleString() : ''}
-                      </Text>
+                      <View style={styles.feedHeaderLeft}>
+                        <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                          <Text style={styles.feedAvatarLetter}>
+                            {(post.creator?.username?.[0] || 'O').toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.feedHeaderMeta}>
+                          <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
+                            @{post.creator?.username || 'unknown'}
+                          </Text>
+                          <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                            {post.created ? new Date(post.created).toLocaleString() : ''}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.followButtonText, { color: c.textLink }]}>Follow</Text>
+                      </TouchableOpacity>
                     </View>
                     {post.community?.name ? (
                       <Text style={[styles.feedCommunity, { color: c.textLink }]}>
                         /c/{post.community.name}
                       </Text>
                     ) : null}
-                    <Text style={[styles.feedText, { color: c.textSecondary }]}>
-                      {post.text || '(No text content)'}
-                    </Text>
+
+                    {getPostText(post) ? (
+                      <View style={styles.feedTextWrap}>
+                        <Text style={[styles.feedText, { color: c.textSecondary }]}>
+                          {expandedPostIds[post.id]
+                            ? getPostText(post)
+                            : `${getPostText(post).slice(0, 240)}${getPostText(post).length > 240 ? '...' : ''}`}
+                        </Text>
+                        {getPostText(post).length > 240 ? (
+                          <TouchableOpacity onPress={() => toggleExpand(post.id)} activeOpacity={0.85}>
+                            <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                              {expandedPostIds[post.id] ? 'See less' : 'See more'}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {post.media_thumbnail ? (
+                      <Image source={{ uri: post.media_thumbnail }} style={styles.feedMedia} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.feedMediaFallback, { borderColor: c.border, backgroundColor: c.surface }]}>
+                        <Text style={[styles.feedMediaFallbackText, { color: c.textMuted }]}>
+                          No media preview
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
+                      <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                        {getPostReactionCount(post)} reactions
+                      </Text>
+                      <Text style={[styles.feedStatText, { color: c.textMuted }]}>
+                        {getPostCommentsCount(post)} comments
+                      </Text>
+                    </View>
+
+                    <View style={styles.feedActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[post.id] ? c.surface : c.inputBackground }]}
+                        onPress={() => toggleLike(post.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons
+                          name={likedPostIds[post.id] ? 'thumb-up' : 'thumb-up-outline'}
+                          size={16}
+                          color={likedPostIds[post.id] ? c.primary : c.textSecondary}
+                        />
+                        <Text style={[styles.feedActionText, { color: likedPostIds[post.id] ? c.primary : c.textSecondary }]}>
+                          React
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        onPress={() => toggleCommentBox(post.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
+                        <Text style={[styles.feedActionText, { color: c.textSecondary }]}>Comment</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        onPress={() => handleSharePost(post)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+                        <Text style={[styles.feedActionText, { color: c.textSecondary }]}>Share</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {post.links && post.links.length > 0 ? (
+                      <View style={styles.linkChipWrap}>
+                        {post.links.slice(0, 3).map((link, idx) => (
+                          <TouchableOpacity
+                            key={`${post.id}-link-${idx}`}
+                            style={[styles.linkChip, { borderColor: c.border, backgroundColor: c.surface }]}
+                            onPress={() => openLink(link.url)}
+                            activeOpacity={0.85}
+                          >
+                            <MaterialCommunityIcons name="link-variant" size={14} color={c.textLink} />
+                            <Text style={[styles.linkChipText, { color: c.textSecondary }]}>
+                              {link.title || link.url || 'Open link'}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {commentBoxPostIds[post.id] ? (
+                      <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
+                        {(localComments[post.id] || []).map((comment, index) => (
+                          <View key={`${post.id}-comment-${index}`} style={[styles.commentBubble, { backgroundColor: c.surface, borderColor: c.border }]}>
+                            <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
+                          </View>
+                        ))}
+                        <View style={styles.commentComposer}>
+                          <TextInput
+                            style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
+                            value={draftComments[post.id] || ''}
+                            onChangeText={(value) => updateDraftComment(post.id, value)}
+                            placeholder="Write a comment..."
+                            placeholderTextColor={c.placeholder}
+                          />
+                          <TouchableOpacity
+                            style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                            onPress={() => submitComment(post.id)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.commentSendText}>Post</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -559,6 +762,37 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+  feedHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  feedHeaderMeta: {
+    flex: 1,
+  },
+  feedAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedAvatarLetter: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  followButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  followButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   feedPostHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -581,6 +815,120 @@ const styles = StyleSheet.create({
   feedText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  feedTextWrap: {
+    marginBottom: 10,
+  },
+  seeMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  feedMedia: {
+    width: '100%',
+    height: 360,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  feedMediaFallback: {
+    width: '100%',
+    minHeight: 120,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  feedMediaFallbackText: {
+    fontSize: 13,
+  },
+  feedStatsRow: {
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  feedStatText: {
+    fontSize: 12,
+  },
+  feedActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  feedActionButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  feedActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  linkChipWrap: {
+    marginTop: 10,
+    gap: 8,
+  },
+  linkChip: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  linkChipText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  commentsBox: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    paddingTop: 10,
+    gap: 8,
+  },
+  commentBubble: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  commentBubbleText: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  commentComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 13,
+  },
+  commentSendButton: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  commentSendText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   errorBox: {
     width: '100%',
