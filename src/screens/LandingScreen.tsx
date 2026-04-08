@@ -713,7 +713,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
             <View style={[styles.federationBadge, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
               <MaterialCommunityIcons name="lan-connect" size={17} color={c.textLink} />
               <Text style={[styles.federationBadgeText, { color: c.textPrimary }]}>
-                Federated with the open social web
+                {t('federationBadge')}
               </Text>
             </View>
           </View>

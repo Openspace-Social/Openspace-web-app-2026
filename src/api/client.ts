@@ -110,11 +110,27 @@ export type FeedPost = {
   text?: string;
   created?: string;
   comments_count?: number;
-  reactions_emoji_counts?: Array<{ count?: number }>;
+  reactions_emoji_counts?: Array<{
+    count?: number;
+    emoji?: {
+      id?: number;
+      keyword?: string;
+      image?: string;
+    };
+  }>;
+  reaction?: {
+    id?: number;
+    emoji?: {
+      id?: number;
+      keyword?: string;
+      image?: string;
+    };
+  };
   creator?: {
     username?: string;
     name?: string;
     avatar?: string;
+    is_following?: boolean;
   };
   community?: {
     name?: string;
@@ -122,6 +138,49 @@ export type FeedPost = {
   };
   media_thumbnail?: string;
   links?: Array<{ url?: string; title?: string; image?: string }>;
+};
+
+export type ModerationCategory = {
+  id: number;
+  name: string;
+  title: string;
+  severity?: string;
+  description?: string;
+};
+
+export type SearchUserResult = {
+  id: number;
+  username?: string;
+  profile?: {
+    id?: number;
+    avatar?: string;
+    name?: string;
+  };
+  is_following?: boolean;
+  is_connected?: boolean;
+  visibility?: string;
+};
+
+export type SearchCommunityResult = {
+  id: number;
+  name?: string;
+  title?: string;
+  avatar?: string;
+  cover?: string;
+  members_count?: number;
+  color?: string;
+};
+
+export type SearchHashtagResult = {
+  id: number;
+  name?: string;
+  image?: string;
+  posts_count?: number;
+  emoji?: {
+    id?: number;
+    keyword?: string;
+    image?: string;
+  };
 };
 
 function normalizeMaybeWrappedPost(payload: unknown): FeedPost | null {
@@ -271,4 +330,105 @@ export const api = {
       if (!normalized) throw new Error('Post not found');
       return normalized;
     }),
+
+  getPostReactionEmojiGroups: (token: string) =>
+    request<Array<{
+      id: number;
+      keyword?: string;
+      color?: string;
+      order?: number;
+      emojis?: Array<{ id: number; keyword?: string; image?: string }>;
+    }>>('/api/posts/emojis/groups/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getPostReactionCounts: (token: string, postUuid: string) =>
+    request<Array<{
+      count?: number;
+      emoji?: { id?: number; keyword?: string; image?: string };
+    }>>(`/api/posts/${postUuid}/reactions/emoji-count/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getPostReactions: (token: string, postUuid: string, emojiId?: number, count = 20) => {
+    const query = new URLSearchParams();
+    query.set('count', String(count));
+    if (typeof emojiId === 'number') query.set('emoji_id', String(emojiId));
+    return request<Array<{
+      id?: number;
+      created?: string;
+      emoji?: { id?: number; keyword?: string; image?: string };
+      reactor?: { id?: number; username?: string; profile?: { avatar?: string } };
+    }>>(`/api/posts/${postUuid}/reactions/?${query.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  reactToPost: (token: string, postUuid: string, emojiId: number) =>
+    request<{
+      id?: number;
+      created?: string;
+      emoji?: { id?: number; keyword?: string; image?: string };
+      reactor?: { id?: number; username?: string; profile?: { avatar?: string } };
+    }>(`/api/posts/${postUuid}/reactions/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ emoji_id: emojiId }),
+    }),
+
+  getModerationCategories: (token: string) =>
+    request<ModerationCategory[]>('/api/moderation/categories/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  reportPost: (token: string, postUuid: string, categoryId: number, description?: string) =>
+    request<unknown>(`/api/posts/${postUuid}/report/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({
+        category_id: categoryId,
+        ...(description ? { description } : {}),
+      }),
+    }).then(extractSuccessMessage),
+
+  followUser: (token: string, username: string) =>
+    request<unknown>('/api/follows/follow/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  unfollowUser: (token: string, username: string) =>
+    request<unknown>('/api/follows/unfollow/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  searchUsers: (token: string, query: string, count = 10) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(count));
+    return request<SearchUserResult[]>(`/api/auth/users/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  searchCommunities: (token: string, query: string, count = 10) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(count));
+    return request<SearchCommunityResult[]>(`/api/communities/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  searchHashtags: (token: string, query: string, count = 10) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(count));
+    return request<SearchHashtagResult[]>(`/api/hashtags/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
 };
