@@ -13,22 +13,11 @@ import {
   Linking,
   Modal,
   Animated,
-  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import {
-  api,
-  FeedPost,
-  FeedType,
-  ModerationCategory,
-  SearchCommunityResult,
-  SearchHashtagResult,
-  SearchUserResult,
-  SocialIdentity,
-  SocialProvider
-} from '../api/client';
+import { api, FeedPost, FeedType, SocialIdentity, SocialProvider } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
 import { AppRoute } from '../routing';
@@ -42,76 +31,10 @@ interface HomeScreenProps {
 
 const WELCOME_NOTICE_KEY_PREFIX = '@openspace/welcome_notice_last_shown';
 const WELCOME_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
-const SEARCH_RESULTS_STATE_KEY_PREFIX = '@openspace/search_results_state';
-
-type ReactionEmoji = {
-  id?: number;
-  keyword?: string;
-  image?: string;
-};
-
-type ReactionGroup = {
-  id: number;
-  keyword?: string;
-  color?: string;
-  order?: number;
-  emojis?: ReactionEmoji[];
-};
-
-type PostReaction = {
-  id?: number;
-  created?: string;
-  emoji?: ReactionEmoji;
-  reactor?: {
-    id?: number;
-    username?: string;
-    profile?: { avatar?: string };
-  };
-};
-
-const REPORTABLE_POST_CATEGORY_NAMES = ['spam', 'copyright', 'abuse', 'pornography'] as const;
-type ReportablePostCategoryName = typeof REPORTABLE_POST_CATEGORY_NAMES[number];
-
-function getSearchResultsStateKey(username?: string) {
-  if (!username) return null;
-  return `${SEARCH_RESULTS_STATE_KEY_PREFIX}:${username}`;
-}
-
-function normalizeModerationLabel(value?: string) {
-  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-function matchesReportCategory(category: ModerationCategory, categoryName: ReportablePostCategoryName) {
-  const normalizedName = normalizeModerationLabel(category.name);
-  const normalizedTitle = normalizeModerationLabel(category.title);
-  switch (categoryName) {
-    case 'spam':
-      return normalizedName.includes('spam') || normalizedTitle.includes('spam');
-    case 'copyright':
-      return (
-        normalizedName.includes('copyright') ||
-        normalizedName.includes('trademark') ||
-        normalizedTitle.includes('copyright') ||
-        normalizedTitle.includes('trademark')
-      );
-    case 'abuse':
-      return normalizedName.includes('abuse') || normalizedTitle.includes('abuse');
-    case 'pornography':
-      return (
-        normalizedName.includes('porn') ||
-        normalizedName.includes('nudity') ||
-        normalizedTitle.includes('porn') ||
-        normalizedTitle.includes('nudity')
-      );
-    default:
-      return false;
-  }
-}
 
 export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { t } = useTranslation();
-  const { width: viewportWidth } = useWindowDimensions();
   const c = theme.colors;
 
   const [user, setUser] = useState<any>(null);
@@ -123,37 +46,16 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
-  const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
-  const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
   const [postRouteLoading, setPostRouteLoading] = useState(false);
   const [activePost, setActivePost] = useState<FeedPost | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
+  const [likedPostIds, setLikedPostIds] = useState<Record<number, boolean>>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
   const [draftComments, setDraftComments] = useState<Record<number, string>>({});
   const [localComments, setLocalComments] = useState<Record<number, string[]>>({});
-  const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
-  const [reactionPickerPost, setReactionPickerPost] = useState<FeedPost | null>(null);
-  const [reactionPickerLoading, setReactionPickerLoading] = useState(false);
-  const [reactionActionLoading, setReactionActionLoading] = useState(false);
-  const [reactionListOpen, setReactionListOpen] = useState(false);
-  const [reactionListLoading, setReactionListLoading] = useState(false);
-  const [reactionListEmoji, setReactionListEmoji] = useState<ReactionEmoji | null>(null);
-  const [reactionListUsers, setReactionListUsers] = useState<PostReaction[]>([]);
-  const [moderationCategories, setModerationCategories] = useState<ModerationCategory[]>([]);
-  const [reportPostTarget, setReportPostTarget] = useState<FeedPost | null>(null);
-  const [reportingPost, setReportingPost] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState('');
-  const [searchUsers, setSearchUsers] = useState<SearchUserResult[]>([]);
-  const [searchCommunities, setSearchCommunities] = useState<SearchCommunityResult[]>([]);
-  const [searchHashtags, setSearchHashtags] = useState<SearchHashtagResult[]>([]);
-  const [searchResultsActive, setSearchResultsActive] = useState(false);
-  const [searchResultsLoading, setSearchResultsLoading] = useState(false);
-  const [searchResultsQuery, setSearchResultsQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -161,9 +63,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [showWelcomeNotice, setShowWelcomeNotice] = useState(false);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchRequestSeqRef = useRef(0);
-  const committedSearchRequestSeqRef = useRef(0);
   const welcomeTranslateX = useRef(new Animated.Value(-380)).current;
 
   const providerOrder: SocialProvider[] = ['google', 'apple'];
@@ -206,146 +105,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }, [token]);
 
   useEffect(() => {
-    if (!user?.username) return;
-    let cancelled = false;
-
-    async function restoreCommittedSearchState() {
-      const key = getSearchResultsStateKey(user.username);
-      if (!key) return;
-
-      try {
-        const raw = await AsyncStorage.getItem(key);
-        if (cancelled || !raw) return;
-        const parsed = JSON.parse(raw) as { query?: string };
-        const persistedQuery = (parsed?.query || '').trim();
-        if (persistedQuery.length < 2) return;
-
-        setSearchQuery(persistedQuery);
-        setSearchResultsActive(true);
-        setSearchResultsQuery(persistedQuery);
-        await loadSearchResults(persistedQuery, 20, setSearchResultsLoading, committedSearchRequestSeqRef);
-      } catch {
-        // ignore storage parse/read issues
-      }
-    }
-
-    restoreCommittedSearchState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.username]);
-
-  useEffect(() => {
-    let active = true;
-
-    api.getModerationCategories(token)
-      .then((categories) => {
-        if (!active) return;
-        setModerationCategories(categories || []);
-      })
-      .catch(() => {
-        if (!active) return;
-        setModerationCategories([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [token]);
-
-  async function loadSearchResults(
-    query: string,
-    count: number,
-    loadingSetter?: (value: boolean) => void,
-    requestSeqRef: React.MutableRefObject<number> = searchRequestSeqRef
-  ) {
-    const requestSeq = ++requestSeqRef.current;
-    if (loadingSetter) loadingSetter(true);
-    setSearchError('');
-
-    try {
-      const [usersResult, communitiesResult, hashtagsResult] = await Promise.allSettled([
-        api.searchUsers(token, query, Math.min(count, 10)),
-        api.searchCommunities(token, query, count),
-        api.searchHashtags(token, query, Math.min(count, 10)),
-      ]);
-
-      if (requestSeq !== requestSeqRef.current) return;
-
-      const users = usersResult.status === 'fulfilled' ? usersResult.value : [];
-      const communities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : [];
-      const hashtags = hashtagsResult.status === 'fulfilled' ? hashtagsResult.value : [];
-
-      setSearchUsers(users);
-      setSearchCommunities(communities);
-      setSearchHashtags(hashtags);
-
-      if (
-        usersResult.status === 'rejected' &&
-        communitiesResult.status === 'rejected' &&
-        hashtagsResult.status === 'rejected'
-      ) {
-        setSearchError(t('home.searchLoadError'));
-      } else {
-        setSearchError('');
-      }
-    } finally {
-      if (requestSeq === requestSeqRef.current && loadingSetter) {
-        loadingSetter(false);
-      }
-    }
-  }
-
-  useEffect(() => {
-    const query = searchQuery.trim();
-
-    if (query.length < 2) {
-      setSearchLoading(false);
-      setSearchError('');
-      if (!searchResultsActive) {
-        setSearchUsers([]);
-        setSearchCommunities([]);
-        setSearchHashtags([]);
-      }
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      loadSearchResults(query, 8, setSearchLoading, searchRequestSeqRef);
-    }, 250);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [searchQuery, t, token, searchResultsActive]);
-
-  useEffect(() => (
-    () => {
-      if (searchBlurTimerRef.current) {
-        clearTimeout(searchBlurTimerRef.current);
-        searchBlurTimerRef.current = null;
-      }
-    }
-  ), []);
-
-  useEffect(() => {
     if (route.screen === 'feed') {
       if (route.feed !== activeFeed) {
         setActiveFeed(route.feed);
         loadFeed(route.feed);
-      }
-      setActivePost(null);
-      return;
-    }
-
-    if (route.screen === 'search') {
-      const routedQuery = (route.query || '').trim();
-      if (routedQuery.length >= 2) {
-        setSearchQuery(routedQuery);
-        setSearchResultsActive(true);
-        setSearchResultsQuery(routedQuery);
-        loadSearchResults(routedQuery, 20, setSearchResultsLoading, committedSearchRequestSeqRef);
       }
       setActivePost(null);
       return;
@@ -405,61 +168,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
   }
 
-  useEffect(() => {
-    setFollowStateByUsername((prev) => {
-      const next = { ...prev };
-      for (const post of feedPosts) {
-        const username = post.creator?.username;
-        if (!username || username in next) continue;
-        if (typeof post.creator?.is_following === 'boolean') {
-          next[username] = post.creator.is_following;
-        }
-      }
-      return next;
-    });
-  }, [feedPosts]);
-
-  async function handleToggleFollow(username: string, currentlyFollowing: boolean) {
-    if (!username || followActionLoadingByUsername[username]) return;
-
-    setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: true }));
-    try {
-      if (currentlyFollowing) {
-        await api.unfollowUser(token, username);
-      } else {
-        await api.followUser(token, username);
-      }
-
-      setFollowStateByUsername((prev) => ({ ...prev, [username]: !currentlyFollowing }));
-      setFeedPosts((prev) =>
-        prev.map((post) => {
-          if (post.creator?.username !== username) return post;
-          return {
-            ...post,
-            creator: {
-              ...post.creator,
-              is_following: !currentlyFollowing,
-            },
-          };
-        })
-      );
-    } catch (e: any) {
-      setError(e?.message || t('home.feedLoadError'));
-    } finally {
-      setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: false }));
-    }
-  }
-
   async function handleSelectFeed(feed: FeedType) {
     if (feed === activeFeed && route.screen === 'feed') return;
-    closeSearchDropdown();
-    if (user?.username) {
-      const key = getSearchResultsStateKey(user.username);
-      if (key) await AsyncStorage.removeItem(key);
-    }
-    setSearchResultsActive(false);
-    setSearchResultsLoading(false);
-    setSearchResultsQuery('');
     setActiveFeed(feed);
     onNavigate({ screen: 'feed', feed });
     if (feed !== activeFeed || route.screen !== 'feed') {
@@ -471,12 +181,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return (post.text || '').trim();
   }
 
-  function getPostLengthType(post: FeedPost): 'long' | 'short' {
-    return getPostText(post).length > 280 ? 'long' : 'short';
-  }
-
   function getPostReactionCount(post: FeedPost) {
-    return (post.reactions_emoji_counts || []).reduce((sum, item) => sum + (item?.count || 0), 0);
+    const apiCount = (post.reactions_emoji_counts || []).reduce((sum, item) => sum + (item?.count || 0), 0);
+    const localLike = likedPostIds[post.id] ? 1 : 0;
+    return apiCount + localLike;
   }
 
   function getPostCommentsCount(post: FeedPost) {
@@ -485,6 +193,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   function toggleExpand(postId: number) {
     setExpandedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+  }
+
+  function toggleLike(postId: number) {
+    setLikedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
   }
 
   function toggleCommentBox(postId: number) {
@@ -518,118 +230,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     clearWebFocus();
     setActivePost(null);
     onNavigate({ screen: 'feed', feed: activeFeed }, true);
-  }
-
-  function applyPostPatch(postId: number, patch: (post: FeedPost) => FeedPost) {
-    setFeedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
-    setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
-  }
-
-  async function ensureReactionGroups() {
-    if (reactionGroups.length > 0) return;
-    setReactionPickerLoading(true);
-    try {
-      const groups = await api.getPostReactionEmojiGroups(token);
-      setReactionGroups(groups);
-    } catch (e: any) {
-      setError(e?.message || t('home.reactionLoadFailed'));
-    } finally {
-      setReactionPickerLoading(false);
-    }
-  }
-
-  async function refreshPostReactionCounts(post: FeedPost) {
-    if (!post.uuid) return;
-    try {
-      const counts = await api.getPostReactionCounts(token, post.uuid);
-      applyPostPatch(post.id, (current) => ({ ...current, reactions_emoji_counts: counts }));
-    } catch {
-      // Keep UI resilient if counts refresh fails.
-    }
-  }
-
-  async function openReactionPicker(post: FeedPost) {
-    setReactionPickerPost(post);
-    await ensureReactionGroups();
-  }
-
-  function closeReactionPicker() {
-    if (reactionActionLoading) return;
-    setReactionPickerPost(null);
-  }
-
-  async function reactToPostWithEmoji(post: FeedPost, emojiId?: number) {
-    if (!post.uuid || !emojiId || reactionActionLoading) return;
-    setReactionActionLoading(true);
-    try {
-      const reaction = await api.reactToPost(token, post.uuid, emojiId);
-      applyPostPatch(post.id, (current) => ({ ...current, reaction }));
-      await refreshPostReactionCounts(post);
-      setReactionPickerPost(null);
-    } catch (e: any) {
-      setError(e?.message || t('home.reactionLoadFailed'));
-    } finally {
-      setReactionActionLoading(false);
-    }
-  }
-
-  function openReportPostModal(post: FeedPost) {
-    setReportPostTarget(post);
-  }
-
-  function closeReportPostModal() {
-    if (reportingPost) return;
-    setReportPostTarget(null);
-  }
-
-  async function submitPostReport(categoryName: ReportablePostCategoryName) {
-    if (!reportPostTarget?.uuid) {
-      setError(t('home.reportPostUnavailable'));
-      return;
-    }
-
-    const category = moderationCategories.find((item) => matchesReportCategory(item, categoryName));
-    if (!category?.id) {
-      setError(t('home.reportPostCategoriesUnavailable'));
-      return;
-    }
-
-    setReportingPost(true);
-    try {
-      const message = await api.reportPost(token, reportPostTarget.uuid, category.id);
-      setNotice(message || t('home.reportPostSuccess'));
-      setReportPostTarget(null);
-    } catch (e: any) {
-      setError(e?.message || t('home.reportPostFailed'));
-    } finally {
-      setReportingPost(false);
-    }
-  }
-
-  async function openReactionList(post: FeedPost, emoji?: ReactionEmoji) {
-    if (!post.uuid || !emoji?.id) {
-      setError(t('home.reactionUnavailable'));
-      return;
-    }
-    setReactionListOpen(true);
-    setReactionListEmoji(emoji);
-    setReactionListUsers([]);
-    setReactionListLoading(true);
-    try {
-      const reactions = await api.getPostReactions(token, post.uuid, emoji.id);
-      setReactionListUsers(reactions);
-    } catch (e: any) {
-      setError(e?.message || t('home.reactionLoadFailed'));
-    } finally {
-      setReactionListLoading(false);
-    }
-  }
-
-  function closeReactionList() {
-    setReactionListOpen(false);
-    setReactionListEmoji(null);
-    setReactionListUsers([]);
-    setReactionListLoading(false);
   }
 
   async function handleSharePost(post: FeedPost) {
@@ -928,277 +528,28 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     onNavigate({ screen: 'me' });
   }
 
-  function handleSearchFocus() {
-    if (searchBlurTimerRef.current) {
-      clearTimeout(searchBlurTimerRef.current);
-      searchBlurTimerRef.current = null;
-    }
-    setSearchFocused(true);
-  }
-
-  function handleSearchBlur() {
-    searchBlurTimerRef.current = setTimeout(() => {
-      setSearchFocused(false);
-    }, 180);
-  }
-
-  function closeSearchDropdown() {
-    if (searchBlurTimerRef.current) {
-      clearTimeout(searchBlurTimerRef.current);
-      searchBlurTimerRef.current = null;
-    }
-    setSearchFocused(false);
-  }
-
-  async function handleShowAllSearchResults() {
-    const query = searchQuery.trim();
-    if (query.length < 2) return;
-    closeSearchDropdown();
-    setSearchResultsActive(true);
-    setSearchResultsQuery(query);
-    onNavigate({ screen: 'search', query });
-    if (user?.username) {
-      const key = getSearchResultsStateKey(user.username);
-      if (key) {
-        await AsyncStorage.setItem(
-          key,
-          JSON.stringify({
-            query,
-            updated_at: Date.now(),
-          })
-        );
-      }
-    }
-    await loadSearchResults(query, 20, setSearchResultsLoading, committedSearchRequestSeqRef);
-  }
-
-  async function handleBackToHomeFeed() {
-    if (user?.username) {
-      const key = getSearchResultsStateKey(user.username);
-      if (key) await AsyncStorage.removeItem(key);
-    }
-    setSearchResultsActive(false);
-    setSearchResultsLoading(false);
-    setSearchResultsQuery('');
-    setSearchQuery('');
-    closeSearchDropdown();
-    setActiveFeed('home');
-    onNavigate({ screen: 'feed', feed: 'home' });
-    await loadFeed('home');
-  }
-
-  function handleSelectSearchUser(username?: string) {
-    if (!username) return;
-    closeSearchDropdown();
-    onNavigate({ screen: 'profile', username });
-  }
-
-  function handleSelectSearchCommunity(name?: string) {
-    if (!name) return;
-    closeSearchDropdown();
-    onNavigate({ screen: 'community', name });
-  }
-
-  function handleSelectSearchHashtag(name?: string) {
-    if (!name) return;
-    closeSearchDropdown();
-    onNavigate({ screen: 'hashtag', name });
-  }
-
   const viewingProfileRoute = route.screen === 'profile' || route.screen === 'me';
-  const viewingCommunityRoute = route.screen === 'community';
-  const viewingHashtagRoute = route.screen === 'hashtag';
   const profileRouteUsername = route.screen === 'profile'
     ? route.username
     : user?.username || '';
-  const communityRouteName = route.screen === 'community' ? route.name : '';
-  const hashtagRouteName = route.screen === 'hashtag' ? route.name : '';
-  const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
-  const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
   const hasActivePostMedia = !!activePost?.media_thumbnail;
-  const showingMainSearchResults = !viewingProfileRoute &&
-    !viewingCommunityRoute &&
-    !viewingHashtagRoute &&
-    searchResultsActive &&
-    searchResultsQuery.length >= 2;
-  const isWideSearchResultsLayout = viewportWidth >= 1200;
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
       <View style={[styles.topNav, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
         <View style={styles.topNavLeft}>
-          <TouchableOpacity
-            style={[styles.topNavBrand, { backgroundColor: c.primary }]}
-            activeOpacity={0.85}
-            onPress={handleBackToHomeFeed}
-            accessibilityLabel={t('home.backToHomeFeedAction')}
-          >
+          <View style={[styles.topNavBrand, { backgroundColor: c.primary }]}>
             <Text style={styles.topNavBrandLetter}>O</Text>
-          </TouchableOpacity>
-          <View style={styles.topNavSearchWrap}>
-            <View style={[styles.topNavSearch, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
-              <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-                onSubmitEditing={handleShowAllSearchResults}
-                placeholder={t('home.searchPlaceholder')}
-                placeholderTextColor={c.placeholder}
-                style={[styles.topNavSearchInput, { color: c.textPrimary }]}
-              />
-            </View>
-
-            {showSearchDropdown ? (
-              <View style={[styles.searchDropdown, { backgroundColor: c.surface, borderColor: c.border }]}>
-                {searchLoading ? (
-                  <View style={styles.searchDropdownLoading}>
-                    <ActivityIndicator color={c.primary} size="small" />
-                  </View>
-                ) : null}
-
-                {!searchLoading ? (
-                  <ScrollView
-                    style={styles.searchDropdownScroll}
-                    contentContainerStyle={styles.searchDropdownScrollContent}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <TouchableOpacity
-                      style={[styles.searchShowAllButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      onPress={handleShowAllSearchResults}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.searchShowAllButtonText, { color: c.textLink }]}>
-                        {t('home.searchShowAllAction')}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionUsers')}
-                      </Text>
-                      {searchUsers.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoUsers')}
-                        </Text>
-                      ) : (
-                        searchUsers.map((item) => (
-                          <TouchableOpacity
-                            key={`search-user-${item.id}`}
-                            style={[styles.searchResultRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                            activeOpacity={0.85}
-                            onPress={() => handleSelectSearchUser(item.username)}
-                          >
-                            <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                              {item.profile?.avatar ? (
-                                <Image source={{ uri: item.profile.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                              ) : (
-                                <Text style={styles.searchAvatarLetter}>
-                                  {(item.username?.[0] || t('home.unknownUser')[0] || 'U').toUpperCase()}
-                                </Text>
-                              )}
-                            </View>
-                            <View style={styles.searchResultMeta}>
-                              <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                @{item.username || t('home.unknownUser')}
-                              </Text>
-                              <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                {item.profile?.name || t('home.searchNoDisplayName')}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionCommunities')}
-                      </Text>
-                      {searchCommunities.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoCommunities')}
-                        </Text>
-                      ) : (
-                        searchCommunities.map((item) => (
-                          <TouchableOpacity
-                            key={`search-community-${item.id}`}
-                            style={[styles.searchResultRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                            activeOpacity={0.85}
-                            onPress={() => handleSelectSearchCommunity(item.name)}
-                          >
-                            <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                              {item.avatar ? (
-                                <Image source={{ uri: item.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                              ) : (
-                                <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
-                              )}
-                            </View>
-                            <View style={styles.searchResultMeta}>
-                              <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                c/{item.name || t('home.unknownUser')}
-                              </Text>
-                              <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                {item.title || t('home.searchNoCommunityTitle')}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionHashtags')}
-                      </Text>
-                      {searchHashtags.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoHashtags')}
-                        </Text>
-                      ) : (
-                        searchHashtags.map((item) => (
-                          <TouchableOpacity
-                            key={`search-hashtag-${item.id}`}
-                            style={[styles.searchResultRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                            activeOpacity={0.85}
-                            onPress={() => handleSelectSearchHashtag(item.name)}
-                          >
-                            <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                              {item.image || item.emoji?.image ? (
-                                <Image source={{ uri: item.image || item.emoji?.image }} style={styles.searchAvatarImage} resizeMode="cover" />
-                              ) : (
-                                <MaterialCommunityIcons name="pound" size={16} color="#fff" />
-                              )}
-                            </View>
-                            <View style={styles.searchResultMeta}>
-                              <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                #{item.name || t('home.unknownUser')}
-                              </Text>
-                              <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                {t('home.searchHashtagPostsCount', { count: item.posts_count || 0 })}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))
-                      )}
-                    </View>
-
-                    {searchError ? (
-                      <Text style={[styles.searchSectionError, { color: c.errorText }]}>
-                        {searchError}
-                      </Text>
-                    ) : null}
-
-                    {!searchError && !hasAnySearchResults ? (
-                      <Text style={[styles.searchSectionEmptyGlobal, { color: c.textMuted }]}>
-                        {t('home.searchNoResults')}
-                      </Text>
-                    ) : null}
-                  </ScrollView>
-                ) : null}
-              </View>
-            ) : null}
+          </View>
+          <View style={[styles.topNavSearch, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+            <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t('home.searchPlaceholder')}
+              placeholderTextColor={c.placeholder}
+              style={[styles.topNavSearchInput, { color: c.textPrimary }]}
+            />
           </View>
         </View>
 
@@ -1495,184 +846,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </TouchableOpacity>
       </Modal>
 
-      <Modal
-        visible={!!reactionPickerPost}
-        transparent
-        animationType="fade"
-        onRequestClose={closeReactionPicker}
-      >
-        <TouchableOpacity style={styles.reactionPickerBackdrop} activeOpacity={1} onPress={closeReactionPicker}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View
-              style={[
-                styles.reactionPickerCard,
-                { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-            >
-              <View style={styles.linkedModalHeader}>
-                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>{t('home.reactionPickerTitle')}</Text>
-                <TouchableOpacity
-                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                  onPress={closeReactionPicker}
-                  activeOpacity={0.85}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              {reactionPickerLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
-              ) : (
-                <View style={styles.reactionPickerContent}>
-                  <ScrollView style={styles.reactionPickerScroll} contentContainerStyle={styles.reactionPickerScrollContent}>
-                    {reactionGroups.map((group) => (
-                      <View key={`reaction-group-${group.id}`} style={styles.reactionGroup}>
-                        <Text style={[styles.reactionGroupTitle, { color: c.textMuted }]}>
-                          {group.keyword || t('home.reactAction')}
-                        </Text>
-                        <View style={styles.reactionEmojiWrap}>
-                          {(group.emojis || []).map((emoji) => (
-                            <TouchableOpacity
-                              key={`reaction-emoji-${group.id}-${emoji.id}`}
-                              style={[styles.reactionEmojiButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                              activeOpacity={0.85}
-                              disabled={reactionActionLoading}
-                              onPress={() => reactToPostWithEmoji(reactionPickerPost as FeedPost, emoji.id)}
-                            >
-                              {emoji.image ? (
-                                <Image source={{ uri: emoji.image }} style={styles.reactionEmojiImage} resizeMode="contain" />
-                              ) : (
-                                <MaterialCommunityIcons name="emoticon-outline" size={20} color={c.textSecondary} />
-                              )}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
-        visible={reactionListOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={closeReactionList}
-      >
-        <TouchableOpacity style={styles.reactionListBackdrop} activeOpacity={1} onPress={closeReactionList}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.reactionListCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <View style={styles.linkedModalHeader}>
-                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
-                  {t('home.reactionReactorsTitle')}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                  onPress={closeReactionList}
-                  activeOpacity={0.85}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.reactionListSubtitle, { color: c.textMuted }]}>
-                {reactionListEmoji?.keyword || ''}
-              </Text>
-
-              {reactionListLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
-              ) : reactionListUsers.length === 0 ? (
-                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.reactionReactorsEmpty')}</Text>
-              ) : (
-                <View style={styles.reactionListContent}>
-                  <ScrollView style={styles.reactionListScroll} contentContainerStyle={styles.reactionListScrollContent}>
-                    {reactionListUsers.map((item, idx) => (
-                      <View
-                        key={`reaction-user-${item.id || idx}`}
-                        style={[styles.reactionUserRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      >
-                        <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                          <Text style={styles.feedAvatarLetter}>
-                            {(item.reactor?.username?.[0] || 'O').toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.feedHeaderMeta}>
-                          <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                            @{item.reactor?.username || t('home.unknownUser')}
-                          </Text>
-                          <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                            {item.created ? new Date(item.created).toLocaleString() : ''}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
-        visible={!!reportPostTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={closeReportPostModal}
-      >
-        <TouchableOpacity style={styles.reactionListBackdrop} activeOpacity={1} onPress={closeReportPostModal}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.reportModalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <View style={styles.linkedModalHeader}>
-                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
-                  {t('home.reportPostTitle')}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                  onPress={closeReportPostModal}
-                  activeOpacity={0.85}
-                  disabled={reportingPost}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[styles.reportModalSubtitle, { color: c.textMuted }]}>
-                {t('home.reportPostPrompt')}
-              </Text>
-
-              <ScrollView
-                style={styles.reportOptionScroll}
-                contentContainerStyle={styles.reportOptionList}
-                showsVerticalScrollIndicator
-              >
-                {REPORTABLE_POST_CATEGORY_NAMES.map((categoryName) => (
-                  <TouchableOpacity
-                    key={`report-option-${categoryName}`}
-                    style={[styles.reportOptionCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    activeOpacity={0.85}
-                    onPress={() => submitPostReport(categoryName)}
-                    disabled={reportingPost}
-                  >
-                    <Text style={[styles.reportOptionTitle, { color: c.textPrimary }]}>
-                      {t(`home.reportCategory.${categoryName}.title`)}
-                    </Text>
-                    <Text style={[styles.reportOptionDescription, { color: c.textMuted }]}>
-                      {t(`home.reportCategory.${categoryName}.description`)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {reportingPost ? <ActivityIndicator color={c.primary} size="small" /> : null}
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
       {showWelcomeNotice && !loading ? (
         <View style={styles.welcomeNoticeWrap}>
           <Animated.View
@@ -1733,7 +906,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                   </View>
                   <View style={styles.feedHeaderMeta}>
                     <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                      @{activePost.creator?.username || t('home.unknownUser')}
+                      @{activePost.creator?.username || 'unknown'}
                     </Text>
                     <Text style={[styles.feedDate, { color: c.textMuted }]}>
                       {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
@@ -1756,38 +929,21 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                       {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
                     </Text>
                   </View>
-                  {(activePost.reactions_emoji_counts || []).length > 0 ? (
-                    <View style={styles.reactionSummaryWrap}>
-                      {(activePost.reactions_emoji_counts || [])
-                        .filter((entry) => (entry?.count || 0) > 0)
-                        .map((entry, idx) => (
-                          <TouchableOpacity
-                            key={`${activePost.id}-reaction-summary-modal-${entry.emoji?.id || idx}`}
-                            style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                            onPress={() => openReactionList(activePost, entry.emoji)}
-                            activeOpacity={0.85}
-                          >
-                            {entry.emoji?.image ? (
-                              <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                            ) : (
-                              <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                            )}
-                            <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                              {entry.count || 0}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </View>
-                  ) : null}
 
                   <View style={styles.feedActionsRow}>
-                        <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => openReactionPicker(activePost)}
-                          activeOpacity={0.85}
-                        >
-                      <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
+                    <TouchableOpacity
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
+                      onPress={() => toggleLike(activePost.id)}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons
+                        name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
+                        size={16}
+                        color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
+                      />
+                      <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
+                        {t('home.reactAction')}
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -1841,7 +997,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                   </View>
                   <View style={styles.feedHeaderMeta}>
                     <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                      @{activePost.creator?.username || t('home.unknownUser')}
+                      @{activePost.creator?.username || 'unknown'}
                     </Text>
                     <Text style={[styles.feedDate, { color: c.textMuted }]}>
                       {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
@@ -1872,38 +1028,21 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                       {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
                     </Text>
                   </View>
-                  {(activePost.reactions_emoji_counts || []).length > 0 ? (
-                    <View style={styles.reactionSummaryWrap}>
-                      {(activePost.reactions_emoji_counts || [])
-                        .filter((entry) => (entry?.count || 0) > 0)
-                        .map((entry, idx) => (
-                          <TouchableOpacity
-                            key={`${activePost.id}-reaction-summary-text-${entry.emoji?.id || idx}`}
-                            style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                            onPress={() => openReactionList(activePost, entry.emoji)}
-                            activeOpacity={0.85}
-                          >
-                            {entry.emoji?.image ? (
-                              <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                            ) : (
-                              <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                            )}
-                            <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                              {entry.count || 0}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </View>
-                  ) : null}
 
                   <View style={styles.feedActionsRow}>
                     <TouchableOpacity
-                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      onPress={() => openReactionPicker(activePost)}
+                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[activePost.id] ? c.surface : c.inputBackground }]}
+                      onPress={() => toggleLike(activePost.id)}
                       activeOpacity={0.85}
                     >
-                      <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
+                      <MaterialCommunityIcons
+                        name={likedPostIds[activePost.id] ? 'thumb-up' : 'thumb-up-outline'}
+                        size={16}
+                        color={likedPostIds[activePost.id] ? c.primary : c.textSecondary}
+                      />
+                      <Text style={[styles.feedActionText, { color: likedPostIds[activePost.id] ? c.primary : c.textSecondary }]}>
+                        {t('home.reactAction')}
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -1972,207 +1111,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               </View>
             ) : null}
 
-            {viewingCommunityRoute ? (
-              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.welcome, { color: c.textPrimary }]}>
-                  c/{communityRouteName}
-                </Text>
-                <Text style={[styles.subtitle, { color: c.textMuted }]}>
-                  {t('home.communityRouteLabel', { community: communityRouteName })}
-                </Text>
-              </View>
-            ) : null}
-
-            {viewingHashtagRoute ? (
-              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.welcome, { color: c.textPrimary }]}>
-                  #{hashtagRouteName}
-                </Text>
-                <Text style={[styles.subtitle, { color: c.textMuted }]}>
-                  {t('home.hashtagRouteLabel', { hashtag: hashtagRouteName })}
-                </Text>
-              </View>
-            ) : null}
-
-            {showingMainSearchResults ? (
-              <View style={isWideSearchResultsLayout ? styles.searchResultsWideLayout : undefined}>
-                {isWideSearchResultsLayout ? <View style={styles.searchResultsLeftReserve} /> : null}
-                <View
-                  style={[
-                    styles.feedCard,
-                    isWideSearchResultsLayout ? styles.searchResultsMainCard : null,
-                    { backgroundColor: c.surface, borderColor: c.border },
-                  ]}
-                >
-                <View style={styles.searchMainHeader}>
-                  <TouchableOpacity
-                    style={[styles.searchShowAllButton, styles.backToFeedButton, styles.backToFeedButtonSlim, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    onPress={handleBackToHomeFeed}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.backToFeedButtonContent}>
-                      <MaterialCommunityIcons name="arrow-left" size={16} color={c.textLink} />
-                      <Text style={[styles.searchShowAllButtonText, styles.backToFeedButtonText, { color: c.textLink }]}>
-                        {t('home.backToHomeFeedAction')}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  <Text style={[styles.searchMainTitle, { color: c.textPrimary }]}>
-                    {t('home.searchResultsFor', { query: searchResultsQuery })}
-                  </Text>
-                </View>
-
-                {searchResultsLoading ? (
-                  <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
-                ) : (
-                  <View style={styles.searchMainSections}>
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionUsers')}
-                      </Text>
-                      {searchUsers.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoUsers')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchUsers.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-user-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchUser(item.username)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.profile?.avatar ? (
-                                  <Image source={{ uri: item.profile.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <Text style={styles.searchAvatarLetter}>
-                                    {(item.username?.[0] || t('home.unknownUser')[0] || 'U').toUpperCase()}
-                                  </Text>
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  @{item.username || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {item.profile?.name || t('home.searchNoDisplayName')}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionCommunities')}
-                      </Text>
-                      {searchCommunities.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoCommunities')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchCommunities.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-community-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchCommunity(item.name)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.avatar ? (
-                                  <Image source={{ uri: item.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  c/{item.name || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {item.title || t('home.searchNoCommunityTitle')}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionHashtags')}
-                      </Text>
-                      {searchHashtags.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoHashtags')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchHashtags.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-hashtag-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchHashtag(item.name)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.image || item.emoji?.image ? (
-                                  <Image source={{ uri: item.image || item.emoji?.image }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <MaterialCommunityIcons name="pound" size={16} color="#fff" />
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  #{item.name || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {t('home.searchHashtagPostsCount', { count: item.posts_count || 0 })}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    {searchError ? (
-                      <Text style={[styles.searchSectionError, { color: c.errorText }]}>
-                        {searchError}
-                      </Text>
-                    ) : null}
-
-                    {!searchError && !hasAnySearchResults ? (
-                      <Text style={[styles.searchSectionEmptyGlobal, { color: c.textMuted }]}>
-                        {t('home.searchNoResults')}
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-              </View>
-              </View>
-            ) : null}
-
-            {!viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults ? (
+            {!viewingProfileRoute ? (
             <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.subtitle, { color: c.textMuted }]}>
+                {t('home.feedSubtitle')}
+              </Text>
               {feedLoading ? (
                 <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
               ) : feedError ? (
@@ -2196,16 +1139,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                             </Text>
                           </View>
                           <View style={styles.feedHeaderMeta}>
-                            {post.community?.name ? (
-                              <TouchableOpacity
-                                activeOpacity={0.8}
-                                onPress={() => onNavigate({ screen: 'community', name: post.community?.name || '' })}
-                              >
-                                <Text style={[styles.feedCommunityHeaderLink, { color: c.textLink }]}>
-                                  c/{post.community.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
                             <TouchableOpacity
                               activeOpacity={0.8}
                               onPress={() => {
@@ -2215,7 +1148,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                               }}
                             >
                               <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                                @{post.creator?.username || t('home.unknownUser')}
+                                @{post.creator?.username || 'unknown'}
                               </Text>
                             </TouchableOpacity>
                             <Text style={[styles.feedDate, { color: c.textMuted }]}>
@@ -2223,43 +1156,18 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                             </Text>
                           </View>
                         </View>
-                        <View style={styles.feedHeaderActions}>
-                          {post.creator?.username &&
-                          post.creator.username !== user?.username &&
-                          !(followStateByUsername[post.creator.username] ?? !!post.creator?.is_following) ? (
-                            <TouchableOpacity
-                              style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
-                              activeOpacity={0.85}
-                              disabled={!!followActionLoadingByUsername[post.creator.username]}
-                              onPress={() =>
-                                handleToggleFollow(
-                                  post.creator!.username!,
-                                  followStateByUsername[post.creator!.username!] ?? !!post.creator?.is_following
-                                )
-                              }
-                            >
-                              <Text style={[styles.followButtonText, { color: c.textLink }]}>
-                                {followActionLoadingByUsername[post.creator.username] ? '...' : t('home.followAction')}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : null}
-                          <TouchableOpacity
-                            style={[styles.reportButton, { borderColor: c.border, backgroundColor: c.surface }]}
-                            activeOpacity={0.85}
-                            onPress={() => openReportPostModal(post)}
-                            accessibilityLabel={t('home.reportPostAction')}
-                          >
-                            <MaterialCommunityIcons name="dots-horizontal" size={16} color={c.textSecondary} />
-                          </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                          style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.followButtonText, { color: c.textLink }]}>{t('home.followAction')}</Text>
+                        </TouchableOpacity>
                       </View>
-                      <View style={styles.postMetaRow}>
-                        <View style={[styles.postLengthBadge, { borderColor: c.border, backgroundColor: c.surface }]}>
-                          <Text style={[styles.postLengthBadgeText, { color: c.textMuted }]}>
-                            {getPostLengthType(post) === 'long' ? t('home.postTypeLong') : t('home.postTypeShort')}
-                          </Text>
-                        </View>
-                      </View>
+                      {post.community?.name ? (
+                        <Text style={[styles.feedCommunity, { color: c.textLink }]}>
+                          /c/{post.community.name}
+                        </Text>
+                      ) : null}
 
                       {getPostText(post) ? (
                         <View style={styles.feedTextWrap}>
@@ -2296,38 +1204,21 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                           {t('home.feedCommentsCount', { count: getPostCommentsCount(post) })}
                         </Text>
                       </View>
-                      {(post.reactions_emoji_counts || []).length > 0 ? (
-                        <View style={styles.reactionSummaryWrap}>
-                          {(post.reactions_emoji_counts || [])
-                            .filter((entry) => (entry?.count || 0) > 0)
-                            .map((entry, idx) => (
-                              <TouchableOpacity
-                                key={`${post.id}-reaction-summary-${entry.emoji?.id || idx}`}
-                                style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                                onPress={() => openReactionList(post, entry.emoji)}
-                                activeOpacity={0.85}
-                              >
-                                {entry.emoji?.image ? (
-                                  <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                                ) : (
-                                  <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                                )}
-                                <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                                  {entry.count || 0}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                        </View>
-                      ) : null}
 
                       <View style={styles.feedActionsRow}>
                         <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => openReactionPicker(post)}
+                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: likedPostIds[post.id] ? c.surface : c.inputBackground }]}
+                          onPress={() => toggleLike(post.id)}
                           activeOpacity={0.85}
                         >
-                          <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
+                          <MaterialCommunityIcons
+                            name={likedPostIds[post.id] ? 'thumb-up' : 'thumb-up-outline'}
+                            size={16}
+                            color={likedPostIds[post.id] ? c.primary : c.textSecondary}
+                          />
+                          <Text style={[styles.feedActionText, { color: likedPostIds[post.id] ? c.primary : c.textSecondary }]}>
+                            {t('home.reactAction')}
+                          </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -2483,189 +1374,10 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: 340,
   },
-  topNavSearchWrap: {
-    position: 'relative',
-    flex: 1,
-    maxWidth: 340,
-  },
   topNavSearchInput: {
     flex: 1,
     fontSize: 14,
     paddingVertical: 0,
-  },
-  searchDropdown: {
-    position: 'absolute',
-    top: 48,
-    left: 0,
-    right: 0,
-    borderWidth: 1,
-    borderRadius: 14,
-    zIndex: 1200,
-    maxHeight: 460,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 16,
-  },
-  searchDropdownLoading: {
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchDropdownScroll: {
-    maxHeight: 460,
-  },
-  searchDropdownScrollContent: {
-    padding: 10,
-    gap: 12,
-  },
-  searchShowAllButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchShowAllButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  backToFeedButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    minWidth: 0,
-  },
-  backToFeedButtonSlim: {
-    borderRadius: 9,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    minHeight: 34,
-  },
-  backToFeedButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  backToFeedButtonText: {
-    fontSize: 12,
-  },
-  searchResultsWideLayout: {
-    width: '100%',
-    maxWidth: 1400,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 20,
-    marginBottom: 20,
-  },
-  searchResultsLeftReserve: {
-    width: 260,
-    minHeight: 1,
-  },
-  searchResultsMainCard: {
-    flex: 1,
-    maxWidth: 1120,
-  },
-  searchMainHeader: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-    minHeight: 48,
-  },
-  searchMainSections: {
-    gap: 24,
-  },
-  searchMainTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    lineHeight: 34,
-    textAlign: 'center',
-  },
-  searchSection: {
-    gap: 8,
-  },
-  searchSectionTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    paddingHorizontal: 2,
-  },
-  searchSectionEmpty: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 2,
-    paddingVertical: 4,
-  },
-  searchSectionError: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  searchSectionEmptyGlobal: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  searchResultRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  searchTileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  searchTile: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    width: '48%',
-    minWidth: 250,
-  },
-  searchTileWide: {
-    width: '31.5%',
-  },
-  searchAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  searchAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  searchAvatarLetter: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  searchResultMeta: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  searchResultPrimary: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  searchResultSecondary: {
-    fontSize: 12,
-    fontWeight: '600',
   },
   topNavCenter: {
     flexDirection: 'row',
@@ -2756,137 +1468,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 14,
-    gap: 10,
-  },
-  reactionPickerCard: {
-    width: 640,
-    maxWidth: '94%',
-    minHeight: 320,
-    maxHeight: '80%',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-    overflow: 'hidden',
-  },
-  reactionPickerBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  reactionPickerContent: {
-    flex: 1,
-    minHeight: 120,
-  },
-  reactionPickerScroll: {
-    flex: 1,
-  },
-  reactionPickerScrollContent: {
-    gap: 12,
-    paddingBottom: 10,
-  },
-  reactionGroup: {
-    gap: 8,
-  },
-  reactionGroupTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-  },
-  reactionEmojiWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  reactionEmojiButton: {
-    width: 42,
-    height: 42,
-    borderWidth: 1,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reactionEmojiImage: {
-    width: 22,
-    height: 22,
-  },
-  reactionListCard: {
-    width: 520,
-    maxWidth: '92%',
-    minHeight: 260,
-    maxHeight: '80%',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  reactionListBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  reactionListSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reportModalCard: {
-    width: 680,
-    maxWidth: '94%',
-    minHeight: 420,
-    maxHeight: '90%',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  reportModalSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  reportOptionScroll: {
-    maxHeight: 420,
-  },
-  reportOptionList: {
-    gap: 10,
-    paddingBottom: 4,
-  },
-  reportOptionCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 4,
-  },
-  reportOptionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  reportOptionDescription: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  reactionListContent: {
-    flex: 1,
-    minHeight: 120,
-  },
-  reactionListScroll: {
-    flex: 1,
-  },
-  reactionListScrollContent: {
-    paddingBottom: 8,
-    gap: 8,
-  },
-  reactionUserRow: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 10,
   },
   linkedModalHeader: {
@@ -3218,29 +1799,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  reportButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   feedPostHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
-  },
-  feedHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  feedCommunityHeaderLink: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   feedAuthor: {
     fontSize: 14,
@@ -3260,22 +1824,6 @@ const styles = StyleSheet.create({
   },
   feedTextWrap: {
     marginBottom: 10,
-  },
-  postMetaRow: {
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  postLengthBadge: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  postLengthBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
   },
   seeMoreText: {
     fontSize: 13,
@@ -3308,29 +1856,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  reactionSummaryWrap: {
-    marginTop: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  reactionSummaryChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  reactionSummaryEmojiImage: {
-    width: 14,
-    height: 14,
-  },
-  reactionSummaryCount: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   feedStatText: {
     fontSize: 12,
