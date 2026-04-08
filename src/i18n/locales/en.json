@@ -141,12 +141,18 @@
     "feedSubtitle": "Your timeline and discovery feeds",
     "feedEmpty": "No posts in this feed yet.",
     "followAction": "Follow",
+    "unfollowAction": "Unfollow",
     "seeLess": "See less",
     "seeMore": "See more",
     "noMediaPreview": "No media preview",
     "feedReactionsCount": "{{count}} reactions",
     "feedCommentsCount": "{{count}} comments",
     "reactAction": "React",
+    "reactionPickerTitle": "Choose a reaction",
+    "reactionReactorsTitle": "People who reacted",
+    "reactionReactorsEmpty": "No reactions yet for this emoji.",
+    "reactionLoadFailed": "Could not load reactions right now.",
+    "reactionUnavailable": "Reactions are unavailable for this post.",
     "commentAction": "Comment",
     "shareAction": "Share",
     "openLinkAction": "Open link",
@@ -162,7 +168,51 @@
     "profileComingSoon": "Profile page coming soon.",
     "profileRouteLabel": "Public profile view",
     "profileSelfRouteLabel": "Your profile route",
-    "openPostDetailAction": "Open post details"
+    "openPostDetailAction": "Open post details",
+    "postTypeShort": "Short post",
+    "postTypeLong": "Long post",
+    "communityRouteLabel": "Community page for c/{{community}} coming soon.",
+    "reportPostAction": "Report post",
+    "reportPostTitle": "Report post",
+    "reportPostPrompt": "Why are you reporting this post?",
+    "reportPostSuccess": "Post reported, thanks!",
+    "reportPostFailed": "Could not report this post right now.",
+    "reportPostUnavailable": "This post cannot be reported right now.",
+    "reportPostCategoriesUnavailable": "Report categories are not available right now.",
+    "unknownUser": "unknown",
+    "reportCategory": {
+      "spam": {
+        "title": "Spam",
+        "description": "Posts as spam could include clickbait, advertising, scams, script bots"
+      },
+      "copyright": {
+        "title": "Copyright and trademark infringement",
+        "description": "Posts with content that violates or infringes your copyright."
+      },
+      "abuse": {
+        "title": "Platform abuse",
+        "description": "Abuse might contain using bots, abusing the report button, spamming continuously."
+      },
+      "pornography": {
+        "title": "Pornography",
+        "description": "Posts showing sexual intercourse, photos and videos of sexual intercourse, nudity etc"
+      }
+    },
+    "searchLoadError": "Could not load search results right now.",
+    "searchSectionUsers": "Users",
+    "searchSectionCommunities": "Communities",
+    "searchSectionHashtags": "Hashtags",
+    "searchNoUsers": "No users found.",
+    "searchNoCommunities": "No communities found.",
+    "searchNoHashtags": "No hashtags found.",
+    "searchNoResults": "No results found.",
+    "searchNoDisplayName": "No display name",
+    "searchNoCommunityTitle": "No community title",
+    "searchHashtagPostsCount": "{{count}} posts",
+    "hashtagRouteLabel": "Hashtag page for #{{hashtag}} coming soon.",
+    "searchShowAllAction": "Show all results",
+    "searchResultsFor": "Search results for \"{{query}}\"",
+    "backToHomeFeedAction": "Back"
   },
   "theme": {
     "switchToLight": "Switch to light mode",
