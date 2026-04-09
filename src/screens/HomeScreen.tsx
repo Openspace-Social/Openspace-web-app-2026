@@ -23,6 +23,7 @@ import {
   FeedPost,
   FeedType,
   ModerationCategory,
+  PostComment,
   SearchCommunityResult,
   SearchHashtagResult,
   SearchUserResult,
@@ -32,6 +33,12 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
 import { AppRoute } from '../routing';
+import SearchResultsScreen from './SearchResultsScreen';
+import MyProfileScreen from './MyProfileScreen';
+import PostCard from '../components/PostCard';
+import FeedScreen from './FeedScreen';
+import PostDetailModal from '../components/PostDetailModal';
+import RouteSummaryCard from '../components/RouteSummaryCard';
 
 interface HomeScreenProps {
   token: string;
@@ -65,9 +72,12 @@ type PostReaction = {
   reactor?: {
     id?: number;
     username?: string;
+    avatar?: string;
     profile?: { avatar?: string };
   };
 };
+
+type ProfileTabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
 
 const REPORTABLE_POST_CATEGORY_NAMES = ['spam', 'copyright', 'abuse', 'pornography'] as const;
 type ReportablePostCategoryName = typeof REPORTABLE_POST_CATEGORY_NAMES[number];
@@ -111,7 +121,7 @@ function matchesReportCategory(category: ModerationCategory, categoryName: Repor
 export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { t } = useTranslation();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const c = theme.colors;
 
   const [user, setUser] = useState<any>(null);
@@ -123,6 +133,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
+  const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
   const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
   const [postRouteLoading, setPostRouteLoading] = useState(false);
@@ -130,12 +142,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
   const [draftComments, setDraftComments] = useState<Record<number, string>>({});
-  const [localComments, setLocalComments] = useState<Record<number, string[]>>({});
+  const [draftReplies, setDraftReplies] = useState<Record<number, string>>({});
+  const [commentEditDrafts, setCommentEditDrafts] = useState<Record<number, string>>({});
+  const [replyEditDrafts, setReplyEditDrafts] = useState<Record<number, string>>({});
+  const [editingCommentById, setEditingCommentById] = useState<Record<number, boolean>>({});
+  const [editingReplyById, setEditingReplyById] = useState<Record<number, boolean>>({});
+  const [commentMutationLoadingById, setCommentMutationLoadingById] = useState<Record<number, boolean>>({});
+  const [localComments, setLocalComments] = useState<Record<number, PostComment[]>>({});
+  const [commentRepliesById, setCommentRepliesById] = useState<Record<number, PostComment[]>>({});
+  const [commentRepliesExpanded, setCommentRepliesExpanded] = useState<Record<number, boolean>>({});
+  const [commentRepliesLoadingById, setCommentRepliesLoadingById] = useState<Record<number, boolean>>({});
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [reactionPickerPost, setReactionPickerPost] = useState<FeedPost | null>(null);
   const [reactionPickerLoading, setReactionPickerLoading] = useState(false);
   const [reactionActionLoading, setReactionActionLoading] = useState(false);
   const [reactionListOpen, setReactionListOpen] = useState(false);
+  const [reactionListPost, setReactionListPost] = useState<FeedPost | null>(null);
   const [reactionListLoading, setReactionListLoading] = useState(false);
   const [reactionListEmoji, setReactionListEmoji] = useState<ReactionEmoji | null>(null);
   const [reactionListUsers, setReactionListUsers] = useState<PostReaction[]>([]);
@@ -154,16 +176,23 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [searchResultsActive, setSearchResultsActive] = useState(false);
   const [searchResultsLoading, setSearchResultsLoading] = useState(false);
   const [searchResultsQuery, setSearchResultsQuery] = useState('');
+  const [profileActiveTab, setProfileActiveTab] = useState<ProfileTabKey>('all');
   const [menuOpen, setMenuOpen] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [externalLinkModalOpen, setExternalLinkModalOpen] = useState(false);
+  const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
   const [tooltipTab, setTooltipTab] = useState<FeedType | null>(null);
   const [showWelcomeNotice, setShowWelcomeNotice] = useState(false);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const externalLinkResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestSeqRef = useRef(0);
   const committedSearchRequestSeqRef = useRef(0);
+  const lastNonPostRouteRef = useRef<AppRoute>(
+    route.screen === 'post' ? { screen: 'feed', feed: route.feed || 'home' } : route
+  );
   const welcomeTranslateX = useRef(new Animated.Value(-380)).current;
 
   const providerOrder: SocialProvider[] = ['google', 'apple'];
@@ -204,6 +233,29 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       active = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!user?.username) return;
+    let active = true;
+    setMyProfilePostsLoading(true);
+    api.getUserPosts(token, user.username, 10)
+      .then((posts) => {
+        if (!active) return;
+        setMyProfilePosts(posts || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMyProfilePosts([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setMyProfilePostsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token, user?.username]);
 
   useEffect(() => {
     if (!user?.username) return;
@@ -330,6 +382,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   ), []);
 
   useEffect(() => {
+    if (route.screen !== 'post') {
+      lastNonPostRouteRef.current = route;
+    }
+
     if (route.screen === 'feed') {
       if (route.feed !== activeFeed) {
         setActiveFeed(route.feed);
@@ -356,17 +412,38 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         setActiveFeed(route.feed);
         loadFeed(route.feed);
       }
-      const postInCurrentFeed = feedPosts.find((post) => post.id === route.postId) || null;
-      setActivePost(postInCurrentFeed);
+      const postInCurrentContext =
+        feedPosts.find((post) => post.id === route.postId) ||
+        myProfilePosts.find((post) => post.id === route.postId) ||
+        null;
+      if (postInCurrentContext) {
+        setActivePost(postInCurrentContext);
+        void loadCommentsForPost(postInCurrentContext);
+      }
       return;
     }
 
     setActivePost(null);
-  }, [route, feedPosts]);
+  }, [route, feedPosts, myProfilePosts]);
 
   useEffect(() => {
     const routePostId = route.screen === 'post' ? route.postId : null;
     if (!routePostId) return;
+
+    const routedPostInMemory =
+      feedPosts.find((post) => post.id === routePostId) ||
+      myProfilePosts.find((post) => post.id === routePostId) ||
+      null;
+
+    if (routedPostInMemory) {
+      if (activePost?.id !== routedPostInMemory.id) {
+        setActivePost(routedPostInMemory);
+      }
+      void loadCommentsForPost(routedPostInMemory);
+      setPostRouteLoading(false);
+      return;
+    }
+
     const postId = routePostId;
     if (activePost?.id === routePostId) return;
     let cancelled = false;
@@ -377,6 +454,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         const fetchedPost = await api.getPostById(token, postId);
         if (cancelled) return;
         setActivePost(fetchedPost);
+        void loadCommentsForPost(fetchedPost);
       } catch {
         if (cancelled) return;
         setError(t('home.feedLoadError'));
@@ -389,7 +467,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return () => {
       cancelled = true;
     };
-  }, [route, token, activePost?.id]);
+  }, [route, token, activePost?.id, feedPosts, myProfilePosts]);
 
   async function loadFeed(feed: FeedType) {
     setFeedLoading(true);
@@ -480,26 +558,226 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   function getPostCommentsCount(post: FeedPost) {
-    return (post.comments_count || 0) + (localComments[post.id]?.length || 0);
+    const loadedComments = localComments[post.id];
+    if (loadedComments) {
+      return Math.max(post.comments_count || 0, loadedComments.length);
+    }
+    return post.comments_count || 0;
+  }
+
+  function getSourcePost(postId: number) {
+    return (
+      feedPosts.find((post) => post.id === postId) ||
+      myProfilePosts.find((post) => post.id === postId) ||
+      (activePost?.id === postId ? activePost : null)
+    );
   }
 
   function toggleExpand(postId: number) {
     setExpandedPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
   }
 
+  async function loadCommentsForPost(post: FeedPost) {
+    if (!post.uuid) return;
+    try {
+      const comments = await api.getPostComments(token, post.uuid, 20);
+      setLocalComments((prev) => ({ ...prev, [post.id]: comments }));
+    } catch {
+      // Do not block the post UI if comment loading fails.
+    }
+  }
+
   function toggleCommentBox(postId: number) {
+    const isOpening = !commentBoxPostIds[postId];
     setCommentBoxPostIds((prev) => ({ ...prev, [postId]: !prev[postId] }));
+    if (isOpening) {
+      const sourcePost = getSourcePost(postId);
+      if (sourcePost) void loadCommentsForPost(sourcePost);
+    }
   }
 
   function updateDraftComment(postId: number, value: string) {
     setDraftComments((prev) => ({ ...prev, [postId]: value }));
   }
 
-  function submitComment(postId: number) {
+  async function submitComment(postId: number) {
     const nextValue = (draftComments[postId] || '').trim();
     if (!nextValue) return;
-    setLocalComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), nextValue] }));
-    setDraftComments((prev) => ({ ...prev, [postId]: '' }));
+    const sourcePost = getSourcePost(postId);
+    if (!sourcePost?.uuid) {
+      setError(t('home.feedLoadError'));
+      return;
+    }
+
+    try {
+      const createdComment = await api.createPostComment(token, sourcePost.uuid, nextValue);
+      setLocalComments((prev) => ({
+        ...prev,
+        [postId]: [createdComment, ...(prev[postId] || [])],
+      }));
+      setDraftComments((prev) => ({ ...prev, [postId]: '' }));
+      applyPostPatch(postId, (post) => ({
+        ...post,
+        comments_count: (post.comments_count || 0) + 1,
+      }));
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    }
+  }
+
+  async function loadRepliesForComment(postUuid: string, commentId: number) {
+    setCommentRepliesLoadingById((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      const replies = await api.getPostCommentReplies(token, postUuid, commentId, 20);
+      setCommentRepliesById((prev) => ({ ...prev, [commentId]: replies }));
+    } catch {
+      setCommentRepliesById((prev) => ({ ...prev, [commentId]: [] }));
+    } finally {
+      setCommentRepliesLoadingById((prev) => ({ ...prev, [commentId]: false }));
+    }
+  }
+
+  function updateDraftReply(commentId: number, value: string) {
+    setDraftReplies((prev) => ({ ...prev, [commentId]: value }));
+  }
+
+  function toggleCommentReplies(postId: number, commentId: number) {
+    const isOpening = !commentRepliesExpanded[commentId];
+    setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
+    if (!isOpening) return;
+
+    const sourcePost = getSourcePost(postId);
+    if (!sourcePost?.uuid) return;
+    if (commentRepliesById[commentId]) return;
+    void loadRepliesForComment(sourcePost.uuid, commentId);
+  }
+
+  async function submitReply(postId: number, commentId: number) {
+    const sourcePost = getSourcePost(postId);
+    const nextValue = (draftReplies[commentId] || '').trim();
+    if (!sourcePost?.uuid || !nextValue) return;
+
+    try {
+      const createdReply = await api.createPostCommentReply(token, sourcePost.uuid, commentId, nextValue);
+      setCommentRepliesById((prev) => ({
+        ...prev,
+        [commentId]: [createdReply, ...(prev[commentId] || [])],
+      }));
+      setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: true }));
+      setDraftReplies((prev) => ({ ...prev, [commentId]: '' }));
+      setLocalComments((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] || []).map((comment) =>
+          comment.id === commentId
+            ? { ...comment, replies_count: (comment.replies_count || 0) + 1 }
+            : comment
+        ),
+      }));
+    } catch (e: any) {
+      setError(e?.message || t('home.replyLoadFailed'));
+    }
+  }
+
+  function startEditingComment(commentId: number, currentText: string, isReply: boolean) {
+    if (isReply) {
+      setEditingReplyById((prev) => ({ ...prev, [commentId]: true }));
+      setReplyEditDrafts((prev) => ({ ...prev, [commentId]: currentText || '' }));
+      return;
+    }
+    setEditingCommentById((prev) => ({ ...prev, [commentId]: true }));
+    setCommentEditDrafts((prev) => ({ ...prev, [commentId]: currentText || '' }));
+  }
+
+  function cancelEditingComment(commentId: number, isReply: boolean) {
+    if (isReply) {
+      setEditingReplyById((prev) => ({ ...prev, [commentId]: false }));
+      return;
+    }
+    setEditingCommentById((prev) => ({ ...prev, [commentId]: false }));
+  }
+
+  function updateEditCommentDraft(commentId: number, value: string, isReply: boolean) {
+    if (isReply) {
+      setReplyEditDrafts((prev) => ({ ...prev, [commentId]: value }));
+      return;
+    }
+    setCommentEditDrafts((prev) => ({ ...prev, [commentId]: value }));
+  }
+
+  async function saveEditedComment(postId: number, commentId: number, isReply: boolean, parentCommentId?: number) {
+    const sourcePost = getSourcePost(postId);
+    const draft = (isReply ? replyEditDrafts[commentId] : commentEditDrafts[commentId]) || '';
+    const nextValue = draft.trim();
+    if (!sourcePost?.uuid || !nextValue) return;
+
+    setCommentMutationLoadingById((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      const updated = await api.updatePostComment(token, sourcePost.uuid, commentId, nextValue);
+      if (isReply && parentCommentId) {
+        setCommentRepliesById((prev) => ({
+          ...prev,
+          [parentCommentId]: (prev[parentCommentId] || []).map((reply) =>
+            reply.id === commentId ? { ...reply, ...updated, text: updated.text || nextValue } : reply
+          ),
+        }));
+        setEditingReplyById((prev) => ({ ...prev, [commentId]: false }));
+      } else {
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map((comment) =>
+            comment.id === commentId ? { ...comment, ...updated, text: updated.text || nextValue } : comment
+          ),
+        }));
+        setEditingCommentById((prev) => ({ ...prev, [commentId]: false }));
+      }
+    } catch (e: any) {
+      setError(e?.message || t('home.commentEditFailed'));
+    } finally {
+      setCommentMutationLoadingById((prev) => ({ ...prev, [commentId]: false }));
+    }
+  }
+
+  async function deleteComment(postId: number, commentId: number, isReply: boolean, parentCommentId?: number) {
+    const sourcePost = getSourcePost(postId);
+    if (!sourcePost?.uuid) return;
+
+    setCommentMutationLoadingById((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      await api.deletePostComment(token, sourcePost.uuid, commentId);
+      if (isReply && parentCommentId) {
+        setCommentRepliesById((prev) => ({
+          ...prev,
+          [parentCommentId]: (prev[parentCommentId] || []).filter((reply) => reply.id !== commentId),
+        }));
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map((comment) =>
+            comment.id === parentCommentId
+              ? { ...comment, replies_count: Math.max((comment.replies_count || 1) - 1, 0) }
+              : comment
+          ),
+        }));
+      } else {
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).filter((comment) => comment.id !== commentId),
+        }));
+        applyPostPatch(postId, (post) => ({
+          ...post,
+          comments_count: Math.max((post.comments_count || 1) - 1, 0),
+        }));
+        setCommentRepliesById((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+      }
+      setNotice(t('home.commentDeleteSuccess'));
+    } catch (e: any) {
+      setError(e?.message || t('home.commentDeleteFailed'));
+    } finally {
+      setCommentMutationLoadingById((prev) => ({ ...prev, [commentId]: false }));
+    }
   }
 
   function clearWebFocus() {
@@ -511,18 +789,54 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function openPostDetail(post: FeedPost) {
     clearWebFocus();
     setActivePost(post);
+    void loadCommentsForPost(post);
     onNavigate({ screen: 'post', postId: post.id, feed: activeFeed });
   }
 
   function closePostDetail() {
     clearWebFocus();
     setActivePost(null);
-    onNavigate({ screen: 'feed', feed: activeFeed }, true);
+    const returnRoute = lastNonPostRouteRef.current;
+    onNavigate(returnRoute, true);
   }
 
   function applyPostPatch(postId: number, patch: (post: FeedPost) => FeedPost) {
     setFeedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
+    setMyProfilePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
+  }
+
+  async function editPost(post: FeedPost, text: string) {
+    if (!post.uuid) {
+      setError(t('home.postEditUnavailable'));
+      return;
+    }
+    try {
+      const updated = await api.updatePost(token, post.uuid, text);
+      const nextText = updated?.text ?? text;
+      applyPostPatch(post.id, (current) => ({ ...current, text: nextText }));
+      setNotice(t('home.postEditSuccess'));
+    } catch (e: any) {
+      setError(e?.message || t('home.postEditFailed'));
+      throw e;
+    }
+  }
+
+  async function deletePost(post: FeedPost) {
+    if (!post.uuid) {
+      setError(t('home.postDeleteUnavailable'));
+      return;
+    }
+    try {
+      await api.deletePost(token, post.uuid);
+      setFeedPosts((prev) => prev.filter((item) => item.id !== post.id));
+      setMyProfilePosts((prev) => prev.filter((item) => item.id !== post.id));
+      setActivePost((prev) => (prev?.id === post.id ? null : prev));
+      setNotice(t('home.postDeleteSuccess'));
+    } catch (e: any) {
+      setError(e?.message || t('home.postDeleteFailed'));
+      throw e;
+    }
   }
 
   async function ensureReactionGroups() {
@@ -549,7 +863,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function openReactionPicker(post: FeedPost) {
-    setReactionPickerPost(post);
+    requestAnimationFrame(() => {
+      setReactionPickerPost(post);
+    });
     await ensureReactionGroups();
   }
 
@@ -566,6 +882,32 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       applyPostPatch(post.id, (current) => ({ ...current, reaction }));
       await refreshPostReactionCounts(post);
       setReactionPickerPost(null);
+    } catch (e: any) {
+      setError(e?.message || t('home.reactionLoadFailed'));
+    } finally {
+      setReactionActionLoading(false);
+    }
+  }
+
+  async function reactToComment(postId: number, commentId: number, emojiId?: number) {
+    const sourcePost = getSourcePost(postId);
+    if (!sourcePost?.uuid || !emojiId || reactionActionLoading) return;
+    setReactionActionLoading(true);
+    try {
+      const reaction = await api.reactToPostComment(token, sourcePost.uuid, commentId, emojiId);
+      const counts = await api.getPostCommentReactionCounts(token, sourcePost.uuid, commentId);
+      setLocalComments((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] || []).map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                reaction,
+                reactions_emoji_counts: counts,
+              }
+            : comment
+        ),
+      }));
     } catch (e: any) {
       setError(e?.message || t('home.reactionLoadFailed'));
     } finally {
@@ -607,16 +949,35 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function openReactionList(post: FeedPost, emoji?: ReactionEmoji) {
-    if (!post.uuid || !emoji?.id) {
+    if (!post.uuid) {
       setError(t('home.reactionUnavailable'));
       return;
     }
     setReactionListOpen(true);
-    setReactionListEmoji(emoji);
+    setReactionListPost(post);
+    setReactionListEmoji(emoji || null);
     setReactionListUsers([]);
     setReactionListLoading(true);
     try {
-      const reactions = await api.getPostReactions(token, post.uuid, emoji.id);
+      const reactions = await api.getPostReactions(token, post.uuid, emoji?.id);
+      setReactionListUsers(reactions);
+    } catch (e: any) {
+      setError(e?.message || t('home.reactionLoadFailed'));
+    } finally {
+      setReactionListLoading(false);
+    }
+  }
+
+  async function loadReactionListInline(post: FeedPost, emoji?: ReactionEmoji) {
+    if (!post.uuid) {
+      setError(t('home.reactionUnavailable'));
+      return;
+    }
+    setReactionListEmoji(emoji || null);
+    setReactionListUsers([]);
+    setReactionListLoading(true);
+    try {
+      const reactions = await api.getPostReactions(token, post.uuid, emoji?.id);
       setReactionListUsers(reactions);
     } catch (e: any) {
       setError(e?.message || t('home.reactionLoadFailed'));
@@ -627,6 +988,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   function closeReactionList() {
     setReactionListOpen(false);
+    setReactionListPost(null);
     setReactionListEmoji(null);
     setReactionListUsers([]);
     setReactionListLoading(false);
@@ -658,9 +1020,64 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
   }
 
+  function isInternalOpenspaceUrl(url: string) {
+    try {
+      const parsed = new URL(url);
+      const hostname = (parsed.hostname || '').toLowerCase();
+      return (
+        hostname.endsWith('openspace.social') ||
+        hostname === 'openspace-staging-api.us-east-2.elasticbeanstalk.com' ||
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  async function confirmOpenPendingExternalLink() {
+    const url = pendingExternalLink;
+    if (!url) {
+      setExternalLinkModalOpen(false);
+      return;
+    }
+
+    if (externalLinkResetTimerRef.current) {
+      clearTimeout(externalLinkResetTimerRef.current);
+      externalLinkResetTimerRef.current = null;
+    }
+
+    setExternalLinkModalOpen(false);
+    externalLinkResetTimerRef.current = setTimeout(() => {
+      setPendingExternalLink(null);
+      externalLinkResetTimerRef.current = null;
+    }, 220);
+
+    setTimeout(() => {
+      Linking.openURL(url).catch(() => setError(t('home.openLinkFailed')));
+    }, 140);
+  }
+
+  function cancelOpenPendingExternalLink() {
+    if (externalLinkResetTimerRef.current) {
+      clearTimeout(externalLinkResetTimerRef.current);
+      externalLinkResetTimerRef.current = null;
+    }
+    setExternalLinkModalOpen(false);
+    externalLinkResetTimerRef.current = setTimeout(() => {
+      setPendingExternalLink(null);
+      externalLinkResetTimerRef.current = null;
+    }, 220);
+  }
+
   function openLink(url?: string) {
     if (!url) return;
-    Linking.openURL(url).catch(() => setError(t('home.openLinkFailed')));
+    if (isInternalOpenspaceUrl(url)) {
+      Linking.openURL(url).catch(() => setError(t('home.openLinkFailed')));
+      return;
+    }
+    setPendingExternalLink(url);
+    setExternalLinkModalOpen(true);
   }
 
   const welcomeText = user?.username
@@ -850,6 +1267,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return () => clearTooltipTimer();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (externalLinkResetTimerRef.current) {
+        clearTimeout(externalLinkResetTimerRef.current);
+        externalLinkResetTimerRef.current = null;
+      }
+    };
+  }, []);
+
   function hideWelcomeNotice() {
     if (welcomeTimerRef.current) {
       clearTimeout(welcomeTimerRef.current);
@@ -1005,14 +1431,16 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     onNavigate({ screen: 'hashtag', name });
   }
 
-  const viewingProfileRoute = route.screen === 'profile' || route.screen === 'me';
-  const viewingCommunityRoute = route.screen === 'community';
-  const viewingHashtagRoute = route.screen === 'hashtag';
-  const profileRouteUsername = route.screen === 'profile'
-    ? route.username
+  // Keep the last non-post route as the background context while a post modal is open.
+  const displayRoute = route.screen === 'post' ? lastNonPostRouteRef.current : route;
+  const viewingProfileRoute = displayRoute.screen === 'profile' || displayRoute.screen === 'me';
+  const viewingCommunityRoute = displayRoute.screen === 'community';
+  const viewingHashtagRoute = displayRoute.screen === 'hashtag';
+  const profileRouteUsername = displayRoute.screen === 'profile'
+    ? displayRoute.username
     : user?.username || '';
-  const communityRouteName = route.screen === 'community' ? route.name : '';
-  const hashtagRouteName = route.screen === 'hashtag' ? route.name : '';
+  const communityRouteName = displayRoute.screen === 'community' ? displayRoute.name : '';
+  const hashtagRouteName = displayRoute.screen === 'hashtag' ? displayRoute.name : '';
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
   const hasActivePostMedia = !!activePost?.media_thumbnail;
@@ -1022,6 +1450,94 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     searchResultsActive &&
     searchResultsQuery.length >= 2;
   const isWideSearchResultsLayout = viewportWidth >= 1200;
+  const isCompactProfileLayout = viewportWidth < 1180;
+  const profileTabs: Array<{ key: ProfileTabKey; label: string }> = [
+    { key: 'all', label: t('home.profileTabAll') },
+    { key: 'about', label: t('home.profileTabAbout') },
+    { key: 'followers', label: t('home.profileTabFollowers') },
+    { key: 'photos', label: t('home.profileTabPhotos') },
+    { key: 'reels', label: t('home.profileTabReels') },
+    { key: 'more', label: t('home.profileTabMore') },
+  ];
+  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults;
+  const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
+
+  function handleNavigateProfile(username: string) {
+    onNavigate({ screen: 'profile', username });
+  }
+
+  function handleNavigateProfileFromPostDetail(username: string) {
+    closeReactionList();
+    clearWebFocus();
+    setActivePost(null);
+    onNavigate({ screen: 'profile', username }, true);
+  }
+
+  function handleNavigateCommunity(name: string) {
+    onNavigate({ screen: 'community', name });
+  }
+
+  function renderPostCard(post: FeedPost, variant: 'feed' | 'profile' = 'feed') {
+    return (
+      <PostCard
+        key={`${variant}-${activeFeed}-${post.id}`}
+        post={post}
+        variant={variant}
+        styles={styles}
+        c={c}
+        t={t}
+        currentUsername={user?.username}
+        expandedPostIds={expandedPostIds}
+        commentBoxPostIds={commentBoxPostIds}
+        localComments={localComments}
+        commentRepliesById={commentRepliesById}
+        commentRepliesExpanded={commentRepliesExpanded}
+        commentRepliesLoadingById={commentRepliesLoadingById}
+        draftComments={draftComments}
+        draftReplies={draftReplies}
+        commentEditDrafts={commentEditDrafts}
+        replyEditDrafts={replyEditDrafts}
+        editingCommentById={editingCommentById}
+        editingReplyById={editingReplyById}
+        commentMutationLoadingById={commentMutationLoadingById}
+        reactionGroups={reactionGroups}
+        reactionPickerLoading={reactionPickerLoading}
+        reactionActionLoading={reactionActionLoading}
+        followStateByUsername={followStateByUsername}
+        followActionLoadingByUsername={followActionLoadingByUsername}
+        showFollowButton={variant === 'feed' && showFeedFollowButton}
+        onEnsureReactionGroups={ensureReactionGroups}
+        onReactToComment={reactToComment}
+        onToggleFollow={handleToggleFollow}
+        onOpenPostDetail={openPostDetail}
+        onToggleExpand={toggleExpand}
+        onOpenReactionList={openReactionList}
+        onOpenReactionPicker={openReactionPicker}
+        onToggleCommentBox={toggleCommentBox}
+        onToggleCommentReplies={toggleCommentReplies}
+        onSharePost={handleSharePost}
+        onOpenLink={openLink}
+        onUpdateDraftComment={updateDraftComment}
+        onUpdateDraftReply={updateDraftReply}
+        onStartEditingComment={startEditingComment}
+        onCancelEditingComment={cancelEditingComment}
+        onUpdateEditCommentDraft={updateEditCommentDraft}
+        onSaveEditedComment={saveEditedComment}
+        onDeleteComment={deleteComment}
+        onSubmitComment={submitComment}
+        onSubmitReply={submitReply}
+        onOpenReportPostModal={openReportPostModal}
+        onEditPost={editPost}
+        onDeletePost={deletePost}
+        onNavigateProfile={handleNavigateProfile}
+        onNavigateCommunity={handleNavigateCommunity}
+        getPostText={getPostText}
+        getPostLengthType={getPostLengthType}
+        getPostReactionCount={getPostReactionCount}
+        getPostCommentsCount={getPostCommentsCount}
+      />
+    );
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
@@ -1496,6 +2012,112 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       </Modal>
 
       <Modal
+        visible={externalLinkModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelOpenPendingExternalLink}
+      >
+        <TouchableOpacity
+          style={styles.externalLinkModalBackdrop}
+          activeOpacity={1}
+          onPress={cancelOpenPendingExternalLink}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.externalLinkModalCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <Text style={[styles.externalLinkModalTitle, { color: c.textPrimary }]}>
+                {t('home.externalLinkWarningTitle')}
+              </Text>
+              <Text style={[styles.externalLinkModalBody, { color: c.textSecondary }]}>
+                {t('home.externalLinkWarningBody')}
+              </Text>
+              {pendingExternalLink ? (
+                <Text numberOfLines={2} style={[styles.externalLinkModalUrl, { color: c.textMuted }]}>
+                  {pendingExternalLink}
+                </Text>
+              ) : null}
+              <View style={styles.externalLinkModalActions}>
+                <TouchableOpacity
+                  style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  onPress={cancelOpenPendingExternalLink}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                    {t('home.externalLinkCancelAction')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                  onPress={confirmOpenPendingExternalLink}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.externalLinkContinueButtonText}>
+                    {t('home.externalLinkContinueAction')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <PostDetailModal
+        styles={styles}
+        c={c}
+        t={t}
+        visible={!!activePost || postRouteLoading}
+        postRouteLoading={postRouteLoading}
+        activePost={activePost}
+        hasActivePostMedia={hasActivePostMedia}
+        currentUsername={user?.username}
+        currentUserAvatar={user?.profile?.avatar}
+        localComments={localComments}
+        commentRepliesById={commentRepliesById}
+        commentRepliesExpanded={commentRepliesExpanded}
+        commentRepliesLoadingById={commentRepliesLoadingById}
+        draftComments={draftComments}
+        draftReplies={draftReplies}
+        commentEditDrafts={commentEditDrafts}
+        replyEditDrafts={replyEditDrafts}
+        editingCommentById={editingCommentById}
+        editingReplyById={editingReplyById}
+        commentMutationLoadingById={commentMutationLoadingById}
+        reactionGroups={reactionGroups}
+        reactionPickerLoading={reactionPickerLoading}
+        reactionActionLoading={reactionActionLoading}
+        getPostText={getPostText}
+        getPostReactionCount={getPostReactionCount}
+        getPostCommentsCount={getPostCommentsCount}
+        onClose={closePostDetail}
+        onLoadReactionList={loadReactionListInline}
+        onEnsureReactionGroups={ensureReactionGroups}
+        onReactToPostWithEmoji={reactToPostWithEmoji}
+        onReactToComment={reactToComment}
+        onToggleCommentReplies={toggleCommentReplies}
+        onSharePost={handleSharePost}
+        onOpenLink={openLink}
+        onUpdateDraftComment={updateDraftComment}
+        onUpdateDraftReply={updateDraftReply}
+        onStartEditingComment={startEditingComment}
+        onCancelEditingComment={cancelEditingComment}
+        onUpdateEditCommentDraft={updateEditCommentDraft}
+        onSaveEditedComment={saveEditedComment}
+        onDeleteComment={deleteComment}
+        onSubmitComment={submitComment}
+        onSubmitReply={submitReply}
+        onNavigateProfile={handleNavigateProfileFromPostDetail}
+        reactionListOpen={reactionListOpen}
+        reactionListLoading={reactionListLoading}
+        reactionListEmoji={reactionListEmoji}
+        reactionListUsers={reactionListUsers}
+        onCloseReactionList={closeReactionList}
+      />
+
+      <Modal
         visible={!!reactionPickerPost}
         transparent
         animationType="fade"
@@ -1537,7 +2159,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                               style={[styles.reactionEmojiButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                               activeOpacity={0.85}
                               disabled={reactionActionLoading}
-                              onPress={() => reactToPostWithEmoji(reactionPickerPost as FeedPost, emoji.id)}
+                              onPress={() => void reactToPostWithEmoji(reactionPickerPost as FeedPost, emoji.id)}
                             >
                               {emoji.image ? (
                                 <Image source={{ uri: emoji.image }} style={styles.reactionEmojiImage} resizeMode="contain" />
@@ -1558,14 +2180,23 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       </Modal>
 
       <Modal
-        visible={reactionListOpen}
+        visible={reactionListOpen && !(!!activePost || postRouteLoading)}
         transparent
         animationType="fade"
         onRequestClose={closeReactionList}
       >
         <TouchableOpacity style={styles.reactionListBackdrop} activeOpacity={1} onPress={closeReactionList}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.reactionListCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View
+              style={[
+                styles.reactionListCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  height: reactionListModalHeight,
+                },
+              ]}
+            >
               <View style={styles.linkedModalHeader}>
                 <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
                   {t('home.reactionReactorsTitle')}
@@ -1582,22 +2213,84 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 {reactionListEmoji?.keyword || ''}
               </Text>
 
-              {reactionListLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
-              ) : reactionListUsers.length === 0 ? (
-                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.reactionReactorsEmpty')}</Text>
-              ) : (
-                <View style={styles.reactionListContent}>
+              {reactionListPost?.reactions_emoji_counts?.length ? (
+                <View style={styles.reactionSummaryWrap}>
+                  <TouchableOpacity
+                    style={[
+                      styles.reactionSummaryChip,
+                      {
+                        borderColor: c.border,
+                        backgroundColor: !reactionListEmoji?.id ? c.surface : c.inputBackground,
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => void openReactionList(reactionListPost)}
+                  >
+                    <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
+                      {t('home.profileTabAll')}
+                    </Text>
+                  </TouchableOpacity>
+                  {(reactionListPost.reactions_emoji_counts || [])
+                    .filter((entry) => (entry?.count || 0) > 0)
+                    .map((entry, idx) => (
+                      <TouchableOpacity
+                        key={`feed-reaction-filter-${reactionListPost.id}-${entry.emoji?.id || idx}`}
+                        style={[
+                          styles.reactionSummaryChip,
+                          {
+                            borderColor: c.border,
+                            backgroundColor: reactionListEmoji?.id === entry.emoji?.id ? c.surface : c.inputBackground,
+                          },
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => void openReactionList(reactionListPost, entry.emoji)}
+                      >
+                        {entry.emoji?.image ? (
+                          <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
+                        ) : (
+                          <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
+                        )}
+                        <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>{entry.count || 0}</Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              ) : null}
+
+              <View style={styles.reactionListContent}>
+                {reactionListLoading ? (
+                  <View style={styles.reactionListState}>
+                    <ActivityIndicator color={c.primary} size="small" />
+                  </View>
+                ) : reactionListUsers.length === 0 ? (
+                  <View style={styles.reactionListState}>
+                    <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.reactionReactorsEmpty')}</Text>
+                  </View>
+                ) : (
                   <ScrollView style={styles.reactionListScroll} contentContainerStyle={styles.reactionListScrollContent}>
                     {reactionListUsers.map((item, idx) => (
-                      <View
+                      <TouchableOpacity
                         key={`reaction-user-${item.id || idx}`}
                         style={[styles.reactionUserRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          const username = item.reactor?.username;
+                          if (!username) return;
+                          closeReactionList();
+                          onNavigate({ screen: 'profile', username });
+                        }}
                       >
                         <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                          <Text style={styles.feedAvatarLetter}>
-                            {(item.reactor?.username?.[0] || 'O').toUpperCase()}
-                          </Text>
+                          {item.reactor?.profile?.avatar || item.reactor?.avatar ? (
+                            <Image
+                              source={{ uri: item.reactor?.profile?.avatar || item.reactor?.avatar || '' }}
+                              style={styles.feedAvatarImage}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <Text style={styles.feedAvatarLetter}>
+                              {(item.reactor?.username?.[0] || 'O').toUpperCase()}
+                            </Text>
+                          )}
                         </View>
                         <View style={styles.feedHeaderMeta}>
                           <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
@@ -1607,11 +2300,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                             {item.created ? new Date(item.created).toLocaleString() : ''}
                           </Text>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                   </ScrollView>
-                </View>
-              )}
+                )}
+              </View>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -1696,713 +2389,87 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </View>
       ) : null}
 
-      <Modal
-        visible={!!activePost || postRouteLoading}
-        transparent={false}
-        animationType="fade"
-        onRequestClose={closePostDetail}
-      >
-        {activePost ? (
-          hasActivePostMedia ? (
-            <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13' }]}>
-              <View style={styles.postDetailLeft}>
-                <TouchableOpacity
-                  style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
-                  onPress={closePostDetail}
-                  activeOpacity={0.85}
-                  accessibilityLabel={t('home.closeNoticeAction')}
-                >
-                  <MaterialCommunityIcons name="close" size={22} color="#fff" />
-                </TouchableOpacity>
-
-                <View style={styles.postDetailMediaWrap}>
-                  <Image
-                    source={{ uri: activePost.media_thumbnail }}
-                    style={styles.postDetailMedia}
-                    resizeMode="contain"
-                  />
-                </View>
-              </View>
-
-              <View style={[styles.postDetailRight, { backgroundColor: c.surface, borderLeftColor: c.border }]}>
-                <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
-                  <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                    <Text style={styles.feedAvatarLetter}>
-                      {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.feedHeaderMeta}>
-                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                      @{activePost.creator?.username || t('home.unknownUser')}
-                    </Text>
-                    <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                      {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
-                  {!!getPostText(activePost) && (
-                    <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
-                      {getPostText(activePost)}
-                    </Text>
-                  )}
-
-                  <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                      {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
-                    </Text>
-                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                      {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
-                    </Text>
-                  </View>
-                  {(activePost.reactions_emoji_counts || []).length > 0 ? (
-                    <View style={styles.reactionSummaryWrap}>
-                      {(activePost.reactions_emoji_counts || [])
-                        .filter((entry) => (entry?.count || 0) > 0)
-                        .map((entry, idx) => (
-                          <TouchableOpacity
-                            key={`${activePost.id}-reaction-summary-modal-${entry.emoji?.id || idx}`}
-                            style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                            onPress={() => openReactionList(activePost, entry.emoji)}
-                            activeOpacity={0.85}
-                          >
-                            {entry.emoji?.image ? (
-                              <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                            ) : (
-                              <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                            )}
-                            <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                              {entry.count || 0}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </View>
-                  ) : null}
-
-                  <View style={styles.feedActionsRow}>
-                        <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => openReactionPicker(activePost)}
-                          activeOpacity={0.85}
-                        >
-                      <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      onPress={() => handleSharePost(activePost)}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
-                    {(localComments[activePost.id] || []).map((comment, index) => (
-                      <View
-                        key={`${activePost.id}-modal-comment-${index}`}
-                        style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
-                      >
-                        <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
-                      </View>
-                    ))}
-
-                    <View style={styles.commentComposer}>
-                      <TextInput
-                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={draftComments[activePost.id] || ''}
-                        onChangeText={(value) => updateDraftComment(activePost.id, value)}
-                        placeholder={t('home.commentPlaceholder')}
-                        placeholderTextColor={c.placeholder}
-                      />
-                      <TouchableOpacity
-                        style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                        onPress={() => submitComment(activePost.id)}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </ScrollView>
-              </View>
-            </View>
-          ) : (
-            <View style={[styles.postDetailTextOnlyRoot, { backgroundColor: '#0B0E13' }]}>
-              <View style={[styles.postDetailTextOnlyCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}>
-                  <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                    <Text style={styles.feedAvatarLetter}>
-                      {(activePost.creator?.username?.[0] || 'O').toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.feedHeaderMeta}>
-                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                      @{activePost.creator?.username || t('home.unknownUser')}
-                    </Text>
-                    <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                      {activePost.created ? new Date(activePost.created).toLocaleString() : ''}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                    onPress={closePostDetail}
-                    activeOpacity={0.85}
-                    accessibilityLabel={t('home.closeNoticeAction')}
-                  >
-                    <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
-                  {!!getPostText(activePost) && (
-                    <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
-                      {getPostText(activePost)}
-                    </Text>
-                  )}
-
-                  <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                      {t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}
-                    </Text>
-                    <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                      {t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}
-                    </Text>
-                  </View>
-                  {(activePost.reactions_emoji_counts || []).length > 0 ? (
-                    <View style={styles.reactionSummaryWrap}>
-                      {(activePost.reactions_emoji_counts || [])
-                        .filter((entry) => (entry?.count || 0) > 0)
-                        .map((entry, idx) => (
-                          <TouchableOpacity
-                            key={`${activePost.id}-reaction-summary-text-${entry.emoji?.id || idx}`}
-                            style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                            onPress={() => openReactionList(activePost, entry.emoji)}
-                            activeOpacity={0.85}
-                          >
-                            {entry.emoji?.image ? (
-                              <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                            ) : (
-                              <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                            )}
-                            <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                              {entry.count || 0}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </View>
-                  ) : null}
-
-                  <View style={styles.feedActionsRow}>
-                    <TouchableOpacity
-                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      onPress={() => openReactionPicker(activePost)}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      onPress={() => handleSharePost(activePost)}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-                      <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
-                    {(localComments[activePost.id] || []).map((comment, index) => (
-                      <View
-                        key={`${activePost.id}-modal-comment-${index}`}
-                        style={[styles.commentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}
-                      >
-                        <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-
-                <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
-                  <View style={styles.commentComposer}>
-                    <TextInput
-                      style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                      value={draftComments[activePost.id] || ''}
-                      onChangeText={(value) => updateDraftComment(activePost.id, value)}
-                      placeholder={t('home.commentPlaceholder')}
-                      placeholderTextColor={c.placeholder}
-                    />
-                    <TouchableOpacity
-                      style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                      onPress={() => submitComment(activePost.id)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </View>
-          )
-        ) : (
-          <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13', alignItems: 'center', justifyContent: 'center' }]}>
-            <ActivityIndicator color="#fff" size="large" />
-          </View>
-        )}
-      </Modal>
-
       <ScrollView contentContainerStyle={styles.rootContent}>
         {loading ? (
           <ActivityIndicator color={c.primary} size="large" />
         ) : (
           <>
-            {viewingProfileRoute ? (
-              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.welcome, { color: c.textPrimary }]}>
-                  @{profileRouteUsername}
-                </Text>
-                <Text style={[styles.subtitle, { color: c.textMuted }]}>
-                  {route.screen === 'me' ? t('home.profileSelfRouteLabel') : t('home.profileRouteLabel')}
-                </Text>
-              </View>
+            {displayRoute.screen === 'me' ? (
+              <MyProfileScreen
+                styles={styles}
+                c={c}
+                t={t}
+                user={user}
+                profileRouteUsername={profileRouteUsername}
+                isCompactProfileLayout={isCompactProfileLayout}
+                profileTabs={profileTabs}
+                profileActiveTab={profileActiveTab}
+                onSetProfileActiveTab={setProfileActiveTab}
+                myProfilePosts={myProfilePosts}
+                myProfilePostsLoading={myProfilePostsLoading}
+                onNotice={setNotice}
+                renderPostCard={renderPostCard}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'profile' ? (
+              <RouteSummaryCard
+                styles={styles}
+                c={c}
+                title={`@${profileRouteUsername}`}
+                subtitle={t('home.profileRouteLabel')}
+              />
             ) : null}
 
             {viewingCommunityRoute ? (
-              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.welcome, { color: c.textPrimary }]}>
-                  c/{communityRouteName}
-                </Text>
-                <Text style={[styles.subtitle, { color: c.textMuted }]}>
-                  {t('home.communityRouteLabel', { community: communityRouteName })}
-                </Text>
-              </View>
+              <RouteSummaryCard
+                styles={styles}
+                c={c}
+                title={`c/${communityRouteName}`}
+                subtitle={t('home.communityRouteLabel', { community: communityRouteName })}
+              />
             ) : null}
 
             {viewingHashtagRoute ? (
-              <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.welcome, { color: c.textPrimary }]}>
-                  #{hashtagRouteName}
-                </Text>
-                <Text style={[styles.subtitle, { color: c.textMuted }]}>
-                  {t('home.hashtagRouteLabel', { hashtag: hashtagRouteName })}
-                </Text>
-              </View>
+              <RouteSummaryCard
+                styles={styles}
+                c={c}
+                title={`#${hashtagRouteName}`}
+                subtitle={t('home.hashtagRouteLabel', { hashtag: hashtagRouteName })}
+              />
             ) : null}
 
             {showingMainSearchResults ? (
-              <View style={isWideSearchResultsLayout ? styles.searchResultsWideLayout : undefined}>
-                {isWideSearchResultsLayout ? <View style={styles.searchResultsLeftReserve} /> : null}
-                <View
-                  style={[
-                    styles.feedCard,
-                    isWideSearchResultsLayout ? styles.searchResultsMainCard : null,
-                    { backgroundColor: c.surface, borderColor: c.border },
-                  ]}
-                >
-                <View style={styles.searchMainHeader}>
-                  <TouchableOpacity
-                    style={[styles.searchShowAllButton, styles.backToFeedButton, styles.backToFeedButtonSlim, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    onPress={handleBackToHomeFeed}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.backToFeedButtonContent}>
-                      <MaterialCommunityIcons name="arrow-left" size={16} color={c.textLink} />
-                      <Text style={[styles.searchShowAllButtonText, styles.backToFeedButtonText, { color: c.textLink }]}>
-                        {t('home.backToHomeFeedAction')}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  <Text style={[styles.searchMainTitle, { color: c.textPrimary }]}>
-                    {t('home.searchResultsFor', { query: searchResultsQuery })}
-                  </Text>
-                </View>
-
-                {searchResultsLoading ? (
-                  <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
-                ) : (
-                  <View style={styles.searchMainSections}>
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionUsers')}
-                      </Text>
-                      {searchUsers.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoUsers')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchUsers.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-user-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchUser(item.username)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.profile?.avatar ? (
-                                  <Image source={{ uri: item.profile.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <Text style={styles.searchAvatarLetter}>
-                                    {(item.username?.[0] || t('home.unknownUser')[0] || 'U').toUpperCase()}
-                                  </Text>
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  @{item.username || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {item.profile?.name || t('home.searchNoDisplayName')}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionCommunities')}
-                      </Text>
-                      {searchCommunities.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoCommunities')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchCommunities.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-community-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchCommunity(item.name)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.avatar ? (
-                                  <Image source={{ uri: item.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  c/{item.name || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {item.title || t('home.searchNoCommunityTitle')}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.searchSection}>
-                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
-                        {t('home.searchSectionHashtags')}
-                      </Text>
-                      {searchHashtags.length === 0 ? (
-                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
-                          {t('home.searchNoHashtags')}
-                        </Text>
-                      ) : (
-                        <View style={styles.searchTileGrid}>
-                          {searchHashtags.map((item) => (
-                            <TouchableOpacity
-                              key={`main-search-hashtag-${item.id}`}
-                              style={[
-                                styles.searchTile,
-                                isWideSearchResultsLayout ? styles.searchTileWide : null,
-                                { borderColor: c.border, backgroundColor: c.inputBackground },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectSearchHashtag(item.name)}
-                            >
-                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
-                                {item.image || item.emoji?.image ? (
-                                  <Image source={{ uri: item.image || item.emoji?.image }} style={styles.searchAvatarImage} resizeMode="cover" />
-                                ) : (
-                                  <MaterialCommunityIcons name="pound" size={16} color="#fff" />
-                                )}
-                              </View>
-                              <View style={styles.searchResultMeta}>
-                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
-                                  #{item.name || t('home.unknownUser')}
-                                </Text>
-                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
-                                  {t('home.searchHashtagPostsCount', { count: item.posts_count || 0 })}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-
-                    {searchError ? (
-                      <Text style={[styles.searchSectionError, { color: c.errorText }]}>
-                        {searchError}
-                      </Text>
-                    ) : null}
-
-                    {!searchError && !hasAnySearchResults ? (
-                      <Text style={[styles.searchSectionEmptyGlobal, { color: c.textMuted }]}>
-                        {t('home.searchNoResults')}
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-              </View>
-              </View>
+              <SearchResultsScreen
+                styles={styles}
+                c={c}
+                t={t}
+                isWideSearchResultsLayout={isWideSearchResultsLayout}
+                searchResultsQuery={searchResultsQuery}
+                searchResultsLoading={searchResultsLoading}
+                searchError={searchError}
+                searchUsers={searchUsers}
+                searchCommunities={searchCommunities}
+                searchHashtags={searchHashtags}
+                hasAnySearchResults={hasAnySearchResults}
+                onBack={handleBackToHomeFeed}
+                onSelectUser={handleSelectSearchUser}
+                onSelectCommunity={handleSelectSearchCommunity}
+                onSelectHashtag={handleSelectSearchHashtag}
+              />
             ) : null}
 
             {!viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults ? (
-            <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              {feedLoading ? (
-                <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
-              ) : feedError ? (
-                <Text style={[styles.feedErrorText, { color: c.errorText }]}>{feedError}</Text>
-              ) : feedPosts.length === 0 ? (
-                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
-                  {t('home.feedEmpty')}
-                </Text>
-              ) : (
-                <View style={styles.feedList}>
-                  {feedPosts.map((post) => (
-                    <View
-                      key={`${activeFeed}-${post.id}`}
-                      style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                    >
-                      <View style={styles.feedPostHeader}>
-                        <View style={styles.feedHeaderLeft}>
-                          <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                            <Text style={styles.feedAvatarLetter}>
-                              {(post.creator?.username?.[0] || 'O').toUpperCase()}
-                            </Text>
-                          </View>
-                          <View style={styles.feedHeaderMeta}>
-                            {post.community?.name ? (
-                              <TouchableOpacity
-                                activeOpacity={0.8}
-                                onPress={() => onNavigate({ screen: 'community', name: post.community?.name || '' })}
-                              >
-                                <Text style={[styles.feedCommunityHeaderLink, { color: c.textLink }]}>
-                                  c/{post.community.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={() => {
-                                const username = post.creator?.username;
-                                if (!username) return;
-                                onNavigate({ screen: 'profile', username });
-                              }}
-                            >
-                              <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>
-                                @{post.creator?.username || t('home.unknownUser')}
-                              </Text>
-                            </TouchableOpacity>
-                            <Text style={[styles.feedDate, { color: c.textMuted }]}>
-                              {post.created ? new Date(post.created).toLocaleString() : ''}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.feedHeaderActions}>
-                          {post.creator?.username &&
-                          post.creator.username !== user?.username &&
-                          !(followStateByUsername[post.creator.username] ?? !!post.creator?.is_following) ? (
-                            <TouchableOpacity
-                              style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
-                              activeOpacity={0.85}
-                              disabled={!!followActionLoadingByUsername[post.creator.username]}
-                              onPress={() =>
-                                handleToggleFollow(
-                                  post.creator!.username!,
-                                  followStateByUsername[post.creator!.username!] ?? !!post.creator?.is_following
-                                )
-                              }
-                            >
-                              <Text style={[styles.followButtonText, { color: c.textLink }]}>
-                                {followActionLoadingByUsername[post.creator.username] ? '...' : t('home.followAction')}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : null}
-                          <TouchableOpacity
-                            style={[styles.reportButton, { borderColor: c.border, backgroundColor: c.surface }]}
-                            activeOpacity={0.85}
-                            onPress={() => openReportPostModal(post)}
-                            accessibilityLabel={t('home.reportPostAction')}
-                          >
-                            <MaterialCommunityIcons name="dots-horizontal" size={16} color={c.textSecondary} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <View style={styles.postMetaRow}>
-                        <View style={[styles.postLengthBadge, { borderColor: c.border, backgroundColor: c.surface }]}>
-                          <Text style={[styles.postLengthBadgeText, { color: c.textMuted }]}>
-                            {getPostLengthType(post) === 'long' ? t('home.postTypeLong') : t('home.postTypeShort')}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {getPostText(post) ? (
-                        <View style={styles.feedTextWrap}>
-                          <Text style={[styles.feedText, { color: c.textSecondary }]}>
-                            {expandedPostIds[post.id]
-                              ? getPostText(post)
-                              : `${getPostText(post).slice(0, 240)}${getPostText(post).length > 240 ? '...' : ''}`}
-                          </Text>
-                          {getPostText(post).length > 240 ? (
-                            <TouchableOpacity onPress={() => toggleExpand(post.id)} activeOpacity={0.85}>
-                              <Text style={[styles.seeMoreText, { color: c.textLink }]}>
-                                {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                      ) : null}
-
-                      {post.media_thumbnail ? (
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => openPostDetail(post)}
-                          accessibilityLabel={t('home.openPostDetailAction')}
-                        >
-                          <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
-                        </TouchableOpacity>
-                      ) : null}
-
-                      <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-                        <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                          {t('home.feedReactionsCount', { count: getPostReactionCount(post) })}
-                        </Text>
-                        <Text style={[styles.feedStatText, { color: c.textMuted }]}>
-                          {t('home.feedCommentsCount', { count: getPostCommentsCount(post) })}
-                        </Text>
-                      </View>
-                      {(post.reactions_emoji_counts || []).length > 0 ? (
-                        <View style={styles.reactionSummaryWrap}>
-                          {(post.reactions_emoji_counts || [])
-                            .filter((entry) => (entry?.count || 0) > 0)
-                            .map((entry, idx) => (
-                              <TouchableOpacity
-                                key={`${post.id}-reaction-summary-${entry.emoji?.id || idx}`}
-                                style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                                onPress={() => openReactionList(post, entry.emoji)}
-                                activeOpacity={0.85}
-                              >
-                                {entry.emoji?.image ? (
-                                  <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                                ) : (
-                                  <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                                )}
-                                <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>
-                                  {entry.count || 0}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                        </View>
-                      ) : null}
-
-                      <View style={styles.feedActionsRow}>
-                        <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => openReactionPicker(post)}
-                          activeOpacity={0.85}
-                        >
-                          <MaterialCommunityIcons name="emoticon-outline" size={16} color={c.textSecondary} />
-                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reactAction')}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => {
-                            if (post.media_thumbnail) {
-                              toggleCommentBox(post.id);
-                            } else {
-                              openPostDetail(post);
-                            }
-                          }}
-                          activeOpacity={0.85}
-                        >
-                          <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
-                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.commentAction')}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                          onPress={() => handleSharePost(post)}
-                          activeOpacity={0.85}
-                        >
-                          <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-                          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {post.links && post.links.length > 0 ? (
-                        <View style={styles.linkChipWrap}>
-                          {post.links.slice(0, 3).map((link, idx) => (
-                            <TouchableOpacity
-                              key={`${post.id}-link-${idx}`}
-                              style={[styles.linkChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                              onPress={() => openLink(link.url)}
-                              activeOpacity={0.85}
-                            >
-                              <MaterialCommunityIcons name="link-variant" size={14} color={c.textLink} />
-                              <Text style={[styles.linkChipText, { color: c.textSecondary }]}>
-                                {link.title || link.url || t('home.openLinkAction')}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ) : null}
-
-                      {commentBoxPostIds[post.id] ? (
-                        <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
-                          {(localComments[post.id] || []).map((comment, index) => (
-                            <View key={`${post.id}-comment-${index}`} style={[styles.commentBubble, { backgroundColor: c.surface, borderColor: c.border }]}>
-                              <Text style={[styles.commentBubbleText, { color: c.textSecondary }]}>{comment}</Text>
-                            </View>
-                          ))}
-                          <View style={styles.commentComposer}>
-                            <TextInput
-                              style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                              value={draftComments[post.id] || ''}
-                              onChangeText={(value) => updateDraftComment(post.id, value)}
-                              placeholder={t('home.commentPlaceholder')}
-                              placeholderTextColor={c.placeholder}
-                            />
-                            <TouchableOpacity
-                              style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                              onPress={() => submitComment(post.id)}
-                              activeOpacity={0.85}
-                            >
-                              <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
+              <FeedScreen
+                styles={styles}
+                c={c}
+                t={t}
+                feedLoading={feedLoading}
+                feedError={feedError}
+                feedPosts={feedPosts}
+                activeFeed={activeFeed}
+                renderPostCard={renderPostCard}
+              />
             ) : null}
 
           {!!error && (
@@ -2768,6 +2835,8 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
     overflow: 'hidden',
+    zIndex: 2300,
+    elevation: 24,
   },
   reactionPickerBackdrop: {
     flex: 1,
@@ -2775,6 +2844,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
+    zIndex: 2200,
   },
   reactionPickerContent: {
     flex: 1,
@@ -2813,14 +2883,13 @@ const styles = StyleSheet.create({
     height: 22,
   },
   reactionListCard: {
-    width: 520,
-    maxWidth: '92%',
-    minHeight: 260,
-    maxHeight: '80%',
+    width: 620,
+    maxWidth: '94%',
     borderWidth: 1,
     borderRadius: 12,
     padding: 14,
     gap: 10,
+    overflow: 'hidden',
   },
   reactionListBackdrop: {
     flex: 1,
@@ -2872,6 +2941,11 @@ const styles = StyleSheet.create({
   reactionListContent: {
     flex: 1,
     minHeight: 120,
+  },
+  reactionListState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reactionListScroll: {
     flex: 1,
@@ -3152,6 +3226,255 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
   },
+  profilePageCard: {
+    width: '100%',
+    maxWidth: 1220,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  profileCoverWrap: {
+    width: '100%',
+    height: 360,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    position: 'relative',
+  },
+  profileCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileCoverFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileCoverAction: {
+    position: 'absolute',
+    right: 16,
+    bottom: 14,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  profileCoverActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  profileIdentityRow: {
+    marginTop: -34,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 20,
+    flexWrap: 'wrap',
+  },
+  profileIdentityRowCompact: {
+    marginTop: -22,
+    alignItems: 'flex-start',
+  },
+  profileIdentityLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 16,
+    minWidth: 320,
+    flex: 1,
+  },
+  profileIdentityLeftCompact: {
+    minWidth: 0,
+    alignItems: 'center',
+    width: '100%',
+  },
+  profileAvatarWrap: {
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    borderWidth: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileAvatarLetter: {
+    color: '#fff',
+    fontSize: 56,
+    fontWeight: '800',
+    lineHeight: 58,
+  },
+  profileIdentityMeta: {
+    gap: 6,
+    paddingBottom: 14,
+  },
+  profileDisplayName: {
+    fontSize: 48,
+    fontWeight: '800',
+    lineHeight: 54,
+  },
+  profileDisplayNameCompact: {
+    fontSize: 34,
+    lineHeight: 40,
+    textAlign: 'center',
+  },
+  profileMetaText: {
+    fontSize: 21,
+    fontWeight: '600',
+  },
+  profileMetaInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+  profileIdentityActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 22,
+  },
+  profileIdentityActionsCompact: {
+    width: '100%',
+    paddingBottom: 12,
+    justifyContent: 'flex-start',
+  },
+  profilePrimaryBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profilePrimaryBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  profileSecondaryBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  profileTabsRow: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    paddingTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  profileTabBtn: {
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  profileTabText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  profileBodyLayout: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  profileBodyLayoutCompact: {
+    flexDirection: 'column',
+  },
+  profileBodyLeft: {
+    width: 430,
+    flexShrink: 0,
+    maxWidth: '100%',
+  },
+  profileBodyLeftCompact: {
+    width: '100%',
+  },
+  profileBodyRight: {
+    flex: 1,
+    minWidth: 340,
+    gap: 14,
+  },
+  profileBodyRightCompact: {
+    minWidth: 0,
+    width: '100%',
+  },
+  profileDetailCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
+  profileDetailTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  profileDetailList: {
+    gap: 10,
+  },
+  profileDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  profileDetailText: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  profileDetailTextWebWrap: {
+    overflow: 'hidden',
+    wordBreak: 'break-word',
+  } as any,
+  profileComposerCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  profileComposerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileComposerInputMock: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  profileComposerInputText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  profilePostsCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
   feedTabs: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -3202,6 +3525,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  feedAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   feedAvatarLetter: {
     color: '#fff',
@@ -3225,6 +3553,57 @@ const styles = StyleSheet.create({
     height: 30,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  postActionMenuWrap: {
+    position: 'relative',
+    zIndex: 120,
+  },
+  postActionMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  postActionMenuModalCard: {
+    width: 220,
+    maxWidth: '92%',
+    borderWidth: 1,
+    borderRadius: 12,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  postActionMenuCard: {
+    position: 'absolute',
+    top: 36,
+    right: 0,
+    minWidth: 156,
+    borderWidth: 1,
+    borderRadius: 12,
+    zIndex: 80,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  postActionMenuItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  postActionMenuItemText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postActionMenuDivider: {
+    height: 1,
+    width: '100%',
   },
   feedPostHeader: {
     flexDirection: 'row',
@@ -3260,6 +3639,45 @@ const styles = StyleSheet.create({
   },
   feedTextWrap: {
     marginBottom: 10,
+  },
+  postInlineEditWrap: {
+    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
+  },
+  postInlineEditInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 280,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  postInlineEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  postEditModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  postEditModalCard: {
+    width: 780,
+    maxWidth: '96%',
+    minHeight: 420,
+    maxHeight: '86%',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
   },
   postMetaRow: {
     marginBottom: 8,
@@ -3314,6 +3732,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  detailPanelTabsRow: {
+    marginTop: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 6,
+  },
+  detailPanelTabButton: {
+    minHeight: 32,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailPanelTabText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   reactionSummaryChip: {
     borderWidth: 1,
@@ -3378,6 +3820,9 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 8,
   },
+  commentThreadItem: {
+    gap: 6,
+  },
   commentBubble: {
     borderWidth: 1,
     borderRadius: 10,
@@ -3387,6 +3832,229 @@ const styles = StyleSheet.create({
   commentBubbleText: {
     fontSize: 13,
     lineHeight: 19,
+  },
+  detailCommentItem: {
+    gap: 6,
+  },
+  detailCommentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  detailCommentAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  detailCommentAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  detailCommentAvatarLetter: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  detailCommentBubble: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 2,
+  },
+  detailCommentAuthor: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  commentAuthorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  commentTimeInline: {
+    fontSize: 11,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  detailCommentText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  detailCommentMetaRow: {
+    marginLeft: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  detailCommentMetaTime: {
+    fontSize: 12,
+  },
+  detailCommentMetaAction: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  commentReactionActionWrap: {
+    position: 'relative',
+    zIndex: 20,
+  },
+  commentReactionPickerPopover: {
+    position: 'absolute',
+    bottom: 22,
+    left: -6,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minWidth: 260,
+    maxWidth: 340,
+    maxHeight: 280,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 10,
+  },
+  commentReactionPickerScroll: {
+    maxHeight: 260,
+  },
+  commentReactionPickerScrollContent: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  commentReactionPickerGroup: {
+    gap: 5,
+  },
+  commentReactionPickerGroupLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  commentReactionPickerEmojiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+  },
+  commentReactionPickerEmojiButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentReactionPickerEmojiImage: {
+    width: 16,
+    height: 16,
+  },
+  postReactionActionWrap: {
+    position: 'relative',
+    zIndex: 30,
+    flex: 1,
+  },
+  postReactionPickerPopover: {
+    position: 'absolute',
+    bottom: 46,
+    left: 0,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minWidth: 260,
+    maxWidth: 360,
+    maxHeight: 300,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 10,
+  },
+  commentReplyLoadingSlot: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentReactionSummaryWrap: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  commentReactionChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  commentReactionEmojiImage: {
+    width: 12,
+    height: 12,
+  },
+  commentReactionCount: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  commentRepliesWrap: {
+    marginLeft: 42,
+    gap: 8,
+    paddingTop: 2,
+  },
+  commentReplyRow: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 4,
+  },
+  commentReplyMainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  commentReplyAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  commentReplyBubble: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  commentReplyComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  commentReplyInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+  },
+  commentReplySendButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   commentComposer: {
     flexDirection: 'row',
@@ -3491,6 +4159,59 @@ const styles = StyleSheet.create({
   },
   providerButtonText: {
     fontSize: 12,
+    fontWeight: '700',
+  },
+  externalLinkModalCard: {
+    width: '90%',
+    maxWidth: 420,
+    minWidth: 280,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 18,
+    gap: 12,
+  },
+  externalLinkModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  externalLinkModalTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+  },
+  externalLinkModalBody: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  externalLinkModalUrl: {
+    fontSize: 12,
+  },
+  externalLinkModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 2,
+  },
+  externalLinkCancelButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  externalLinkCancelButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  externalLinkContinueButton: {
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  externalLinkContinueButtonText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

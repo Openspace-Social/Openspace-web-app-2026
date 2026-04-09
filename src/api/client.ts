@@ -130,6 +130,9 @@ export type FeedPost = {
     username?: string;
     name?: string;
     avatar?: string;
+    profile?: {
+      avatar?: string;
+    };
     is_following?: boolean;
   };
   community?: {
@@ -138,6 +141,43 @@ export type FeedPost = {
   };
   media_thumbnail?: string;
   links?: Array<{ url?: string; title?: string; image?: string }>;
+};
+
+export type PostComment = {
+  id: number;
+  text?: string;
+  created?: string;
+  commenter?: {
+    id?: number;
+    username?: string;
+    profile?: {
+      avatar?: string;
+      name?: string;
+    };
+  };
+  replies_count?: number;
+  reaction?: {
+    id?: number;
+    emoji?: {
+      id?: number;
+      keyword?: string;
+      image?: string;
+    };
+  };
+  reactions_emoji_counts?: Array<{
+    count?: number;
+    emoji?: {
+      id?: number;
+      keyword?: string;
+      image?: string;
+    };
+  }>;
+  parent_comment?: {
+    id?: number;
+    language?: {
+      code?: string;
+    };
+  };
 };
 
 export type ModerationCategory = {
@@ -322,6 +362,11 @@ export const api = {
     }).then((payload) => normalizeFeedResponse(feed, payload));
   },
 
+  getUserPosts: (token: string, username: string, count = 10) =>
+    request<FeedPost[]>(`/api/posts/?username=${encodeURIComponent(username)}&count=${count}`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
   getPostById: (token: string, postId: number) =>
     request<unknown>(`/api/posts/${postId}/`, {
       headers: { Authorization: `Token ${token}` },
@@ -329,6 +374,71 @@ export const api = {
       const normalized = normalizeMaybeWrappedPost(payload);
       if (!normalized) throw new Error('Post not found');
       return normalized;
+    }),
+
+  getPostComments: (token: string, postUuid: string, countMax = 20) => {
+    const params = new URLSearchParams();
+    params.set('count_max', String(countMax));
+    params.set('sort', 'DESC');
+    return request<PostComment[]>(`/api/posts/${postUuid}/comments/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  createPostComment: (token: string, postUuid: string, text: string) =>
+    request<PostComment>(`/api/posts/${postUuid}/comments/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ text }),
+    }),
+
+  updatePostComment: (token: string, postUuid: string, postCommentId: number, text: string) =>
+    request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ text }),
+    }),
+
+  deletePostComment: (token: string, postUuid: string, postCommentId: number) =>
+    request<{ message?: string }>(`/api/posts/${postUuid}/comments/${postCommentId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getPostCommentReactionCounts: (token: string, postUuid: string, postCommentId: number) =>
+    request<Array<{
+      count?: number;
+      emoji?: { id?: number; keyword?: string; image?: string };
+    }>>(`/api/posts/${postUuid}/comments/${postCommentId}/reactions/emoji-count/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  reactToPostComment: (token: string, postUuid: string, postCommentId: number, emojiId: number) =>
+    request<{
+      id?: number;
+      created?: string;
+      emoji?: { id?: number; keyword?: string; image?: string };
+      reactor?: { id?: number; username?: string; profile?: { avatar?: string } };
+    }>(`/api/posts/${postUuid}/comments/${postCommentId}/reactions/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ emoji_id: emojiId }),
+    }),
+
+  getPostCommentReplies: (token: string, postUuid: string, postCommentId: number, countMax = 20) => {
+    const params = new URLSearchParams();
+    params.set('count_max', String(countMax));
+    params.set('sort', 'DESC');
+    return request<PostComment[]>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  createPostCommentReply: (token: string, postUuid: string, postCommentId: number, text: string) =>
+    request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ text }),
     }),
 
   getPostReactionEmojiGroups: (token: string) =>
@@ -390,6 +500,22 @@ export const api = {
         ...(description ? { description } : {}),
       }),
     }).then(extractSuccessMessage),
+
+  updatePost: (token: string, postUuid: string, text: string) =>
+    request<FeedPost>(`/api/posts/${postUuid}/`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Token ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ text }).toString(),
+    }),
+
+  deletePost: (token: string, postUuid: string) =>
+    request<unknown>(`/api/posts/${postUuid}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
 
   followUser: (token: string, username: string) =>
     request<unknown>('/api/follows/follow/', {
