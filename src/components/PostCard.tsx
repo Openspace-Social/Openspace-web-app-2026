@@ -60,6 +60,11 @@ type PostCardProps = {
   onOpenReportPostModal: (post: FeedPost) => void;
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
   onDeletePost: (post: FeedPost) => void | Promise<void>;
+  onTogglePinPost: (post: FeedPost) => void | Promise<void>;
+  pinnedPostsCount?: number;
+  pinnedPostsLimit?: number;
+  pinnedDisplayIndex?: number | null;
+  pinnedDisplayLimit?: number;
   onNavigateProfile: (username: string) => void;
   onNavigateCommunity: (communityName: string) => void;
   getPostText: (post: FeedPost) => string;
@@ -117,6 +122,11 @@ export default function PostCard({
   onOpenReportPostModal,
   onEditPost,
   onDeletePost,
+  onTogglePinPost,
+  pinnedPostsCount = 0,
+  pinnedPostsLimit = 5,
+  pinnedDisplayIndex = null,
+  pinnedDisplayLimit = 5,
   onNavigateProfile,
   onNavigateCommunity,
   getPostText,
@@ -129,7 +139,9 @@ export default function PostCard({
   const [postEditing, setPostEditing] = React.useState(false);
   const [postEditDraft, setPostEditDraft] = React.useState(post.text || '');
   const [postEditLoading, setPostEditLoading] = React.useState(false);
+  const [postPinLoading, setPostPinLoading] = React.useState(false);
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
+  const postActionMenuHostRef = React.useRef<any>(null);
   const creatorAvatar = post.creator?.avatar || post.creator?.profile?.avatar;
   const hasReacted = !!post.reaction?.id || !!post.reaction?.emoji?.id;
 
@@ -166,6 +178,23 @@ export default function PostCard({
       document.removeEventListener('mousedown', handleDocumentPointerDown);
     };
   }, [commentReactionPickerForId]);
+
+  React.useEffect(() => {
+    if (!postMenuOpen) return;
+    if (typeof document === 'undefined') return;
+
+    function handleDocumentPointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      const host = postActionMenuHostRef.current;
+      if (host && target && host.contains?.(target)) return;
+      setPostMenuOpen(false);
+    }
+
+    document.addEventListener('mousedown', handleDocumentPointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentPointerDown);
+    };
+  }, [postMenuOpen]);
 
   async function toggleCommentReactionPicker(commentId: number) {
     if (commentReactionPickerForId === commentId) {
@@ -254,9 +283,132 @@ export default function PostCard({
     }
   }
 
+  function openPostEditMenuAction() {
+    setPostEditing(true);
+    setPostMenuOpen(false);
+  }
+
+  async function handleTogglePinPost() {
+    if (postPinLoading) return;
+    setPostPinLoading(true);
+    try {
+      await onTogglePinPost(post);
+      setPostMenuOpen(false);
+    } catch {
+      // errors are surfaced by parent
+    } finally {
+      setPostPinLoading(false);
+    }
+  }
+
+  function openPostReportMenuAction() {
+    setPostMenuOpen(false);
+    onOpenReportPostModal(post);
+  }
+
+  function toOpaqueColor(color: string | undefined, fallback: string) {
+    if (!color) return fallback;
+    const value = color.trim();
+    // If theme gives us a CSS variable token, force a concrete solid fallback.
+    if (value.includes('var(')) return fallback;
+    if (value.toLowerCase() === 'transparent') return fallback;
+
+    const rgbFn = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgbFn) {
+      const body = rgbFn[1].trim();
+      const beforeAlpha = body.includes('/') ? body.split('/')[0].trim() : body;
+      const commaParts = beforeAlpha.split(',').map((part) => part.trim()).filter(Boolean);
+      if (commaParts.length >= 3) {
+        return `rgb(${commaParts[0]}, ${commaParts[1]}, ${commaParts[2]})`;
+      }
+      // Supports modern syntax like: rgb(240 242 245 / 0.8)
+      return `rgb(${beforeAlpha})`;
+    }
+
+    const hslFn = value.match(/^hsla?\(([^)]+)\)$/i);
+    if (hslFn) {
+      const body = hslFn[1].trim();
+      const beforeAlpha = body.includes('/') ? body.split('/')[0].trim() : body;
+      const commaParts = beforeAlpha.split(',').map((part) => part.trim()).filter(Boolean);
+      if (commaParts.length >= 3) {
+        return `hsl(${commaParts[0]}, ${commaParts[1]}, ${commaParts[2]})`;
+      }
+      return `hsl(${beforeAlpha})`;
+    }
+
+    const hex8 = value.match(/^#([0-9a-f]{8})$/i);
+    if (hex8) return `#${hex8[1].slice(0, 6)}`;
+    const hex4 = value.match(/^#([0-9a-f]{4})$/i);
+    if (hex4) return `#${hex4[1].slice(0, 3)}`;
+    return value;
+  }
+
+  const menuCardBg = '#ffffff';
+  const menuTileBg = '#f3f6fb';
+  type PostMenuAction = {
+    key: string;
+    icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+    label: string;
+    disabled: boolean;
+    onPress: () => void;
+  };
+  const postMenuActions: PostMenuAction[] = isPostOwner
+    ? [
+        {
+          key: 'pin',
+          icon: post.is_pinned ? ('pin-off-outline' as const) : ('pin-outline' as const),
+          label: postPinLoading
+            ? '...'
+            : (post.is_pinned
+              ? t('home.unpinAction')
+              : (pinnedPostsCount >= pinnedPostsLimit
+                ? `${t('home.pinAction')} (${pinnedPostsCount}/${pinnedPostsLimit})`
+                : t('home.pinAction'))),
+          disabled: postPinLoading || postEditLoading || (!post.is_pinned && pinnedPostsCount >= pinnedPostsLimit),
+          onPress: () => void handleTogglePinPost(),
+        },
+        {
+          key: 'edit',
+          icon: 'pencil-outline' as const,
+          label: t('home.editAction'),
+          disabled: false,
+          onPress: openPostEditMenuAction,
+        },
+        {
+          key: 'delete',
+          icon: 'delete-outline' as const,
+          label: postEditLoading ? '...' : t('home.deleteAction'),
+          disabled: postEditLoading,
+          onPress: () => void handleDeletePost(),
+        },
+      ]
+    : [
+        {
+          key: 'report',
+          icon: 'alert-circle-outline' as const,
+          label: t('home.reportPostAction'),
+          disabled: false,
+          onPress: openPostReportMenuAction,
+        },
+      ];
+  const postCardBg = toOpaqueColor(
+    variant === 'feed' ? c.inputBackground : c.surface,
+    variant === 'feed' ? '#eef2f7' : '#f7f9fc'
+  );
+
   return (
     <View
-      style={[styles.feedPostCard, { borderColor: c.border, backgroundColor: variant === 'feed' ? c.inputBackground : c.surface }]}
+      style={[
+        styles.feedPostCard,
+        {
+          borderColor: c.border,
+          backgroundColor: postCardBg,
+          position: 'relative',
+          overflow: 'visible',
+          zIndex: postMenuOpen ? 1200 : 1,
+          elevation: postMenuOpen ? 1200 : 1,
+        },
+      ]}
     >
       <View style={styles.feedPostHeader}>
         <View style={styles.feedHeaderLeft}>
@@ -303,7 +455,12 @@ export default function PostCard({
               </Text>
             </TouchableOpacity>
           ) : null}
-          <View style={styles.postActionMenuWrap}>
+          <View
+            style={styles.postActionMenuWrap}
+            ref={(node) => {
+              postActionMenuHostRef.current = node;
+            }}
+          >
             <TouchableOpacity
               style={[styles.reportButton, { borderColor: c.border, backgroundColor: c.surface }]}
               activeOpacity={0.85}
@@ -312,6 +469,29 @@ export default function PostCard({
             >
               <MaterialCommunityIcons name="dots-horizontal" size={16} color={c.textSecondary} />
             </TouchableOpacity>
+            {postMenuOpen ? (
+              <View style={[styles.postActionMenuCard, { borderColor: c.border, backgroundColor: menuCardBg, opacity: 1 }]}>
+                <View style={styles.postActionMenuTiles}>
+                  {postMenuActions.map((action) => (
+                    <TouchableOpacity
+                      key={`post-menu-action-${action.key}`}
+                      style={[
+                        styles.postActionMenuItem,
+                        { borderColor: c.border, backgroundColor: menuTileBg, opacity: action.disabled ? 0.45 : 1 },
+                      ]}
+                      activeOpacity={0.9}
+                      onPress={action.onPress}
+                      disabled={action.disabled}
+                    >
+                      <MaterialCommunityIcons name={action.icon} size={18} color={c.textSecondary} />
+                      <Text style={[styles.postActionMenuItemText, { color: c.textSecondary }]}>
+                        {action.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -322,6 +502,14 @@ export default function PostCard({
             {getPostLengthType(post) === 'long' ? t('home.postTypeLong') : t('home.postTypeShort')}
           </Text>
         </View>
+        {post.is_pinned ? (
+          <View style={[styles.postPinnedBadge, { borderColor: c.border, backgroundColor: c.surface }]}>
+            <MaterialCommunityIcons name="pin" size={12} color={c.textLink} />
+            <Text style={[styles.postPinnedBadgeText, { color: c.textLink }]}>
+              {pinnedDisplayIndex !== null ? `${pinnedDisplayIndex}/${pinnedDisplayLimit}` : t('home.profilePinnedPostsTitle')}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {getPostText(post) ? (
@@ -703,60 +891,6 @@ export default function PostCard({
           </View>
         </View>
       ) : null}
-
-      <Modal
-        visible={postMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPostMenuOpen(false)}
-      >
-        <TouchableOpacity style={styles.postActionMenuBackdrop} activeOpacity={1} onPress={() => setPostMenuOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.postActionMenuModalCard, { borderColor: c.border, backgroundColor: c.surface }]}>
-              {isPostOwner ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.postActionMenuItem}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      setPostEditing(true);
-                      setPostMenuOpen(false);
-                    }}
-                  >
-                    <Text pointerEvents="none" style={[styles.postActionMenuItemText, { color: c.textPrimary }]}>
-                      {t('home.editAction')}
-                    </Text>
-                  </TouchableOpacity>
-                  <View style={[styles.postActionMenuDivider, { backgroundColor: c.border }]} />
-                  <TouchableOpacity
-                    style={styles.postActionMenuItem}
-                    activeOpacity={0.85}
-                    onPress={() => void handleDeletePost()}
-                    disabled={postEditLoading}
-                  >
-                    <Text pointerEvents="none" style={[styles.postActionMenuItemText, { color: c.textPrimary }]}>
-                      {postEditLoading ? '...' : t('home.deleteAction')}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  style={styles.postActionMenuItem}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    setPostMenuOpen(false);
-                    onOpenReportPostModal(post);
-                  }}
-                >
-                  <Text pointerEvents="none" style={[styles.postActionMenuItemText, { color: c.textPrimary }]}>
-                    {t('home.reportPostAction')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
 
       <Modal
         visible={postEditing}

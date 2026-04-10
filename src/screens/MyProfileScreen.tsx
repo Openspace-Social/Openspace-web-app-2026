@@ -17,6 +17,8 @@ type Props = {
   onSetProfileActiveTab: (tab: TabKey) => void;
   myProfilePosts: FeedPost[];
   myProfilePostsLoading: boolean;
+  myPinnedPosts: FeedPost[];
+  myPinnedPostsLoading: boolean;
   onNotice: (message: string) => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
 };
@@ -33,9 +35,16 @@ export default function MyProfileScreen({
   onSetProfileActiveTab,
   myProfilePosts,
   myProfilePostsLoading,
+  myPinnedPosts,
+  myPinnedPostsLoading,
   onNotice,
   renderPostCard,
 }: Props) {
+  const safePinnedPosts = Array.isArray(myPinnedPosts) ? myPinnedPosts : [];
+  const safeProfilePosts = Array.isArray(myProfilePosts) ? myProfilePosts : [];
+  const pinnedIds = new Set(safePinnedPosts.map((post) => post.id));
+  const regularProfilePosts = safeProfilePosts.filter((post) => !pinnedIds.has(post.id));
+
   return (
     <View style={[styles.profilePageCard, { backgroundColor: c.surface, borderColor: c.border }]}> 
       <View style={[styles.profileCoverWrap, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
@@ -120,7 +129,12 @@ export default function MyProfileScreen({
         <View style={[styles.profileBodyLayout, isCompactProfileLayout ? styles.profileBodyLayoutCompact : null]}>
           <View style={[styles.profileBodyLeft, isCompactProfileLayout ? styles.profileBodyLeftCompact : null]}>
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
-              <Text style={[styles.profileDetailTitle, { color: c.textPrimary }]}>{t('home.profilePersonalDetailsTitle')}</Text>
+              <View style={styles.profileSectionTitleRow}>
+                <MaterialCommunityIcons name="account-details-outline" size={22} color={c.textPrimary} />
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                  {t('home.profilePersonalDetailsTitle')}
+                </Text>
+              </View>
               <View style={styles.profileDetailList}>
                 {user?.profile?.location ? (
                   <View style={styles.profileDetailItem}>
@@ -178,15 +192,40 @@ export default function MyProfileScreen({
               </View>
             </View>
 
+            <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <View style={styles.profileSectionTitleRow}>
+                <MaterialCommunityIcons name="pin-outline" size={22} color={c.textPrimary} />
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                  {t('home.profilePinnedPostsTitle')}
+                </Text>
+              </View>
+              {myPinnedPostsLoading ? (
+                <ActivityIndicator color={c.primary} size="small" />
+              ) : safePinnedPosts.length === 0 ? (
+                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.profileNoPinnedPosts')}</Text>
+              ) : (
+                <View style={styles.feedList}>
+                  {safePinnedPosts.map((post) => (
+                    <React.Fragment key={`profile-pinned-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
+                  ))}
+                </View>
+              )}
+            </View>
+
             <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
-              <Text style={[styles.profileDetailTitle, { color: c.textPrimary }]}>{t('home.profilePostsTitle')}</Text>
+              <View style={styles.profileSectionTitleRow}>
+                <MaterialCommunityIcons name="post-outline" size={22} color={c.textPrimary} />
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                  {t('home.profilePostsTitle')}
+                </Text>
+              </View>
               {myProfilePostsLoading ? (
                 <ActivityIndicator color={c.primary} size="small" />
-              ) : myProfilePosts.length === 0 ? (
+              ) : regularProfilePosts.length === 0 ? (
                 <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.profileNoPosts')}</Text>
               ) : (
                 <View style={styles.feedList}>
-                  {myProfilePosts.map((post) => (
+                  {regularProfilePosts.map((post) => (
                     <React.Fragment key={`profile-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
                   ))}
                 </View>

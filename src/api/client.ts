@@ -109,6 +109,8 @@ export type FeedPost = {
   uuid?: string;
   text?: string;
   created?: string;
+  is_pinned?: boolean;
+  pinned_at?: string;
   comments_count?: number;
   reactions_emoji_counts?: Array<{
     count?: number;
@@ -367,6 +369,15 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }),
 
+  getPinnedPosts: (token: string, username?: string, count = 10) => {
+    const params = new URLSearchParams();
+    params.set('count', String(count));
+    if (username) params.set('username', username);
+    return request<FeedPost[]>(`/api/posts/profile/pinned/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
   getPostById: (token: string, postId: number) =>
     request<unknown>(`/api/posts/${postId}/`, {
       headers: { Authorization: `Token ${token}` },
@@ -484,6 +495,18 @@ export const api = {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ emoji_id: emojiId }),
+    }),
+
+  pinPost: (token: string, postUuid: string) =>
+    request<FeedPost>(`/api/posts/${postUuid}/pin/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  unpinPost: (token: string, postUuid: string) =>
+    request<FeedPost>(`/api/posts/${postUuid}/unpin/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
     }),
 
   getModerationCategories: (token: string) =>

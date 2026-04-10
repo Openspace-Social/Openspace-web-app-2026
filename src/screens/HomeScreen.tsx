@@ -135,6 +135,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [feedError, setFeedError] = useState('');
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
   const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
+  const [myPinnedPosts, setMyPinnedPosts] = useState<FeedPost[]>([]);
+  const [myPinnedPostsLoading, setMyPinnedPostsLoading] = useState(false);
   const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
   const [postRouteLoading, setPostRouteLoading] = useState(false);
@@ -238,18 +240,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     if (!user?.username) return;
     let active = true;
     setMyProfilePostsLoading(true);
-    api.getUserPosts(token, user.username, 10)
-      .then((posts) => {
+    setMyPinnedPostsLoading(true);
+    Promise.allSettled([
+      api.getUserPosts(token, user.username, 10),
+      api.getPinnedPosts(token, user.username, 10),
+    ])
+      .then(([postsResult, pinnedResult]) => {
         if (!active) return;
-        setMyProfilePosts(posts || []);
-      })
-      .catch(() => {
-        if (!active) return;
-        setMyProfilePosts([]);
+        const posts = postsResult.status === 'fulfilled' ? postsResult.value : [];
+        const pinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
+        setMyProfilePosts(Array.isArray(posts) ? posts : []);
+        setMyPinnedPosts(Array.isArray(pinned) ? pinned : []);
       })
       .finally(() => {
         if (!active) return;
         setMyProfilePostsLoading(false);
+        setMyPinnedPostsLoading(false);
       });
 
     return () => {
@@ -803,6 +809,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function applyPostPatch(postId: number, patch: (post: FeedPost) => FeedPost) {
     setFeedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setMyProfilePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
+    setMyPinnedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
   }
 
@@ -831,10 +838,50 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       await api.deletePost(token, post.uuid);
       setFeedPosts((prev) => prev.filter((item) => item.id !== post.id));
       setMyProfilePosts((prev) => prev.filter((item) => item.id !== post.id));
+      setMyPinnedPosts((prev) => prev.filter((item) => item.id !== post.id));
       setActivePost((prev) => (prev?.id === post.id ? null : prev));
       setNotice(t('home.postDeleteSuccess'));
     } catch (e: any) {
       setError(e?.message || t('home.postDeleteFailed'));
+      throw e;
+    }
+  }
+
+  async function togglePinPost(post: FeedPost) {
+    if (!post.uuid) {
+      setError(t('home.postPinUnavailable'));
+      return;
+    }
+    try {
+      const currentlyPinned = !!post.is_pinned;
+      const updated = currentlyPinned
+        ? await api.unpinPost(token, post.uuid)
+        : await api.pinPost(token, post.uuid);
+
+      const nextPinned =
+        typeof updated?.is_pinned === 'boolean' ? updated.is_pinned : !currentlyPinned;
+      const nextPinnedAt =
+        typeof updated?.pinned_at === 'string'
+          ? updated.pinned_at
+          : (nextPinned ? new Date().toISOString() : undefined);
+
+      applyPostPatch(post.id, (current) => ({
+        ...current,
+        is_pinned: nextPinned,
+        pinned_at: nextPinnedAt,
+      }));
+
+      setMyPinnedPosts((prev) => {
+        const existing = prev.find((item) => item.id === post.id);
+        const without = prev.filter((item) => item.id !== post.id);
+        if (!nextPinned) return without;
+        const source = existing || post;
+        return [{ ...source, is_pinned: true, pinned_at: nextPinnedAt }, ...without];
+      });
+
+      setNotice(nextPinned ? t('home.postPinnedSuccess') : t('home.postUnpinnedSuccess'));
+    } catch (e: any) {
+      setError(e?.message || t('home.postPinFailed'));
       throw e;
     }
   }
@@ -1478,6 +1525,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   function renderPostCard(post: FeedPost, variant: 'feed' | 'profile' = 'feed') {
+    const PIN_LIMIT = 5;
+    const pinnedIndex = myPinnedPosts.findIndex((item) => item.id === post.id);
     return (
       <PostCard
         key={`${variant}-${activeFeed}-${post.id}`}
@@ -1529,6 +1578,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onOpenReportPostModal={openReportPostModal}
         onEditPost={editPost}
         onDeletePost={deletePost}
+        onTogglePinPost={togglePinPost}
+        pinnedPostsCount={myPinnedPosts.length}
+        pinnedPostsLimit={PIN_LIMIT}
+        pinnedDisplayIndex={pinnedIndex >= 0 ? pinnedIndex + 1 : null}
+        pinnedDisplayLimit={PIN_LIMIT}
         onNavigateProfile={handleNavigateProfile}
         onNavigateCommunity={handleNavigateCommunity}
         getPostText={getPostText}
@@ -2407,6 +2461,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onSetProfileActiveTab={setProfileActiveTab}
                 myProfilePosts={myProfilePosts}
                 myProfilePostsLoading={myProfilePostsLoading}
+                myPinnedPosts={myPinnedPosts}
+                myPinnedPostsLoading={myPinnedPostsLoading}
                 onNotice={setNotice}
                 renderPostCard={renderPostCard}
               />
@@ -3429,6 +3485,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 12,
   },
+  profileSectionTitleText: {
+    marginBottom: 0,
+  },
+  profileSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   profileDetailList: {
     gap: 10,
   },
@@ -3556,7 +3621,8 @@ const styles = StyleSheet.create({
   },
   postActionMenuWrap: {
     position: 'relative',
-    zIndex: 120,
+    zIndex: 1400,
+    elevation: 1400,
   },
   postActionMenuBackdrop: {
     flex: 1,
@@ -3582,23 +3648,38 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 36,
     right: 0,
-    minWidth: 156,
+    width: 240,
+    minWidth: 240,
     borderWidth: 1,
-    borderRadius: 12,
-    zIndex: 80,
+    borderRadius: 14,
+    padding: 10,
+    zIndex: 1500,
     shadowColor: '#000',
     shadowOpacity: 0.14,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-    overflow: 'hidden',
+    elevation: 1500,
+    overflow: 'visible',
+  },
+  postActionMenuTiles: {
+    width: '100%',
+    alignItems: 'stretch',
+    gap: 10,
   },
   postActionMenuItem: {
+    borderWidth: 1,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    minHeight: 48,
+    width: '100%',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   postActionMenuItemText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
   postActionMenuDivider: {
@@ -3611,6 +3692,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
+    position: 'relative',
+    zIndex: 1600,
+    overflow: 'visible',
   },
   feedHeaderActions: {
     flexDirection: 'row',
@@ -3683,6 +3767,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   postLengthBadge: {
     borderWidth: 1,
@@ -3691,6 +3776,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   postLengthBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  postPinnedBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  postPinnedBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
