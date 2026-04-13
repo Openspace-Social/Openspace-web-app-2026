@@ -41,6 +41,98 @@ type ReactionGroup = {
   emojis?: Array<{ id?: number; image?: string }>;
 };
 
+type LongPostRenderBlock = {
+  type: 'heading' | 'paragraph' | 'quote' | 'image' | 'embed';
+  text?: string;
+  url?: string;
+  caption?: string;
+  level?: number;
+};
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function parseLongPostBlocks(value: unknown): LongPostRenderBlock[] {
+  const source =
+    Array.isArray(value) ? value : (typeof value === 'string' ? (() => {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })() : []);
+
+  return source
+    .filter((block): block is Record<string, unknown> => !!block && typeof block === 'object')
+    .map((block) => {
+      const type = typeof block.type === 'string' ? block.type.toLowerCase() : 'paragraph';
+      const nextType: LongPostRenderBlock['type'] =
+        type === 'heading' || type === 'quote' || type === 'image' || type === 'embed'
+          ? type
+          : 'paragraph';
+      return {
+        type: nextType,
+        text: typeof block.text === 'string' ? block.text : '',
+        url: typeof block.url === 'string' ? block.url : '',
+        caption: typeof block.caption === 'string' ? block.caption : '',
+        level: typeof block.level === 'number' ? block.level : 2,
+      };
+    })
+    .filter((block) => {
+      if (block.type === 'image' || block.type === 'embed') return !!block.url;
+      return !!block.text;
+    });
+}
+
+function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
+  if (!html || !html.trim()) return [];
+  const blocks: LongPostRenderBlock[] = [];
+  const pattern = /<(h[1-3]|p|blockquote|img|iframe)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(html)) !== null) {
+    const tag = (match[1] || match[3] || '').toLowerCase();
+    const raw = match[0] || '';
+    const inner = match[2] || '';
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
+      continue;
+    }
+    if (tag === 'blockquote') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'quote', text });
+      continue;
+    }
+    if (tag === 'p') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'paragraph', text });
+      continue;
+    }
+    if (tag === 'img') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const alt = raw.match(/\salt=(?:"([^"]+)"|'([^']+)')/i);
+      const url = (src?.[1] || src?.[2] || '').trim();
+      const caption = decodeHtmlEntities((alt?.[1] || alt?.[2] || '').trim());
+      if (url) blocks.push({ type: 'image', url, caption });
+      continue;
+    }
+    if (tag === 'iframe') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const url = (src?.[1] || src?.[2] || '').trim();
+      if (url) blocks.push({ type: 'embed', url });
+    }
+  }
+  return blocks;
+}
+
 type Props = {
   styles: any;
   c: any;
@@ -151,6 +243,34 @@ export default function PostDetailModal({
   const postReactionHostRef = React.useRef<any>(null);
   const creatorAvatar = activePost?.creator?.avatar || activePost?.creator?.profile?.avatar;
   const hasReacted = !!activePost?.reaction?.id || !!activePost?.reaction?.emoji?.id;
+  const mediaGalleryUris = React.useMemo(() => {
+    if (!activePost) return [];
+    const urls: string[] = [];
+    if (Array.isArray(activePost.media)) {
+      activePost.media
+        .slice()
+        .sort((a, b) => (a?.order || 0) - (b?.order || 0))
+        .forEach((item) => {
+          const uri = item?.thumbnail || item?.image || item?.file;
+          if (uri && !urls.includes(uri)) urls.push(uri);
+        });
+    }
+    if (!urls.length && activePost.media_thumbnail) {
+      urls.push(activePost.media_thumbnail);
+    }
+    return urls;
+  }, [activePost]);
+  const longPostBlocks = React.useMemo(() => {
+    if (!activePost) return [];
+    const parsedBlocks = parseLongPostBlocks(activePost.long_text_blocks);
+    if (parsedBlocks.length > 0) return parsedBlocks;
+    const fromHtml = parseLongPostHtml(activePost.long_text_rendered_html || activePost.long_text);
+    if (fromHtml.length > 0) return fromHtml;
+    return [];
+  }, [activePost]);
+  const isLongPost = (activePost?.type || '').toUpperCase() === 'LP';
+  const [activeMediaIndex, setActiveMediaIndex] = React.useState(0);
+  const activeMediaUri = mediaGalleryUris[activeMediaIndex] || activePost?.media_thumbnail;
 
   function formatRelativeTime(value?: string) {
     if (!value) return t('home.justNow');
@@ -211,6 +331,44 @@ export default function PostDetailModal({
     if (reactionListOpen) setDetailPanel('reactions');
   }, [visible, reactionListOpen]);
 
+  React.useEffect(() => {
+    setActiveMediaIndex(0);
+  }, [activePost?.id, visible]);
+
+  React.useEffect(() => {
+    if (activeMediaIndex < mediaGalleryUris.length) return;
+    setActiveMediaIndex(0);
+  }, [activeMediaIndex, mediaGalleryUris.length]);
+
+  React.useEffect(() => {
+    if (!visible || mediaGalleryUris.length <= 1) return;
+    if (typeof document === 'undefined') return;
+
+    function isTypingTarget(target: EventTarget | null) {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (target.isContentEditable) return true;
+      return false;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target)) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActiveMediaIndex((prev) => (prev <= 0 ? mediaGalleryUris.length - 1 : prev - 1));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActiveMediaIndex((prev) => (prev >= mediaGalleryUris.length - 1 ? 0 : prev + 1));
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [visible, mediaGalleryUris.length]);
+
   async function togglePostReactionPicker() {
     if (postReactionPickerOpen) {
       setPostReactionPickerOpen(false);
@@ -265,6 +423,89 @@ export default function PostDetailModal({
     }
 
     return segments.length ? segments : [{ text, isLink: false }];
+  }
+
+  function renderLinkedText(text: string, keyPrefix: string, textStyle?: any) {
+    return (
+      <Text style={textStyle}>
+        {extractTextSegmentsWithLinks(text).map((segment, idx) => (
+          <Text
+            key={`${keyPrefix}-${idx}`}
+            onPress={segment.isLink ? () => onOpenLink(segment.url) : undefined}
+            style={segment.isLink ? [{ color: c.textLink, textDecorationLine: 'underline' } as any] : undefined}
+          >
+            {segment.text}
+          </Text>
+        ))}
+      </Text>
+    );
+  }
+
+  function renderLongPostBlocks(postId: number) {
+    return (
+      <View style={styles.longPostBlockList}>
+        {longPostBlocks.map((block, idx) => {
+          if (block.type === 'heading') {
+            return (
+              <Text
+                key={`${postId}-lp-detail-heading-${idx}`}
+                style={[
+                  styles.longPostHeading,
+                  block.level === 1
+                    ? styles.longPostHeadingH1
+                    : block.level === 3
+                      ? styles.longPostHeadingH3
+                      : styles.longPostHeadingH2,
+                  { color: c.textPrimary },
+                ]}
+              >
+                {block.text}
+              </Text>
+            );
+          }
+          if (block.type === 'quote') {
+            return (
+              <View
+                key={`${postId}-lp-detail-quote-${idx}`}
+                style={[styles.longPostQuoteWrap, { borderLeftColor: c.primary, backgroundColor: c.inputBackground }]}
+              >
+                <Text style={[styles.longPostQuoteText, { color: c.textSecondary }]}>{`"${block.text || ''}"`}</Text>
+              </View>
+            );
+          }
+          if (block.type === 'image' && block.url) {
+            return (
+              <View key={`${postId}-lp-detail-image-${idx}`} style={styles.longPostImageWrap}>
+                <Image source={{ uri: block.url }} style={styles.longPostImage} resizeMode="cover" />
+                {block.caption ? (
+                  <Text style={[styles.longPostCaption, { color: c.textMuted }]}>{block.caption}</Text>
+                ) : null}
+              </View>
+            );
+          }
+          if (block.type === 'embed' && block.url) {
+            return (
+              <TouchableOpacity
+                key={`${postId}-lp-detail-embed-${idx}`}
+                activeOpacity={0.85}
+                onPress={() => onOpenLink(block.url)}
+                style={[styles.longPostEmbedChip, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              >
+                <MaterialCommunityIcons name="open-in-new" size={14} color={c.textLink} />
+                <Text numberOfLines={1} style={[styles.longPostEmbedText, { color: c.textLink }]}>
+                  {block.url}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+          return renderLinkedText(
+            block.text || '',
+            `${postId}-lp-detail-paragraph-${idx}`,
+            [styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]
+          );
+        })}
+      </View>
+    );
   }
 
   function renderCommentThread(postId: number) {
@@ -751,7 +992,63 @@ export default function PostDetailModal({
               </TouchableOpacity>
 
               <View style={styles.postDetailMediaWrap}>
-                <Image source={{ uri: activePost.media_thumbnail }} style={styles.postDetailMedia} resizeMode="contain" />
+                {activeMediaUri ? (
+                  <Image source={{ uri: activeMediaUri }} style={styles.postDetailMedia} resizeMode="contain" />
+                ) : (
+                  <View style={styles.postDetailMediaFallback}>
+                    <Text style={styles.postDetailMediaFallbackText}>{t('home.postMediaUnavailable')}</Text>
+                  </View>
+                )}
+                {mediaGalleryUris.length > 1 ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.postDetailMediaNavButton, styles.postDetailMediaNavButtonLeft]}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        setActiveMediaIndex((prev) =>
+                          prev <= 0 ? mediaGalleryUris.length - 1 : prev - 1
+                        )
+                      }
+                    >
+                      <MaterialCommunityIcons name="chevron-left" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.postDetailMediaNavButton, styles.postDetailMediaNavButtonRight]}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        setActiveMediaIndex((prev) =>
+                          prev >= mediaGalleryUris.length - 1 ? 0 : prev + 1
+                        )
+                      }
+                    >
+                      <MaterialCommunityIcons name="chevron-right" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <View style={styles.postDetailMediaCounter}>
+                      <Text style={styles.postDetailMediaCounterText}>
+                        {activeMediaIndex + 1}/{mediaGalleryUris.length}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.postDetailMediaThumbStrip}
+                    >
+                      {mediaGalleryUris.map((uri, idx) => (
+                        <TouchableOpacity
+                          key={`post-detail-media-thumb-${activePost.id}-${idx}`}
+                          style={[
+                            styles.postDetailMediaThumbButton,
+                            idx === activeMediaIndex ? styles.postDetailMediaThumbButtonActive : null,
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setActiveMediaIndex(idx)}
+                        >
+                          <Image source={{ uri }} style={styles.postDetailMediaThumbImage} resizeMode="cover" />
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                ) : null}
               </View>
             </View>
 
@@ -771,19 +1068,15 @@ export default function PostDetailModal({
               </View>
 
               <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
-                {!!getPostText(activePost) ? (
-                  <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
-                    {extractTextSegmentsWithLinks(getPostText(activePost)).map((segment, idx) => (
-                      <Text
-                        key={`${activePost.id}-detail-text-segment-${idx}`}
-                        onPress={segment.isLink ? () => onOpenLink(segment.url) : undefined}
-                        style={segment.isLink ? [{ color: c.textLink, textDecorationLine: 'underline' } as any] : undefined}
-                      >
-                        {segment.text}
-                      </Text>
-                    ))}
-                  </Text>
-                ) : null}
+                {isLongPost && longPostBlocks.length > 0
+                  ? renderLongPostBlocks(activePost.id)
+                  : (!!getPostText(activePost)
+                    ? renderLinkedText(
+                      getPostText(activePost),
+                      `${activePost.id}-detail-text-segment`,
+                      [styles.postDetailText, { color: c.textSecondary }]
+                    )
+                    : null)}
 
                 <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>
@@ -842,19 +1135,15 @@ export default function PostDetailModal({
               </View>
 
               <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
-                {!!getPostText(activePost) ? (
-                  <Text style={[styles.postDetailText, { color: c.textSecondary }]}>
-                    {extractTextSegmentsWithLinks(getPostText(activePost)).map((segment, idx) => (
-                      <Text
-                        key={`${activePost.id}-detail-textonly-segment-${idx}`}
-                        onPress={segment.isLink ? () => onOpenLink(segment.url) : undefined}
-                        style={segment.isLink ? [{ color: c.textLink, textDecorationLine: 'underline' } as any] : undefined}
-                      >
-                        {segment.text}
-                      </Text>
-                    ))}
-                  </Text>
-                ) : null}
+                {isLongPost && longPostBlocks.length > 0
+                  ? renderLongPostBlocks(activePost.id)
+                  : (!!getPostText(activePost)
+                    ? renderLinkedText(
+                      getPostText(activePost),
+                      `${activePost.id}-detail-textonly-segment`,
+                      [styles.postDetailText, { color: c.textSecondary }]
+                    )
+                    : null)}
 
                 <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>

@@ -24,6 +24,10 @@ import {
   FeedType,
   ModerationCategory,
   PostComment,
+  UpdateAuthenticatedUserMediaPayload,
+  UpdateAuthenticatedUserPayload,
+  CircleResult,
+  FollowingUserResult,
   SearchCommunityResult,
   SearchHashtagResult,
   SearchUserResult,
@@ -35,10 +39,12 @@ import LanguagePicker from '../components/LanguagePicker';
 import { AppRoute } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
+import PublicProfileScreen from './PublicProfileScreen';
 import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
+import LongPostDrawer, { LongPostBlock } from '../components/LongPostDrawer';
 
 interface HomeScreenProps {
   token: string;
@@ -50,6 +56,51 @@ interface HomeScreenProps {
 const WELCOME_NOTICE_KEY_PREFIX = '@openspace/welcome_notice_last_shown';
 const WELCOME_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 const SEARCH_RESULTS_STATE_KEY_PREFIX = '@openspace/search_results_state';
+const PROFILE_COMMUNITIES_PAGE_SIZE = 20;
+const PROFILE_FOLLOWINGS_PAGE_SIZE = 20;
+const SHORT_POST_MAX_LENGTH = 5000;
+
+function extractPlainTextFromBlocks(blocks: LongPostBlock[]) {
+  return blocks
+    .map((block) => `${block.text || ''} ${block.caption || ''}`.trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildLongPostHtmlFromBlocks(blocks: LongPostBlock[]) {
+  return blocks
+    .map((block) => {
+      if (block.type === 'heading') {
+        const level = block.level || 2;
+        return `<h${level}>${escapeHtml(block.text || '')}</h${level}>`;
+      }
+      if (block.type === 'quote') {
+        return `<blockquote><p>${escapeHtml(block.text || '')}</p></blockquote>`;
+      }
+      if (block.type === 'image') {
+        if (!block.url) return '';
+        const caption = block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : '';
+        return `<figure><img src=\"${escapeHtml(block.url)}\" alt=\"${escapeHtml(block.caption || '')}\" />${caption}</figure>`;
+      }
+      if (block.type === 'embed') {
+        if (!block.url) return '';
+        return `<p><a href=\"${escapeHtml(block.url)}\" target=\"_blank\" rel=\"noopener noreferrer\">${escapeHtml(block.url)}</a></p>`;
+      }
+      return `<p>${escapeHtml(block.text || '')}</p>`;
+    })
+    .filter(Boolean)
+    .join('');
+}
 
 type ReactionEmoji = {
   id?: number;
@@ -78,6 +129,12 @@ type PostReaction = {
 };
 
 type ProfileTabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
+type ComposerMediaType = 'image' | 'video';
+type ComposerImageSelection = {
+  file: Blob & { name?: string; type?: string };
+  previewUri?: string;
+};
+type ComposerVideoSelection = ComposerImageSelection;
 
 const REPORTABLE_POST_CATEGORY_NAMES = ['spam', 'copyright', 'abuse', 'pornography'] as const;
 type ReportablePostCategoryName = typeof REPORTABLE_POST_CATEGORY_NAMES[number];
@@ -133,10 +190,39 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
+  const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
+  const [communityRouteError, setCommunityRouteError] = useState('');
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
   const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
   const [myPinnedPosts, setMyPinnedPosts] = useState<FeedPost[]>([]);
   const [myPinnedPostsLoading, setMyPinnedPostsLoading] = useState(false);
+  const [myJoinedCommunities, setMyJoinedCommunities] = useState<SearchCommunityResult[]>([]);
+  const [myJoinedCommunitiesLoading, setMyJoinedCommunitiesLoading] = useState(false);
+  const [myJoinedCommunitiesLoadingMore, setMyJoinedCommunitiesLoadingMore] = useState(false);
+  const [myJoinedCommunitiesOffset, setMyJoinedCommunitiesOffset] = useState(0);
+  const [myJoinedCommunitiesHasMore, setMyJoinedCommunitiesHasMore] = useState(true);
+  const [myFollowings, setMyFollowings] = useState<FollowingUserResult[]>([]);
+  const [myFollowingsLoading, setMyFollowingsLoading] = useState(false);
+  const [myFollowingsLoadingMore, setMyFollowingsLoadingMore] = useState(false);
+  const [myFollowingsMaxId, setMyFollowingsMaxId] = useState<number | undefined>(undefined);
+  const [myFollowingsHasMore, setMyFollowingsHasMore] = useState(true);
+  const [profileUser, setProfileUser] = useState<any>(null);
+  const [profileUserLoading, setProfileUserLoading] = useState(false);
+  const [profilePosts, setProfilePosts] = useState<FeedPost[]>([]);
+  const [profilePostsLoading, setProfilePostsLoading] = useState(false);
+  const [profilePinnedPosts, setProfilePinnedPosts] = useState<FeedPost[]>([]);
+  const [profilePinnedPostsLoading, setProfilePinnedPostsLoading] = useState(false);
+  const [profileJoinedCommunities, setProfileJoinedCommunities] = useState<SearchCommunityResult[]>([]);
+  const [profileJoinedCommunitiesLoading, setProfileJoinedCommunitiesLoading] = useState(false);
+  const [profileJoinedCommunitiesLoadingMore, setProfileJoinedCommunitiesLoadingMore] = useState(false);
+  const [profileJoinedCommunitiesOffset, setProfileJoinedCommunitiesOffset] = useState(0);
+  const [profileJoinedCommunitiesHasMore, setProfileJoinedCommunitiesHasMore] = useState(true);
+  const [profileFollowings, setProfileFollowings] = useState<FollowingUserResult[]>([]);
+  const [profileFollowingsLoading, setProfileFollowingsLoading] = useState(false);
+  const [profileFollowingsLoadingMore, setProfileFollowingsLoadingMore] = useState(false);
+  const [profileFollowingsMaxId, setProfileFollowingsMaxId] = useState<number | undefined>(undefined);
+  const [profileFollowingsHasMore, setProfileFollowingsHasMore] = useState(true);
   const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
   const [postRouteLoading, setPostRouteLoading] = useState(false);
@@ -168,6 +254,40 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [reportingPost, setReportingPost] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [composerOpen, setComposerOpen] = useState(false);
+  const composerTextRef = useRef('');
+  const [composerTextLength, setComposerTextLength] = useState(0);
+  const [composerInputKey, setComposerInputKey] = useState(0);
+  const [composerImages, setComposerImages] = useState<ComposerImageSelection[]>([]);
+  const [composerVideo, setComposerVideo] = useState<ComposerVideoSelection | null>(null);
+  const [composerSubmitting, setComposerSubmitting] = useState(false);
+  const [composerStep, setComposerStep] = useState<'compose' | 'destination'>('compose');
+  const [composerPostType, setComposerPostType] = useState<'P' | 'LP'>('P');
+  const [composerModalMounted, setComposerModalMounted] = useState(false);
+  const [composerLongPostBlocks, setComposerLongPostBlocks] = useState<LongPostBlock[]>([
+    { id: 'initial-paragraph', type: 'paragraph', text: '' },
+  ]);
+  const [composerDraftUuid, setComposerDraftUuid] = useState<string | null>(null);
+  const [composerDraftSaving, setComposerDraftSaving] = useState(false);
+  const [composerDraftSavedAt, setComposerDraftSavedAt] = useState<string | null>(null);
+  const [composerDraftExpiryDays, setComposerDraftExpiryDays] = useState(14);
+  const [composerDraftsOpen, setComposerDraftsOpen] = useState(false);
+  const [composerDraftsLoading, setComposerDraftsLoading] = useState(false);
+  const [composerDrafts, setComposerDrafts] = useState<FeedPost[]>([]);
+  const [composerDraftDeleteUuid, setComposerDraftDeleteUuid] = useState<string | null>(null);
+  const [longPostDrawerOpen, setLongPostDrawerOpen] = useState(false);
+  const [longPostDrawerExpanded, setLongPostDrawerExpanded] = useState(false);
+  const [longPostEditDrawerOpen, setLongPostEditDrawerOpen] = useState(false);
+  const [longPostEditDrawerExpanded, setLongPostEditDrawerExpanded] = useState(false);
+  const [longPostEditBlocks, setLongPostEditBlocks] = useState<LongPostBlock[]>([]);
+  const [editingLongPost, setEditingLongPost] = useState<FeedPost | null>(null);
+  const [longPostEditError, setLongPostEditError] = useState('');
+  const [composerSelectedCircleId, setComposerSelectedCircleId] = useState<number | null>(null);
+  const [composerSelectedCommunityNames, setComposerSelectedCommunityNames] = useState<string[]>([]);
+  const [composerCircles, setComposerCircles] = useState<CircleResult[]>([]);
+  const [composerJoinedCommunities, setComposerJoinedCommunities] = useState<SearchCommunityResult[]>([]);
+  const [composerCommunitySearch, setComposerCommunitySearch] = useState('');
+  const [composerDestinationsLoading, setComposerDestinationsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -196,6 +316,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     route.screen === 'post' ? { screen: 'feed', feed: route.feed || 'home' } : route
   );
   const welcomeTranslateX = useRef(new Animated.Value(-380)).current;
+  const composerTranslateX = useRef(new Animated.Value(0)).current;
+  const composerClosingRef = useRef(false);
+  const longPostAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const providerOrder: SocialProvider[] = ['google', 'apple'];
   const feedTabs: Array<{ key: FeedType; label: string; icon: string; tooltip: string }> = [
@@ -262,6 +385,241 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       active = false;
     };
   }, [token, user?.username]);
+
+  async function loadMyFollowingsPage(maxId?: number) {
+    const followings = await api.getFollowings(token, PROFILE_FOLLOWINGS_PAGE_SIZE, maxId);
+    const safeFollowings = Array.isArray(followings) ? followings : [];
+    const hasMore = safeFollowings.length === PROFILE_FOLLOWINGS_PAGE_SIZE;
+    return { followings: safeFollowings, hasMore };
+  }
+
+  useEffect(() => {
+    if (!user?.username) return;
+    let active = true;
+    setMyFollowingsLoading(true);
+    setMyFollowingsMaxId(undefined);
+    setMyFollowingsHasMore(true);
+
+    loadMyFollowingsPage(undefined)
+      .then(({ followings, hasMore }) => {
+        if (!active) return;
+        setMyFollowings(followings);
+        const lastId = followings.length ? followings[followings.length - 1]?.id : undefined;
+        setMyFollowingsMaxId(typeof lastId === 'number' ? lastId : undefined);
+        setMyFollowingsHasMore(hasMore);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMyFollowings([]);
+        setMyFollowingsMaxId(undefined);
+        setMyFollowingsHasMore(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setMyFollowingsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token, user?.username]);
+
+  async function loadMoreMyFollowings() {
+    if (myFollowingsLoading || myFollowingsLoadingMore || !myFollowingsHasMore) return;
+    setMyFollowingsLoadingMore(true);
+    try {
+      const { followings, hasMore } = await loadMyFollowingsPage(myFollowingsMaxId);
+      setMyFollowings((prev) => {
+        const existingIds = new Set(prev.map((f) => f.id));
+        const deduped = followings.filter((f) => !existingIds.has(f.id));
+        return [...prev, ...deduped];
+      });
+      const lastId = followings.length ? followings[followings.length - 1]?.id : undefined;
+      setMyFollowingsMaxId(typeof lastId === 'number' ? lastId : myFollowingsMaxId);
+      setMyFollowingsHasMore(hasMore);
+    } catch {
+      setMyFollowingsHasMore(false);
+    } finally {
+      setMyFollowingsLoadingMore(false);
+    }
+  }
+
+  async function loadMyJoinedCommunitiesPage(offset = 0) {
+    const communities = await api.getJoinedCommunities(token, PROFILE_COMMUNITIES_PAGE_SIZE, offset);
+    const safeCommunities = Array.isArray(communities) ? communities : [];
+    const hasMore = safeCommunities.length === PROFILE_COMMUNITIES_PAGE_SIZE;
+    return { communities: safeCommunities, hasMore };
+  }
+
+  useEffect(() => {
+    if (!user?.username) return;
+    let active = true;
+    setMyJoinedCommunitiesLoading(true);
+    setMyJoinedCommunitiesOffset(0);
+    setMyJoinedCommunitiesHasMore(true);
+
+    loadMyJoinedCommunitiesPage(0)
+      .then(({ communities, hasMore }) => {
+        if (!active) return;
+        setMyJoinedCommunities(communities);
+        setMyJoinedCommunitiesOffset(communities.length);
+        setMyJoinedCommunitiesHasMore(hasMore);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMyJoinedCommunities([]);
+        setMyJoinedCommunitiesOffset(0);
+        setMyJoinedCommunitiesHasMore(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setMyJoinedCommunitiesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token, user?.username]);
+
+  async function loadMoreMyJoinedCommunities() {
+    if (myJoinedCommunitiesLoading || myJoinedCommunitiesLoadingMore || !myJoinedCommunitiesHasMore) return;
+    setMyJoinedCommunitiesLoadingMore(true);
+    try {
+      const { communities, hasMore } = await loadMyJoinedCommunitiesPage(myJoinedCommunitiesOffset);
+      setMyJoinedCommunities((prev) => {
+        const existingIds = new Set(prev.map((community) => community.id));
+        const deduped = communities.filter((community) => !existingIds.has(community.id));
+        return [...prev, ...deduped];
+      });
+      setMyJoinedCommunitiesOffset((prev) => prev + communities.length);
+      setMyJoinedCommunitiesHasMore(hasMore);
+    } catch {
+      setMyJoinedCommunitiesHasMore(false);
+    } finally {
+      setMyJoinedCommunitiesLoadingMore(false);
+    }
+  }
+
+  async function loadProfileFollowingsPage(username: string, maxId?: number) {
+    const followings = await api.getFollowings(token, PROFILE_FOLLOWINGS_PAGE_SIZE, maxId, username);
+    const safeFollowings = Array.isArray(followings) ? followings : [];
+    const hasMore = safeFollowings.length === PROFILE_FOLLOWINGS_PAGE_SIZE;
+    return { followings: safeFollowings, hasMore };
+  }
+
+  async function loadProfileJoinedCommunitiesPage(username: string, offset = 0) {
+    const communities = await api.getUserCommunities(token, username);
+    const safeCommunities = Array.isArray(communities) ? communities : [];
+    const hasMore = false;
+    return { communities: safeCommunities, hasMore };
+  }
+
+  useEffect(() => {
+    if (route.screen !== 'profile' || !route.username) return;
+    let active = true;
+    const username = route.username;
+    setProfileUserLoading(true);
+    setProfilePostsLoading(true);
+    setProfilePinnedPostsLoading(true);
+    setProfileJoinedCommunitiesLoading(true);
+    setProfileFollowingsLoading(true);
+    setProfileJoinedCommunitiesOffset(0);
+    setProfileFollowingsMaxId(undefined);
+    setProfileJoinedCommunitiesHasMore(true);
+    setProfileFollowingsHasMore(true);
+
+    Promise.allSettled([
+      api.getUserByUsername(token, username),
+      api.getUserPosts(token, username, 10),
+      api.getPinnedPosts(token, username, 10),
+      loadProfileJoinedCommunitiesPage(username, 0),
+      loadProfileFollowingsPage(username),
+    ])
+      .then(([userResult, postsResult, pinnedResult, communitiesResult, followingsResult]) => {
+        if (!active) return;
+        const nextUser = userResult.status === 'fulfilled' ? userResult.value : null;
+        const nextPosts = postsResult.status === 'fulfilled' ? postsResult.value : [];
+        const nextPinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
+        const nextCommunities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : { communities: [], hasMore: false };
+        const nextFollowings = followingsResult.status === 'fulfilled' ? followingsResult.value : { followings: [], hasMore: false };
+
+        setProfileUser(nextUser);
+        setProfilePosts(Array.isArray(nextPosts) ? nextPosts : []);
+        setProfilePinnedPosts(Array.isArray(nextPinned) ? nextPinned : []);
+        setProfileJoinedCommunities(Array.isArray(nextCommunities.communities) ? nextCommunities.communities : []);
+        setProfileJoinedCommunitiesOffset(Array.isArray(nextCommunities.communities) ? nextCommunities.communities.length : 0);
+        setProfileJoinedCommunitiesHasMore(!!nextCommunities.hasMore);
+        setProfileFollowings(Array.isArray(nextFollowings.followings) ? nextFollowings.followings : []);
+        const lastFollowingId = Array.isArray(nextFollowings.followings) && nextFollowings.followings.length
+          ? nextFollowings.followings[nextFollowings.followings.length - 1]?.id
+          : undefined;
+        setProfileFollowingsMaxId(typeof lastFollowingId === 'number' ? lastFollowingId : undefined);
+        setProfileFollowingsHasMore(!!nextFollowings.hasMore);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfileUser(null);
+        setProfilePosts([]);
+        setProfilePinnedPosts([]);
+        setProfileJoinedCommunities([]);
+        setProfileFollowings([]);
+        setProfileJoinedCommunitiesHasMore(false);
+        setProfileFollowingsHasMore(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setProfileUserLoading(false);
+        setProfilePostsLoading(false);
+        setProfilePinnedPostsLoading(false);
+        setProfileJoinedCommunitiesLoading(false);
+        setProfileFollowingsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [route, token]);
+
+  async function loadMoreProfileFollowings() {
+    if (route.screen !== 'profile' || !route.username) return;
+    if (profileFollowingsLoading || profileFollowingsLoadingMore || !profileFollowingsHasMore) return;
+    setProfileFollowingsLoadingMore(true);
+    try {
+      const { followings, hasMore } = await loadProfileFollowingsPage(route.username, profileFollowingsMaxId);
+      setProfileFollowings((prev) => {
+        const existingIds = new Set(prev.map((f) => f.id));
+        const deduped = followings.filter((f) => !existingIds.has(f.id));
+        return [...prev, ...deduped];
+      });
+      const lastId = followings.length ? followings[followings.length - 1]?.id : undefined;
+      setProfileFollowingsMaxId(typeof lastId === 'number' ? lastId : profileFollowingsMaxId);
+      setProfileFollowingsHasMore(hasMore);
+    } catch {
+      setProfileFollowingsHasMore(false);
+    } finally {
+      setProfileFollowingsLoadingMore(false);
+    }
+  }
+
+  async function loadMoreProfileJoinedCommunities() {
+    if (route.screen !== 'profile' || !route.username) return;
+    if (profileJoinedCommunitiesLoading || profileJoinedCommunitiesLoadingMore || !profileJoinedCommunitiesHasMore) return;
+    setProfileJoinedCommunitiesLoadingMore(true);
+    try {
+      const { communities, hasMore } = await loadProfileJoinedCommunitiesPage(route.username, profileJoinedCommunitiesOffset);
+      setProfileJoinedCommunities((prev) => {
+        const existingIds = new Set(prev.map((community) => community.id));
+        const deduped = communities.filter((community) => !existingIds.has(community.id));
+        return [...prev, ...deduped];
+      });
+      setProfileJoinedCommunitiesOffset((prev) => prev + communities.length);
+      setProfileJoinedCommunitiesHasMore(hasMore);
+    } catch {
+      setProfileJoinedCommunitiesHasMore(false);
+    } finally {
+      setProfileJoinedCommunitiesLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     if (!user?.username) return;
@@ -420,7 +778,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       }
       const postInCurrentContext =
         feedPosts.find((post) => post.id === route.postId) ||
+        communityRoutePosts.find((post) => post.id === route.postId) ||
         myProfilePosts.find((post) => post.id === route.postId) ||
+        profilePosts.find((post) => post.id === route.postId) ||
         null;
       if (postInCurrentContext) {
         setActivePost(postInCurrentContext);
@@ -430,15 +790,17 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
 
     setActivePost(null);
-  }, [route, feedPosts, myProfilePosts]);
+  }, [route, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
   useEffect(() => {
     const routePostId = route.screen === 'post' ? route.postId : null;
     if (!routePostId) return;
 
-    const routedPostInMemory =
+  const routedPostInMemory =
       feedPosts.find((post) => post.id === routePostId) ||
+      communityRoutePosts.find((post) => post.id === routePostId) ||
       myProfilePosts.find((post) => post.id === routePostId) ||
+      profilePosts.find((post) => post.id === routePostId) ||
       null;
 
     if (routedPostInMemory) {
@@ -473,7 +835,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return () => {
       cancelled = true;
     };
-  }, [route, token, activePost?.id, feedPosts, myProfilePosts]);
+  }, [route, token, activePost?.id, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
   async function loadFeed(feed: FeedType) {
     setFeedLoading(true);
@@ -490,9 +852,43 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   useEffect(() => {
+    const isCommunityRoute = route.screen === 'community';
+    const routeCommunityName = isCommunityRoute ? route.name : '';
+
+    if (!isCommunityRoute || !routeCommunityName) {
+      setCommunityRoutePosts([]);
+      setCommunityRouteError('');
+      setCommunityRouteLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadCommunityRoutePosts() {
+      setCommunityRouteLoading(true);
+      setCommunityRouteError('');
+      try {
+        const posts = await api.getCommunityPosts(token, routeCommunityName, 20);
+        if (!cancelled) setCommunityRoutePosts(posts);
+      } catch (e: any) {
+        if (!cancelled) {
+          setCommunityRoutePosts([]);
+          setCommunityRouteError(e?.message || t('home.feedLoadError'));
+        }
+      } finally {
+        if (!cancelled) setCommunityRouteLoading(false);
+      }
+    }
+
+    void loadCommunityRoutePosts();
+    return () => {
+      cancelled = true;
+    };
+  }, [route, token, t]);
+
+  useEffect(() => {
     setFollowStateByUsername((prev) => {
       const next = { ...prev };
-      for (const post of feedPosts) {
+      for (const post of [...feedPosts, ...communityRoutePosts]) {
         const username = post.creator?.username;
         if (!username || username in next) continue;
         if (typeof post.creator?.is_following === 'boolean') {
@@ -501,7 +897,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       }
       return next;
     });
-  }, [feedPosts]);
+  }, [feedPosts, communityRoutePosts]);
 
   async function handleToggleFollow(username: string, currentlyFollowing: boolean) {
     if (!username || followActionLoadingByUsername[username]) return;
@@ -516,6 +912,18 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
       setFollowStateByUsername((prev) => ({ ...prev, [username]: !currentlyFollowing }));
       setFeedPosts((prev) =>
+        prev.map((post) => {
+          if (post.creator?.username !== username) return post;
+          return {
+            ...post,
+            creator: {
+              ...post.creator,
+              is_following: !currentlyFollowing,
+            },
+          };
+        })
+      );
+      setCommunityRoutePosts((prev) =>
         prev.map((post) => {
           if (post.creator?.username !== username) return post;
           return {
@@ -551,11 +959,67 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
   }
 
+  function toPlainText(value?: string) {
+    if (!value) return '';
+    return value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
+  function blocksToPlainText(value?: unknown[]) {
+    if (!Array.isArray(value)) return '';
+    return value
+      .map((block) => {
+        if (!block || typeof block !== 'object') return '';
+        const typed = block as { text?: unknown; caption?: unknown; url?: unknown };
+        const parts = [
+          typeof typed.text === 'string' ? typed.text : '',
+          typeof typed.caption === 'string' ? typed.caption : '',
+          typeof typed.url === 'string' ? typed.url : '',
+        ].filter(Boolean);
+        return parts.join(' ').trim();
+      })
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  function postHasMedia(post?: FeedPost | null) {
+    if (!post) return false;
+    if (post.media_thumbnail) return true;
+    if (!Array.isArray(post.media) || post.media.length === 0) return false;
+    return post.media.some((item) => !!item?.thumbnail || !!item?.image || !!item?.file);
+  }
+
   function getPostText(post: FeedPost) {
-    return (post.text || '').trim();
+    const type = (post.type || '').toUpperCase();
+    if (type === 'LP') {
+      const blocksText = blocksToPlainText(post.long_text_blocks);
+      if (blocksText) return toPlainText(blocksText);
+      const renderedHtmlText = toPlainText(post.long_text_rendered_html);
+      if (renderedHtmlText) return renderedHtmlText;
+      const longText = toPlainText(post.long_text);
+      if (longText) return longText;
+      return toPlainText(post.text);
+    }
+    const shortText = toPlainText(post.text);
+    if (shortText) return shortText;
+    return toPlainText(post.long_text);
   }
 
   function getPostLengthType(post: FeedPost): 'long' | 'short' {
+    const type = (post.type || '').toUpperCase();
+    if (type === 'LP') return 'long';
+    if (type === 'P') return 'short';
     return getPostText(post).length > 280 ? 'long' : 'short';
   }
 
@@ -574,7 +1038,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function getSourcePost(postId: number) {
     return (
       feedPosts.find((post) => post.id === postId) ||
+      communityRoutePosts.find((post) => post.id === postId) ||
       myProfilePosts.find((post) => post.id === postId) ||
+      profilePosts.find((post) => post.id === postId) ||
       (activePost?.id === postId ? activePost : null)
     );
   }
@@ -808,9 +1274,57 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   function applyPostPatch(postId: number, patch: (post: FeedPost) => FeedPost) {
     setFeedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
+    setCommunityRoutePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setMyProfilePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setMyPinnedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
+  }
+
+  function openLongPostEdit(post: FeedPost) {
+    const rawBlocks = Array.isArray(post.long_text_blocks) ? post.long_text_blocks : [];
+    const blocks: LongPostBlock[] = rawBlocks.map((b, idx) => {
+      const block = b as Record<string, unknown>;
+      return {
+        id: `edit-${idx}-${Date.now()}`,
+        type: (block.type as LongPostBlock['type']) || 'paragraph',
+        text: typeof block.text === 'string' ? block.text : undefined,
+        level: typeof block.level === 'number' ? (block.level as 1 | 2 | 3) : undefined,
+        url: typeof block.url === 'string' ? block.url : undefined,
+        caption: typeof block.caption === 'string' ? block.caption : undefined,
+      };
+    });
+    setEditingLongPost(post);
+    setLongPostEditBlocks(blocks.length > 0 ? blocks : [{ id: 'edit-initial', type: 'paragraph', text: '' }]);
+    setLongPostEditError('');
+    setLongPostEditDrawerOpen(true);
+  }
+
+  async function saveLongPostEdit() {
+    if (!editingLongPost?.uuid) return;
+    try {
+      const plainText = extractPlainTextFromBlocks(longPostEditBlocks);
+      const updated = await api.updatePostContent(token, editingLongPost.uuid, {
+        long_text_blocks: longPostEditBlocks,
+        long_text: plainText.length >= 500 ? plainText : undefined,
+        long_text_rendered_html: buildLongPostHtmlFromBlocks(longPostEditBlocks),
+      });
+      const returnedBlocks = Array.isArray(updated?.long_text_blocks) && (updated.long_text_blocks as unknown[]).length > 0
+        ? updated.long_text_blocks
+        : longPostEditBlocks;
+      applyPostPatch(editingLongPost.id, (current) => ({
+        ...current,
+        type: 'LP',
+        long_text_blocks: returnedBlocks,
+        long_text: updated?.long_text ?? current.long_text,
+        long_text_rendered_html: updated?.long_text_rendered_html ?? current.long_text_rendered_html,
+      }));
+      setLongPostEditDrawerOpen(false);
+      setEditingLongPost(null);
+      setNotice(t('home.postEditSuccess'));
+    } catch (e: any) {
+      console.error('[saveLongPostEdit] 400 response body:', e?.data);
+      setLongPostEditError(e?.message || t('home.postEditFailed'));
+    }
   }
 
   async function editPost(post: FeedPost, text: string) {
@@ -837,6 +1351,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     try {
       await api.deletePost(token, post.uuid);
       setFeedPosts((prev) => prev.filter((item) => item.id !== post.id));
+      setCommunityRoutePosts((prev) => prev.filter((item) => item.id !== post.id));
       setMyProfilePosts((prev) => prev.filter((item) => item.id !== post.id));
       setMyPinnedPosts((prev) => prev.filter((item) => item.id !== post.id));
       setActivePost((prev) => (prev?.id === post.id ? null : prev));
@@ -885,6 +1400,67 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       throw e;
     }
   }
+
+  async function updateMyProfile(payload: UpdateAuthenticatedUserPayload) {
+    const profilePayload = {
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.location !== undefined ? { location: payload.location } : {}),
+      ...(payload.bio !== undefined ? { bio: payload.bio } : {}),
+      ...(payload.url !== undefined ? { url: payload.url } : {}),
+    };
+
+    try {
+      const updatedUser = await api.updateAuthenticatedUser(token, payload);
+      if (updatedUser && typeof updatedUser === 'object') {
+        const nextUser = updatedUser as any;
+        setUser((prev: any) => ({
+          ...(prev || {}),
+          ...(payload || {}),
+          ...nextUser,
+          profile: {
+            ...(prev?.profile || {}),
+            ...profilePayload,
+            ...(nextUser?.profile || {}),
+          },
+        }));
+      } else {
+        setUser((prev: any) => ({
+          ...(prev || {}),
+          ...(payload || {}),
+          profile: {
+            ...(prev?.profile || {}),
+            ...profilePayload,
+          },
+        }));
+      }
+      setNotice(t('home.profileUpdateSuccess', { defaultValue: 'Profile updated.' }));
+    } catch (e: any) {
+      setError(e?.message || t('home.profileUpdateFailed', { defaultValue: 'Could not update profile right now.' }));
+      throw e;
+    }
+  }
+
+  async function updateMyProfileMedia(media: UpdateAuthenticatedUserMediaPayload) {
+    try {
+      const updatedUser = await api.updateAuthenticatedUserWithMedia(token, {}, media);
+      if (updatedUser && typeof updatedUser === 'object') {
+        const nextUser = updatedUser as any;
+        setUser((prev: any) => ({
+          ...(prev || {}),
+          ...nextUser,
+          profile: {
+            ...(prev?.profile || {}),
+            ...(nextUser?.profile || {}),
+          },
+        }));
+      }
+      setNotice(t('home.profileUpdateSuccess', { defaultValue: 'Profile updated.' }));
+    } catch (e: any) {
+      setError(e?.message || t('home.profileUpdateFailed', { defaultValue: 'Could not update profile right now.' }));
+      throw e;
+    }
+  }
+
 
   async function ensureReactionGroups() {
     if (reactionGroups.length > 0) return;
@@ -1396,9 +1972,564 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     };
   }, [loading, user?.username]);
 
+  useEffect(() => {
+    return () => {
+      if (typeof URL === 'undefined') return;
+      for (const image of composerImages) {
+        if (image.previewUri?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(image.previewUri);
+          } catch {
+            // best-effort cleanup for browser object URLs
+          }
+        }
+      }
+      if (composerVideo?.previewUri?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(composerVideo.previewUri);
+        } catch {
+          // best-effort cleanup for browser object URLs
+        }
+      }
+    };
+  }, [composerImages, composerVideo]);
+
+  useEffect(() => {
+    if (!longPostDrawerOpen || composerPostType !== 'LP') return;
+
+    const hasDraftContent = composerLongPostBlocks.some((block) => {
+      const text = (block.text || '').trim();
+      const url = (block.url || '').trim();
+      const caption = (block.caption || '').trim();
+      return !!text || !!url || !!caption;
+    });
+    if (!hasDraftContent) return;
+
+    if (longPostAutosaveTimerRef.current) {
+      clearTimeout(longPostAutosaveTimerRef.current);
+      longPostAutosaveTimerRef.current = null;
+    }
+
+    longPostAutosaveTimerRef.current = setTimeout(() => {
+      void saveLongPostDraft(false);
+    }, 20000);
+
+    return () => {
+      if (longPostAutosaveTimerRef.current) {
+        clearTimeout(longPostAutosaveTimerRef.current);
+        longPostAutosaveTimerRef.current = null;
+      }
+    };
+  }, [longPostDrawerOpen, composerPostType, composerLongPostBlocks]);
+
   function handleProfileComingSoon() {
     setProfileMenuOpen(false);
     onNavigate({ screen: 'me' });
+  }
+
+  function clearComposerMedia() {
+    if (typeof URL !== 'undefined') {
+      for (const image of composerImages) {
+        if (image.previewUri?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(image.previewUri);
+          } catch {
+            // best-effort cleanup for browser object URLs
+          }
+        }
+      }
+      if (composerVideo?.previewUri?.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(composerVideo.previewUri);
+        } catch {
+          // best-effort cleanup for browser object URLs
+        }
+      }
+    }
+    setComposerImages([]);
+    setComposerVideo(null);
+  }
+
+  function openComposerModal(action?: 'video' | 'image' | 'emoji') {
+    composerTextRef.current = '';
+    setComposerTextLength(0);
+    setComposerInputKey((prev) => prev + 1);
+    setComposerPostType('P');
+    setComposerLongPostBlocks([{ id: 'initial-paragraph', type: 'paragraph', text: '' }]);
+    showComposerDrawer();
+    setComposerStep('compose');
+    setComposerDraftUuid(null);
+    setComposerDraftSavedAt(null);
+    setComposerDraftExpiryDays(14);
+    setComposerDraftsOpen(false);
+    setComposerDrafts([]);
+    setComposerSelectedCircleId(null);
+    setComposerSelectedCommunityNames([]);
+    setComposerCommunitySearch('');
+    setLongPostDrawerOpen(false);
+    setLongPostDrawerExpanded(false);
+    if (action === 'image' || action === 'video') {
+      openComposerMediaPicker(action);
+    }
+  }
+
+  function showComposerDrawer() {
+    composerClosingRef.current = false;
+    setComposerOpen(true);
+    setComposerModalMounted(true);
+    const startAnimation = () => {
+      composerTranslateX.setValue(composerDrawerWidth);
+      Animated.timing(composerTranslateX, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(startAnimation);
+      return;
+    }
+    setTimeout(startAnimation, 0);
+  }
+
+  function resetComposerState() {
+    composerTextRef.current = '';
+    setComposerTextLength(0);
+    setComposerInputKey((prev) => prev + 1);
+    clearComposerMedia();
+    setComposerSubmitting(false);
+    setComposerStep('compose');
+    setComposerDraftUuid(null);
+    setComposerDraftSavedAt(null);
+    setComposerDraftExpiryDays(14);
+    setComposerDraftsOpen(false);
+    setComposerDraftsLoading(false);
+    setComposerDrafts([]);
+    setComposerDraftDeleteUuid(null);
+    setComposerSelectedCircleId(null);
+    setComposerSelectedCommunityNames([]);
+    setComposerCommunitySearch('');
+    setComposerDestinationsLoading(false);
+    setComposerPostType('P');
+    setComposerLongPostBlocks([{ id: 'initial-paragraph', type: 'paragraph', text: '' }]);
+    setLongPostDrawerOpen(false);
+    setLongPostDrawerExpanded(false);
+    if (longPostAutosaveTimerRef.current) {
+      clearTimeout(longPostAutosaveTimerRef.current);
+      longPostAutosaveTimerRef.current = null;
+    }
+  }
+
+  function hideComposerDrawer(onHidden?: () => void) {
+    if (!composerModalMounted) {
+      onHidden?.();
+      return;
+    }
+    if (composerClosingRef.current) return;
+    composerClosingRef.current = true;
+    Animated.timing(composerTranslateX, {
+      toValue: composerDrawerWidth,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      composerClosingRef.current = false;
+      setComposerOpen(false);
+      setComposerModalMounted(false);
+      onHidden?.();
+    });
+  }
+
+  function closeComposerModal() {
+    hideComposerDrawer(() => {
+      resetComposerState();
+    });
+  }
+
+  function switchToLongPostForm() {
+    setComposerPostType('LP');
+    hideComposerDrawer(() => {
+      setLongPostDrawerOpen(true);
+    });
+  }
+
+  async function openComposerDestinationFromLongPost() {
+    if (composerSubmitting || composerDestinationsLoading) return;
+    setComposerPostType('LP');
+    setError('');
+    setLongPostDrawerOpen(false);
+    setComposerStep('destination');
+    showComposerDrawer();
+    try {
+      await loadComposerDestinations();
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
+    }
+  }
+
+  function getComposerLongPayload() {
+    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
+    return {
+      long_text: trimmedLongText.length >= 500 ? trimmedLongText : undefined,
+      long_text_blocks: composerLongPostBlocks,
+      long_text_rendered_html: buildLongPostHtmlFromBlocks(composerLongPostBlocks),
+      long_text_version: 1,
+      type: 'LP' as const,
+      draft_expiry_days: composerDraftExpiryDays,
+    };
+  }
+
+  async function saveLongPostDraft(showSuccessNotice = true) {
+    if (composerDraftSaving || composerSubmitting || composerDestinationsLoading) return;
+    setComposerDraftSaving(true);
+    setError('');
+    try {
+      const longPayload = getComposerLongPayload();
+      if (!composerDraftUuid) {
+        const created = await api.createPost(token, {
+          ...longPayload,
+          is_draft: true,
+        });
+        setComposerDraftUuid(created.uuid || null);
+      } else {
+        await api.updatePostContent(token, composerDraftUuid, {
+          ...longPayload,
+        });
+      }
+      setComposerDraftSavedAt(new Date().toISOString());
+      if (showSuccessNotice) {
+        setNotice(t('home.postComposerDraftSuccess', { defaultValue: 'Draft saved.' }));
+      }
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not save draft right now.' }));
+    } finally {
+      setComposerDraftSaving(false);
+    }
+  }
+
+  async function loadLongPostDrafts() {
+    setComposerDraftsLoading(true);
+    setError('');
+    try {
+      const drafts = await api.getDraftPosts(token, 20);
+      const longDrafts = drafts.filter((post) => post.type === 'LP');
+      setComposerDrafts(longDrafts);
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not load drafts right now.' }));
+    } finally {
+      setComposerDraftsLoading(false);
+    }
+  }
+
+  function openLongPostDraftsDrawer() {
+    setComposerDraftsOpen(true);
+    void loadLongPostDrafts();
+  }
+
+  async function resumeLongPostDraft(post: FeedPost) {
+    const blocks = Array.isArray(post.long_text_blocks) && post.long_text_blocks.length > 0
+      ? (post.long_text_blocks as LongPostBlock[])
+      : [{ id: 'initial-paragraph', type: 'paragraph' as const, text: post.long_text || '' }];
+    setComposerPostType('LP');
+    setComposerLongPostBlocks(blocks);
+    setComposerDraftUuid(post.uuid || null);
+    setComposerDraftSavedAt(post.created || null);
+    setComposerDraftsOpen(false);
+    setLongPostDrawerOpen(true);
+  }
+
+  async function deleteLongPostDraft(postUuid?: string) {
+    if (!postUuid || composerDraftDeleteUuid) return;
+    setComposerDraftDeleteUuid(postUuid);
+    setError('');
+    try {
+      await api.deletePost(token, postUuid);
+      setComposerDrafts((prev) => prev.filter((post) => post.uuid !== postUuid));
+      if (composerDraftUuid === postUuid) {
+        setComposerDraftUuid(null);
+        setComposerDraftSavedAt(null);
+      }
+      setNotice(t('home.postDeletedNotice', { defaultValue: 'Post deleted.' }));
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not delete draft right now.' }));
+    } finally {
+      setComposerDraftDeleteUuid(null);
+    }
+  }
+
+  function openComposerMediaPicker(kind: ComposerMediaType) {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      setNotice(t('home.postComposerMediaUnsupported', { defaultValue: 'Media upload is currently available on web.' }));
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = kind === 'video' ? 'video/*' : 'image/*';
+    if (kind === 'image') {
+      input.multiple = true;
+    }
+    input.onchange = () => {
+      const files = Array.from(input.files || []);
+      if (files.length === 0) return;
+
+      if (kind === 'video') {
+        const file = files[0];
+        const previewUri = typeof URL !== 'undefined' ? URL.createObjectURL(file) : undefined;
+        if (typeof URL !== 'undefined') {
+          for (const image of composerImages) {
+            if (image.previewUri?.startsWith('blob:')) {
+              try {
+                URL.revokeObjectURL(image.previewUri);
+              } catch {
+                // best-effort cleanup for browser object URLs
+              }
+            }
+          }
+          if (composerVideo?.previewUri?.startsWith('blob:')) {
+            try {
+              URL.revokeObjectURL(composerVideo.previewUri);
+            } catch {
+              // best-effort cleanup for browser object URLs
+            }
+          }
+        }
+        setComposerImages([]);
+        setComposerVideo({
+          file: file as Blob & { name?: string; type?: string },
+          previewUri,
+        });
+        return;
+      }
+
+      const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, 5);
+      if (!imageFiles.length) return;
+
+      setComposerVideo((prev) => {
+        if (prev?.previewUri?.startsWith('blob:') && typeof URL !== 'undefined') {
+          try {
+            URL.revokeObjectURL(prev.previewUri);
+          } catch {
+            // best-effort cleanup for browser object URLs
+          }
+        }
+        return null;
+      });
+
+      setComposerImages((prev) => {
+        const remaining = Math.max(0, 5 - prev.length);
+        if (remaining <= 0) {
+          setNotice(t('home.postComposerMaxImagesReached', { count: 5, defaultValue: 'You can upload up to 5 photos.' }));
+          return prev;
+        }
+        const nextFiles = imageFiles.slice(0, remaining);
+        const nextEntries: ComposerImageSelection[] = nextFiles.map((file) => ({
+          file: file as Blob & { name?: string; type?: string },
+          previewUri: typeof URL !== 'undefined' ? URL.createObjectURL(file) : undefined,
+        }));
+        return [...prev, ...nextEntries];
+      });
+    };
+    input.click();
+  }
+
+  function removeComposerImage(index: number) {
+    setComposerImages((prev) => {
+      const target = prev[index];
+      if (target?.previewUri?.startsWith('blob:') && typeof URL !== 'undefined') {
+        try {
+          URL.revokeObjectURL(target.previewUri);
+        } catch {
+          // best-effort cleanup for browser object URLs
+        }
+      }
+      return prev.filter((_, idx) => idx !== index);
+    });
+  }
+
+  async function loadComposerDestinations() {
+    setComposerDestinationsLoading(true);
+    try {
+      const [circles, joinedCommunitiesFirstPage] = await Promise.all([
+        api.getCircles(token),
+        api.getJoinedCommunities(token, 20, 0),
+      ]);
+
+      const joinedCommunitiesAll: SearchCommunityResult[] = Array.isArray(joinedCommunitiesFirstPage)
+        ? [...joinedCommunitiesFirstPage]
+        : [];
+      let offset = joinedCommunitiesAll.length;
+      while (joinedCommunitiesAll.length > 0 && joinedCommunitiesAll.length % 20 === 0) {
+        const nextPage = await api.getJoinedCommunities(token, 20, offset);
+        if (!Array.isArray(nextPage) || nextPage.length === 0) break;
+        joinedCommunitiesAll.push(...nextPage);
+        offset += nextPage.length;
+        if (nextPage.length < 20) break;
+      }
+
+      const safeCircles = Array.isArray(circles) ? circles : [];
+      const safeCommunities = joinedCommunitiesAll.filter(
+        (community, index, all) => all.findIndex((candidate) => candidate.id === community.id) === index
+      );
+      setComposerCircles(safeCircles);
+      setComposerJoinedCommunities(safeCommunities);
+
+      const hasCommunities = safeCommunities.length > 0;
+
+      if (safeCircles.length > 0) {
+        const circleStillExists = safeCircles.some((circle) => circle.id === composerSelectedCircleId);
+        if (!circleStillExists && composerSelectedCircleId !== null) setComposerSelectedCircleId(null);
+      } else {
+        // Keep null to represent Public destination for non-community posts.
+        setComposerSelectedCircleId(null);
+      }
+
+      if (hasCommunities) {
+        const safeNames = new Set(
+          safeCommunities.map((community) => community.name).filter((name): name is string => !!name)
+        );
+        setComposerSelectedCommunityNames((prev) => prev.filter((name) => safeNames.has(name)).slice(0, 3));
+      } else {
+        setComposerSelectedCommunityNames([]);
+      }
+
+      if (safeCircles.length === 0 && !hasCommunities) {
+        throw new Error(
+          t('home.postComposerDestinationEmpty', {
+            defaultValue: 'You need at least one circle or joined community before publishing.',
+          })
+        );
+      }
+    } finally {
+      setComposerDestinationsLoading(false);
+    }
+  }
+
+  async function goToComposerDestinationStep() {
+    if (composerSubmitting || composerDestinationsLoading) return;
+    const trimmedText = composerTextRef.current.trim();
+    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
+    const hasImages = composerImages.length > 0;
+    const hasVideo = !!composerVideo;
+    const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
+    if (!hasTextContent && !hasImages && !hasVideo) {
+      setError(t('home.postComposerValidation', { defaultValue: 'Write something or attach media.' }));
+      return;
+    }
+    setError('');
+    try {
+      await loadComposerDestinations();
+      setComposerStep('destination');
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
+    }
+  }
+
+  async function submitComposerPost(options?: { saveAsDraft?: boolean }) {
+    const saveAsDraft = !!options?.saveAsDraft;
+    if (composerSubmitting || composerDestinationsLoading || composerDraftSaving) return;
+    if (composerStep === 'compose' && !saveAsDraft) {
+      await goToComposerDestinationStep();
+      return;
+    }
+    const trimmedText = composerTextRef.current.trim();
+    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
+    const longTextBlocks = composerPostType === 'LP' ? composerLongPostBlocks : undefined;
+    const longTextRenderedHtml = composerPostType === 'LP'
+      ? buildLongPostHtmlFromBlocks(composerLongPostBlocks)
+      : undefined;
+    const hasImages = composerImages.length > 0;
+    const hasVideo = !!composerVideo;
+    const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
+    if (!hasTextContent && !hasImages && !hasVideo) {
+      setError(t('home.postComposerValidation', { defaultValue: 'Write something or attach media.' }));
+      return;
+    }
+
+    if (composerPostType === 'LP' && saveAsDraft) {
+      await saveLongPostDraft(true);
+      return;
+    }
+
+    const targetCircleId = saveAsDraft ? null : composerSelectedCircleId;
+    const targetCommunityNames = saveAsDraft ? [] : composerSelectedCommunityNames.slice(0, 3);
+
+    setComposerSubmitting(true);
+    setError('');
+    setNotice('');
+
+    try {
+      const postPayload = {
+        text: composerPostType === 'LP' ? undefined : (trimmedText || undefined),
+        long_text: composerPostType === 'LP' && trimmedLongText.length >= 500 ? trimmedLongText : undefined,
+        long_text_blocks: composerPostType === 'LP' ? longTextBlocks : undefined,
+        long_text_rendered_html: longTextRenderedHtml,
+        long_text_version: composerPostType === 'LP' ? 1 : undefined,
+        draft_expiry_days: composerPostType === 'LP' ? composerDraftExpiryDays : undefined,
+        type: composerPostType,
+      } as const;
+
+      const createPrimaryPost = async (primaryImage?: Blob | null, isDraft = false) => {
+        return api.createPost(token, {
+          ...postPayload,
+          image: primaryImage,
+          video: composerVideo?.file,
+          circle_id: targetCircleId ? [targetCircleId] : undefined,
+          community_names: targetCommunityNames.length > 0 ? targetCommunityNames : undefined,
+          is_draft: isDraft || undefined,
+        });
+      };
+
+      if (composerPostType === 'LP' && composerDraftUuid && !hasImages && !hasVideo && !saveAsDraft) {
+        await api.updatePostContent(token, composerDraftUuid, {
+          long_text: trimmedLongText.length >= 500 ? trimmedLongText : undefined,
+          long_text_blocks: composerLongPostBlocks,
+          long_text_rendered_html: longTextRenderedHtml,
+          long_text_version: 1,
+          draft_expiry_days: composerDraftExpiryDays,
+          type: 'LP',
+        });
+        await api.updatePostTargets(token, composerDraftUuid, {
+          circle_id: targetCircleId ? [targetCircleId] : [],
+          community_names: targetCommunityNames,
+        });
+        await api.publishPost(token, composerDraftUuid);
+      } else if (hasImages && composerImages.length > 1) {
+        const draftPost = await createPrimaryPost(composerImages[0]?.file, true);
+
+        if (!draftPost.uuid) {
+          throw new Error(t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
+        }
+
+        for (let index = 1; index < composerImages.length; index += 1) {
+          const image = composerImages[index];
+          await api.addPostMedia(token, draftPost.uuid, {
+            file: image.file,
+            order: index + 1,
+          });
+        }
+        if (!saveAsDraft) {
+          await api.publishPost(token, draftPost.uuid);
+        }
+      } else {
+        const createdPost = await createPrimaryPost(composerImages[0]?.file, saveAsDraft);
+        if (saveAsDraft && composerPostType === 'LP') {
+          setComposerDraftUuid(createdPost.uuid || null);
+          setComposerDraftSavedAt(new Date().toISOString());
+        }
+      }
+
+      closeComposerModal();
+      setNotice(
+        saveAsDraft
+          ? t('home.postComposerDraftSuccess', { defaultValue: 'Draft saved.' })
+          : t('home.postComposerSuccess', { defaultValue: 'Post published.' })
+      );
+      await loadFeed(activeFeed);
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
+    } finally {
+      setComposerSubmitting(false);
+    }
   }
 
   function handleSearchFocus() {
@@ -1490,7 +2621,25 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const hashtagRouteName = displayRoute.screen === 'hashtag' ? displayRoute.name : '';
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
-  const hasActivePostMedia = !!activePost?.media_thumbnail;
+  const hasActivePostMedia = postHasMedia(activePost);
+  const composerCommunitySearchTrimmed = composerCommunitySearch.trim().toLowerCase();
+  const filteredComposerJoinedCommunities = composerCommunitySearchTrimmed
+    ? composerJoinedCommunities.filter((community) => {
+        const name = (community.name || '').toLowerCase();
+        const title = (community.title || '').toLowerCase();
+        return name.includes(composerCommunitySearchTrimmed) || title.includes(composerCommunitySearchTrimmed);
+      })
+    : composerJoinedCommunities;
+
+  function sanitizeCircleColor(value?: string) {
+    if (!value || typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) return trimmed;
+    if (/^rgb(a)?\(/i.test(trimmed)) return trimmed;
+    if (/^hsl(a)?\(/i.test(trimmed)) return trimmed;
+    return undefined;
+  }
   const showingMainSearchResults = !viewingProfileRoute &&
     !viewingCommunityRoute &&
     !viewingHashtagRoute &&
@@ -1508,6 +2657,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   ];
   const showFeedFollowButton = !viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults;
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
+  const composerDrawerWidth =
+    Platform.OS === 'web'
+      ? composerStep === 'compose'
+        ? Math.min(980, Math.max(760, viewportWidth * 0.72))
+        : Math.min(840, Math.max(640, viewportWidth * 0.62))
+      : viewportWidth;
 
   function handleNavigateProfile(username: string) {
     onNavigate({ screen: 'profile', username });
@@ -1524,9 +2679,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     onNavigate({ screen: 'community', name });
   }
 
-  function renderPostCard(post: FeedPost, variant: 'feed' | 'profile' = 'feed') {
+  function renderPostCard(
+    post: FeedPost,
+    variant: 'feed' | 'profile' = 'feed',
+    pinnedPostsSource: FeedPost[] = myPinnedPosts
+  ) {
     const PIN_LIMIT = 5;
-    const pinnedIndex = myPinnedPosts.findIndex((item) => item.id === post.id);
+    const pinnedIndex = pinnedPostsSource.findIndex((item) => item.id === post.id);
     return (
       <PostCard
         key={`${variant}-${activeFeed}-${post.id}`}
@@ -1577,9 +2736,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onSubmitReply={submitReply}
         onOpenReportPostModal={openReportPostModal}
         onEditPost={editPost}
+        onOpenLongPostEdit={openLongPostEdit}
         onDeletePost={deletePost}
         onTogglePinPost={togglePinPost}
-        pinnedPostsCount={myPinnedPosts.length}
+        pinnedPostsCount={pinnedPostsSource.length}
         pinnedPostsLimit={PIN_LIMIT}
         pinnedDisplayIndex={pinnedIndex >= 0 ? pinnedIndex + 1 : null}
         pinnedDisplayLimit={PIN_LIMIT}
@@ -2119,6 +3279,471 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </TouchableOpacity>
       </Modal>
 
+      <Modal
+        visible={composerModalMounted}
+        transparent
+        animationType="none"
+        onRequestClose={closeComposerModal}
+      >
+        <TouchableOpacity
+          style={styles.postComposerModalBackdrop}
+          activeOpacity={1}
+          onPress={closeComposerModal}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <Animated.View
+              style={[
+                styles.postComposerModalCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  width: composerDrawerWidth,
+                  transform: [{ translateX: composerTranslateX }],
+                },
+              ]}
+            >
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {composerStep === 'compose'
+                    ? t('home.postComposerTitle', { defaultValue: 'Create post' })
+                    : t('home.postComposerDestinationTitle', { defaultValue: 'Choose where to publish' })}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={closeComposerModal}
+                  activeOpacity={0.85}
+                  disabled={composerSubmitting}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.postComposerContent}>
+              {composerStep === 'compose' ? (
+                <View style={styles.postComposerComposeContent}>
+                  <View style={styles.postComposerModeRow}>
+                    <Text style={[styles.postComposerModeLabel, { color: c.textSecondary }]}>
+                      {composerPostType === 'LP'
+                        ? t('home.longPostModeActive', { defaultValue: 'Long post mode active' })
+                        : t('home.shortPostModeActive', { defaultValue: 'Short post mode active' })}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.postComposerModeButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.85}
+                      onPress={switchToLongPostForm}
+                    >
+                      <MaterialCommunityIcons name="text-box-edit-outline" size={16} color={c.textSecondary} />
+                      <Text style={[styles.postComposerModeButtonText, { color: c.textSecondary }]}>
+                        {t('home.longPostSwitchToForm', { defaultValue: 'Switch to Long Post Form' })}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    key={`composer-input-${composerInputKey}`}
+                    style={[
+                      styles.postComposerTextInput,
+                      {
+                        borderColor: c.inputBorder,
+                        backgroundColor: c.inputBackground,
+                        color: c.textPrimary,
+                      },
+                    ]}
+                    placeholder={t('home.postComposerInputPlaceholder', {
+                      defaultValue: "What's on your mind?",
+                    })}
+                    placeholderTextColor={c.placeholder}
+                    defaultValue={composerTextRef.current}
+                    onChangeText={(value) => {
+                      composerTextRef.current = value;
+                      setComposerTextLength(value.length);
+                      if (composerPostType === 'LP') {
+                        setComposerPostType('P');
+                      }
+                    }}
+                    editable={!composerSubmitting && !composerDestinationsLoading}
+                    multiline
+                    textAlignVertical="top"
+                    maxLength={SHORT_POST_MAX_LENGTH}
+                  />
+                  <View style={styles.postComposerCounterAndToolsRow}>
+                    <View style={styles.postComposerToolbarInline}>
+                      <TouchableOpacity
+                        style={[styles.postComposerToolButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        activeOpacity={0.85}
+                        disabled={composerSubmitting || !!composerVideo}
+                        onPress={() => openComposerMediaPicker('image')}
+                      >
+                        <MaterialCommunityIcons name="image" size={18} color="#22c55e" />
+                        <Text style={[styles.postComposerToolButtonText, { color: c.textSecondary }]}>
+                          {t('home.postComposerImageAction', { defaultValue: 'Photos' })}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.postComposerToolButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        activeOpacity={0.85}
+                        disabled={composerSubmitting || composerImages.length > 0}
+                        onPress={() => openComposerMediaPicker('video')}
+                      >
+                        <MaterialCommunityIcons name="video" size={18} color="#ff2d55" />
+                        <Text style={[styles.postComposerToolButtonText, { color: c.textSecondary }]}>
+                          {t('home.postComposerVideoAction', { defaultValue: 'Video' })}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.postComposerCounterRow}>
+                      <Text style={[styles.postComposerCounterText, { color: c.textMuted }]}>
+                        {t('home.postComposerCharacterCounter', {
+                          defaultValue: '{{count}}/{{max}} characters',
+                          count: composerTextLength,
+                          max: SHORT_POST_MAX_LENGTH,
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {composerVideo ? (
+                    <View style={[styles.postComposerPreviewWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                      <View style={styles.postComposerVideoPreview}>
+                        <MaterialCommunityIcons name="video" size={26} color={c.textSecondary} />
+                        <Text numberOfLines={1} style={[styles.postComposerPreviewName, { color: c.textSecondary }]}>
+                          {composerVideo.file.name || t('home.postComposerVideoLabel', { defaultValue: 'Video selected' })}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {!composerVideo && composerImages.length > 0 ? (
+                    <View style={[styles.postComposerPreviewWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                      <View style={styles.postComposerImageGrid}>
+                        {composerImages.map((image, index) => (
+                          <View key={`composer-image-${index}`} style={styles.postComposerImageTile}>
+                            {image.previewUri ? (
+                              <Image
+                                source={{ uri: image.previewUri }}
+                                style={styles.postComposerImageTilePreview}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={styles.postComposerVideoPreview}>
+                                <MaterialCommunityIcons name="image" size={22} color={c.textSecondary} />
+                              </View>
+                            )}
+                            <TouchableOpacity
+                              style={[styles.postComposerImageRemove, { backgroundColor: c.surface, borderColor: c.border }]}
+                              activeOpacity={0.85}
+                              disabled={composerSubmitting}
+                              onPress={() => removeComposerImage(index)}
+                            >
+                              <MaterialCommunityIcons name="close" size={14} color={c.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {composerVideo || composerImages.length > 0 ? (
+                    <View style={styles.postComposerToolbar}>
+                      <TouchableOpacity
+                        style={[styles.postComposerToolButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        activeOpacity={0.85}
+                        disabled={composerSubmitting}
+                        onPress={clearComposerMedia}
+                      >
+                        <MaterialCommunityIcons name="close-circle-outline" size={18} color={c.textSecondary} />
+                        <Text style={[styles.postComposerToolButtonText, { color: c.textSecondary }]}>
+                          {t('home.postComposerRemoveMediaAction', { defaultValue: 'Remove all media' })}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                <ScrollView
+                  style={styles.postComposerDestinationScroll}
+                  contentContainerStyle={styles.postComposerDestinationScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                >
+                <View style={styles.postComposerDestinationStepWrap}>
+                  <Text style={[styles.postComposerDestinationTitle, { color: c.textPrimary }]}>
+                    {t('home.postComposerDestinationTitle', { defaultValue: 'Choose where to publish' })}
+                  </Text>
+                  <Text style={[styles.postComposerDestinationBody, { color: c.textMuted }]}>
+                    {t('home.postComposerDestinationBody', {
+                      defaultValue: 'Select one circle or up to 3 joined communities.',
+                    })}
+                  </Text>
+
+                  {composerDestinationsLoading ? (
+                    <View style={styles.postComposerDestinationLoading}>
+                      <ActivityIndicator color={c.primary} size="small" />
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={[styles.postComposerDestinationSectionTitle, { color: c.textPrimary }]}>
+                        {t('home.postComposerCircleOption', { defaultValue: 'Circle' })}
+                      </Text>
+                      <ScrollView
+                        style={[styles.postComposerDestinationList, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        contentContainerStyle={styles.postComposerDestinationListContent}
+                      >
+                        <TouchableOpacity
+                          key="composer-circle-public"
+                          style={[
+                            styles.postComposerDestinationItem,
+                            {
+                              borderColor: composerSelectedCircleId === null ? c.primary : c.border,
+                              backgroundColor: composerSelectedCircleId === null ? `${c.primary}14` : c.surface,
+                            },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setComposerSelectedCircleId(null)}
+                        >
+                          <MaterialCommunityIcons
+                            name={composerSelectedCircleId === null ? 'radiobox-marked' : 'radiobox-blank'}
+                            size={18}
+                            color={composerSelectedCircleId === null ? c.primary : c.textMuted}
+                          />
+                          <View style={styles.postComposerDestinationItemMeta}>
+                            <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
+                              {t('home.postComposerPublicDestinationTitle', { defaultValue: 'Public (no circle)' })}
+                            </Text>
+                            <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
+                              {t('home.postComposerPublicDestinationSubtitle', {
+                                defaultValue: 'Visible outside circles based on your profile privacy settings.',
+                              })}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {composerCircles.map((circle) => {
+                          const selected = composerSelectedCircleId === circle.id;
+                          const circleColor = sanitizeCircleColor(circle.color);
+                          return (
+                            <TouchableOpacity
+                              key={`composer-circle-${circle.id}`}
+                              style={[
+                                styles.postComposerDestinationItem,
+                                {
+                                  borderColor: selected ? c.primary : c.border,
+                                  backgroundColor: selected ? `${c.primary}14` : c.surface,
+                                },
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() => setComposerSelectedCircleId(circle.id)}
+                            >
+                              <MaterialCommunityIcons
+                                name={selected ? 'radiobox-marked' : 'radiobox-blank'}
+                                size={18}
+                                color={selected ? c.primary : c.textMuted}
+                              />
+                              <View
+                                style={[
+                                  styles.postComposerCircleColorSwatch,
+                                  { backgroundColor: circleColor || c.border },
+                                ]}
+                              />
+                              <View style={styles.postComposerDestinationItemMeta}>
+                                <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
+                                  {circle.name || t('home.postComposerCircleOption', { defaultValue: 'Circle' })}
+                                </Text>
+                                <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
+                                  {t('home.postComposerCircleUsersCount', {
+                                    count: circle.users_count || 0,
+                                    defaultValue: '{{count}} members',
+                                  })}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+
+                        {composerCircles.length === 0 ? (
+                          <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
+                            {t('home.postComposerNoCircles', { defaultValue: 'No circles found.' })}
+                          </Text>
+                        ) : null}
+                      </ScrollView>
+
+                      <Text style={[styles.postComposerDestinationSectionTitle, { color: c.textPrimary }]}>
+                        {t('home.postComposerCommunityOption', { defaultValue: 'Community' })}
+                      </Text>
+                      <View style={styles.postComposerDestinationCounterRow}>
+                        <Text style={[styles.postComposerDestinationBody, { color: c.textMuted }]}>
+                          {t('home.postComposerCommunitySelectHint', {
+                            defaultValue: 'Select up to 3 communities.',
+                          })}
+                        </Text>
+                        <Text style={[styles.postComposerDestinationCounterText, { color: c.textMuted }]}>
+                          {`${composerSelectedCommunityNames.length}/3`}
+                        </Text>
+                      </View>
+
+                      <TextInput
+                        style={[
+                          styles.postComposerDestinationSearchInput,
+                          { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
+                        ]}
+                        placeholder={t('home.postComposerCommunitySearchPlaceholder', {
+                          defaultValue: 'Search your communities',
+                        })}
+                        placeholderTextColor={c.placeholder}
+                        value={composerCommunitySearch}
+                        onChangeText={setComposerCommunitySearch}
+                        editable={!composerSubmitting}
+                      />
+
+                      <ScrollView
+                        style={[styles.postComposerDestinationList, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        contentContainerStyle={styles.postComposerDestinationListContent}
+                      >
+                        {filteredComposerJoinedCommunities.map((community) => {
+                          const selected = !!community.name && composerSelectedCommunityNames.includes(community.name);
+                          const communityInitial = (community.title || community.name || 'C').slice(0, 1).toUpperCase();
+                          return (
+                            <TouchableOpacity
+                              key={`composer-community-${community.id}`}
+                              style={[
+                                styles.postComposerDestinationItem,
+                                {
+                                  borderColor: selected ? c.primary : c.border,
+                                  backgroundColor: selected ? `${c.primary}14` : c.surface,
+                                },
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                const targetName = community.name || '';
+                                if (!targetName) return;
+                                setComposerSelectedCommunityNames((prev) => {
+                                  if (prev.includes(targetName)) {
+                                    return prev.filter((name) => name !== targetName);
+                                  }
+                                  if (prev.length >= 3) {
+                                    setError(
+                                      t('home.postComposerCommunityLimitReached', {
+                                        defaultValue: 'You can select up to 3 communities.',
+                                      })
+                                    );
+                                    return prev;
+                                  }
+                                  return [...prev, targetName];
+                                });
+                              }}
+                            >
+                              <MaterialCommunityIcons
+                                name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                                size={18}
+                                color={selected ? c.primary : c.textMuted}
+                              />
+                              <View style={[styles.postComposerCommunityAvatar, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                                {community.avatar ? (
+                                  <Image
+                                    source={{ uri: community.avatar }}
+                                    style={styles.postComposerCommunityAvatarImage}
+                                    resizeMode="cover"
+                                  />
+                                ) : (
+                                  <Text style={[styles.postComposerCommunityAvatarLetter, { color: c.textSecondary }]}>
+                                    {communityInitial}
+                                  </Text>
+                                )}
+                              </View>
+                              <View style={styles.postComposerDestinationItemMeta}>
+                                <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
+                                  {community.title || (community.name ? `c/${community.name}` : t('home.postComposerCommunityOption', { defaultValue: 'Community' }))}
+                                </Text>
+                                <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
+                                  {community.name ? `c/${community.name}` : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+
+                        {filteredComposerJoinedCommunities.length === 0 ? (
+                          <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
+                            {composerCommunitySearchTrimmed
+                              ? t('home.postComposerNoMatchingCommunities', { defaultValue: 'No matching communities found.' })
+                              : t('home.postComposerNoJoinedCommunities', { defaultValue: 'No joined communities found.' })}
+                          </Text>
+                        ) : null}
+                      </ScrollView>
+                    </>
+                  )}
+                </View>
+                </ScrollView>
+              )}
+              </View>
+
+              <View style={styles.postComposerActions}>
+                {composerStep === 'compose' && composerPostType === 'LP' ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      onPress={() => void submitComposerPost({ saveAsDraft: true })}
+                      activeOpacity={0.85}
+                      disabled={composerSubmitting || composerDestinationsLoading}
+                    >
+                      <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                        {t('home.postComposerDraftAction', { defaultValue: 'Save as Draft' })}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                      onPress={() => void goToComposerDestinationStep()}
+                      activeOpacity={0.85}
+                      disabled={composerSubmitting || composerDestinationsLoading}
+                    >
+                      {composerSubmitting || composerDestinationsLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={styles.externalLinkContinueButtonText}>
+                          {t('home.postComposerSaveAndPublishAction', { defaultValue: 'Save and Publish' })}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                <TouchableOpacity
+                  style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  onPress={composerStep === 'destination' ? () => setComposerStep('compose') : closeComposerModal}
+                  activeOpacity={0.85}
+                  disabled={composerSubmitting || composerDestinationsLoading}
+                >
+                  <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                    {composerStep === 'destination'
+                      ? t('home.backAction', { defaultValue: 'Back' })
+                      : t('home.cancelAction')}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                  onPress={() => void submitComposerPost()}
+                  activeOpacity={0.85}
+                  disabled={composerSubmitting || composerDestinationsLoading}
+                >
+                  {composerSubmitting || composerDestinationsLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.externalLinkContinueButtonText}>
+                      {composerStep === 'compose'
+                        ? t('home.nextAction', { defaultValue: 'Next' })
+                        : t('home.postComposerPublishAction', { defaultValue: 'Publish' })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <PostDetailModal
         styles={styles}
         c={c}
@@ -2170,6 +3795,159 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         reactionListUsers={reactionListUsers}
         onCloseReactionList={closeReactionList}
       />
+
+      <LongPostDrawer
+        visible={longPostDrawerOpen}
+        expanded={longPostDrawerExpanded}
+        blocks={composerLongPostBlocks}
+        draftExpiryDays={composerDraftExpiryDays}
+        draftSaving={composerDraftSaving}
+        draftSavedAtLabel={
+          composerDraftSavedAt
+            ? t('home.longPostDraftSavedAt', {
+              defaultValue: 'Last saved {{time}}',
+              time: new Date(composerDraftSavedAt).toLocaleTimeString(),
+            })
+            : null
+        }
+        onChangeBlocks={(value) => {
+          setComposerLongPostBlocks(value);
+          setComposerPostType('LP');
+        }}
+        onChangeDraftExpiryDays={setComposerDraftExpiryDays}
+        onSaveDraft={() => {
+          void saveLongPostDraft(true);
+        }}
+        onOpenDrafts={openLongPostDraftsDrawer}
+        onClose={() => setLongPostDrawerOpen(false)}
+        onApply={() => {
+          void openComposerDestinationFromLongPost();
+        }}
+        onToggleExpanded={() => setLongPostDrawerExpanded((prev) => !prev)}
+      />
+
+      <LongPostDrawer
+        visible={longPostEditDrawerOpen}
+        expanded={longPostEditDrawerExpanded}
+        blocks={longPostEditBlocks}
+        draftExpiryDays={0}
+        onChangeBlocks={setLongPostEditBlocks}
+        onChangeDraftExpiryDays={() => {}}
+        onSaveDraft={() => {}}
+        onOpenDrafts={() => {}}
+        errorMessage={longPostEditError}
+        onClose={() => {
+          setLongPostEditDrawerOpen(false);
+          setEditingLongPost(null);
+          setLongPostEditError('');
+        }}
+        onApply={() => { setLongPostEditError(''); void saveLongPostEdit(); }}
+        onToggleExpanded={() => setLongPostEditDrawerExpanded((prev) => !prev)}
+      />
+
+      <Modal
+        visible={composerDraftsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setComposerDraftsOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.postComposerModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setComposerDraftsOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.postComposerModalCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  width: Math.min(560, composerDrawerWidth),
+                },
+              ]}
+            >
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {t('home.longPostDraftsTitle', { defaultValue: 'Long post drafts' })}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={() => setComposerDraftsOpen(false)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {composerDraftsLoading ? (
+                <View style={styles.postComposerDraftsLoading}>
+                  <ActivityIndicator color={c.primary} size="small" />
+                </View>
+              ) : (
+                <ScrollView style={styles.postComposerDraftsList} contentContainerStyle={styles.postComposerDraftsListContent}>
+                  {composerDrafts.map((draft) => (
+                    <View
+                      key={`lp-draft-${draft.uuid || draft.id}`}
+                      style={[styles.postComposerDraftItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    >
+                      <View style={styles.postComposerDraftItemMeta}>
+                        <Text numberOfLines={2} style={[styles.postComposerDraftItemTitle, { color: c.textPrimary }]}>
+                          {extractPlainTextFromBlocks((draft.long_text_blocks as LongPostBlock[]) || []).slice(0, 120)
+                            || draft.long_text
+                            || t('home.longPostDraftUntitled', { defaultValue: 'Untitled long post draft' })}
+                        </Text>
+                        <Text style={[styles.postComposerDraftItemSubtitle, { color: c.textMuted }]}>
+                          {[
+                            draft.created
+                              ? t('home.longPostDraftCreatedAt', {
+                                defaultValue: 'Created {{date}}',
+                                date: new Date(draft.created).toLocaleString(),
+                              })
+                              : null,
+                            draft.draft_expires_at
+                              ? t('home.longPostDraftExpiresAt', {
+                                defaultValue: 'Expires {{date}}',
+                                date: new Date(draft.draft_expires_at).toLocaleString(),
+                              })
+                              : null,
+                          ].filter(Boolean).join(' • ')}
+                        </Text>
+                      </View>
+                      <View style={styles.postComposerDraftItemActions}>
+                        <TouchableOpacity
+                          style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.surface }]}
+                          activeOpacity={0.85}
+                          disabled={composerDraftDeleteUuid === draft.uuid}
+                          onPress={() => void deleteLongPostDraft(draft.uuid)}
+                        >
+                          <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                            {t('home.deleteAction', { defaultValue: 'Delete' })}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                          activeOpacity={0.85}
+                          onPress={() => void resumeLongPostDraft(draft)}
+                        >
+                          <Text style={styles.externalLinkContinueButtonText}>
+                            {t('home.resumeAction', { defaultValue: 'Resume' })}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  {composerDrafts.length === 0 ? (
+                    <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
+                      {t('home.longPostDraftsEmpty', { defaultValue: 'No saved long post drafts yet.' })}
+                    </Text>
+                  ) : null}
+                </ScrollView>
+              )}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal
         visible={!!reactionPickerPost}
@@ -2463,27 +4241,90 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 myProfilePostsLoading={myProfilePostsLoading}
                 myPinnedPosts={myPinnedPosts}
                 myPinnedPostsLoading={myPinnedPostsLoading}
+                myJoinedCommunities={myJoinedCommunities}
+                myJoinedCommunitiesLoading={myJoinedCommunitiesLoading}
+                myJoinedCommunitiesLoadingMore={myJoinedCommunitiesLoadingMore}
+                myJoinedCommunitiesHasMore={myJoinedCommunitiesHasMore}
+                onLoadMoreJoinedCommunities={loadMoreMyJoinedCommunities}
+                onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
+                myFollowings={myFollowings}
+                myFollowingsLoading={myFollowingsLoading}
+                myFollowingsLoadingMore={myFollowingsLoadingMore}
+                myFollowingsHasMore={myFollowingsHasMore}
+                onLoadMoreFollowings={loadMoreMyFollowings}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onUpdateProfile={updateMyProfile}
+                onUpdateProfileMedia={updateMyProfileMedia}
                 onNotice={setNotice}
-                renderPostCard={renderPostCard}
+                renderPostCard={(post, variant) => renderPostCard(post, variant, myPinnedPosts)}
+                isOwnProfile
+                isProfileLoading={false}
               />
             ) : null}
 
             {displayRoute.screen === 'profile' ? (
-              <RouteSummaryCard
+              <PublicProfileScreen
                 styles={styles}
                 c={c}
-                title={`@${profileRouteUsername}`}
-                subtitle={t('home.profileRouteLabel')}
+                t={t}
+                user={profileUserLoading ? { username: profileRouteUsername, profile: {} } : (profileUser || { username: profileRouteUsername, profile: {} })}
+                profileRouteUsername={profileRouteUsername}
+                isCompactProfileLayout={isCompactProfileLayout}
+                profileTabs={profileTabs}
+                profileActiveTab={profileActiveTab}
+                onSetProfileActiveTab={setProfileActiveTab}
+                myProfilePosts={profilePosts}
+                myProfilePostsLoading={profilePostsLoading}
+                myPinnedPosts={profilePinnedPosts}
+                myPinnedPostsLoading={profilePinnedPostsLoading}
+                myJoinedCommunities={profileJoinedCommunities}
+                myJoinedCommunitiesLoading={profileJoinedCommunitiesLoading}
+                myJoinedCommunitiesLoadingMore={profileJoinedCommunitiesLoadingMore}
+                myJoinedCommunitiesHasMore={profileJoinedCommunitiesHasMore}
+                onLoadMoreJoinedCommunities={loadMoreProfileJoinedCommunities}
+                onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
+                myFollowings={profileFollowings}
+                myFollowingsLoading={profileFollowingsLoading}
+                myFollowingsLoadingMore={profileFollowingsLoadingMore}
+                myFollowingsHasMore={profileFollowingsHasMore}
+                onLoadMoreFollowings={loadMoreProfileFollowings}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onUpdateProfile={updateMyProfile}
+                onUpdateProfileMedia={updateMyProfileMedia}
+                onNotice={setNotice}
+                renderPostCard={(post, variant) => renderPostCard(post, variant, profilePinnedPosts)}
+                isProfileLoading={profileUserLoading}
               />
             ) : null}
 
             {viewingCommunityRoute ? (
-              <RouteSummaryCard
-                styles={styles}
-                c={c}
-                title={`c/${communityRouteName}`}
-                subtitle={t('home.communityRouteLabel', { community: communityRouteName })}
-              />
+              <>
+                <RouteSummaryCard
+                  styles={styles}
+                  c={c}
+                  title={`c/${communityRouteName}`}
+                  subtitle={t('home.communityRouteLabel', { community: communityRouteName })}
+                />
+                <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  {communityRouteLoading ? (
+                    <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+                  ) : communityRouteError ? (
+                    <Text style={[styles.feedErrorText, { color: c.errorText }]}>{communityRouteError}</Text>
+                  ) : communityRoutePosts.length === 0 ? (
+                    <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
+                      {t('home.feedEmpty')}
+                    </Text>
+                  ) : (
+                    <View style={styles.feedList}>
+                      {communityRoutePosts.map((post) => (
+                        <React.Fragment key={`community-${communityRouteName}-${post.id}`}>
+                          {renderPostCard(post, 'feed')}
+                        </React.Fragment>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
             ) : null}
 
             {viewingHashtagRoute ? (
@@ -2520,6 +4361,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 styles={styles}
                 c={c}
                 t={t}
+                user={user}
+                onComposerPress={() => openComposerModal()}
+                onComposerActionPress={(action) => openComposerModal(action)}
                 feedLoading={feedLoading}
                 feedError={feedError}
                 feedPosts={feedPosts}
@@ -2881,6 +4725,314 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
+  postComposerModalCard: {
+    height: '100%',
+    borderWidth: 1,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    padding: 14,
+    gap: 12,
+    overflow: 'hidden',
+  },
+  postComposerContent: {
+    flex: 1,
+    minHeight: 0,
+  },
+  postComposerComposeContent: {
+    flex: 1,
+    paddingBottom: 6,
+    gap: 10,
+  },
+  postComposerModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  postComposerModeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  postComposerModeButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  postComposerModeButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postComposerDestinationScroll: {
+    flex: 1,
+  },
+  postComposerDestinationScrollContent: {
+    paddingBottom: 6,
+  },
+  postComposerTextInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 174,
+    maxHeight: 360,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  postComposerCounterRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 0,
+  },
+  postComposerCounterAndToolsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 0,
+  },
+  postComposerToolbarInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  postComposerCounterText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  postComposerPreviewWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    minHeight: 90,
+    maxHeight: 280,
+  },
+  postComposerPreviewImage: {
+    width: '100%',
+    height: 220,
+  },
+  postComposerVideoPreview: {
+    minHeight: 90,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  postComposerPreviewName: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  postComposerImageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: 10,
+  },
+  postComposerImageTile: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  postComposerImageTilePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  postComposerImageRemove: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postComposerToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  postComposerToolButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  postComposerToolButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postComposerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 8,
+    paddingTop: 10,
+  },
+  postComposerDestinationStepWrap: {
+    gap: 10,
+  },
+  postComposerDestinationTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  postComposerDestinationBody: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  postComposerDestinationCounterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  postComposerDestinationCounterText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  postComposerDestinationSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  postComposerDestinationTypeTabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  postComposerDestinationTypeTab: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  postComposerDestinationTypeTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  postComposerDestinationLoading: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postComposerDestinationSearchInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    fontSize: 14,
+  },
+  postComposerDestinationList: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 140,
+    maxHeight: 260,
+  },
+  postComposerDestinationListContent: {
+    padding: 10,
+    gap: 8,
+  },
+  postComposerDestinationItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  postComposerCircleColorSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.12)',
+  },
+  postComposerCommunityAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postComposerCommunityAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postComposerCommunityAvatarLetter: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  postComposerDestinationItemMeta: {
+    flex: 1,
+  },
+  postComposerDestinationItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  postComposerDestinationItemSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  postComposerDestinationEmptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  postComposerDraftsLoading: {
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postComposerDraftsList: {
+    flex: 1,
+  },
+  postComposerDraftsListContent: {
+    paddingBottom: 6,
+    gap: 8,
+  },
+  postComposerDraftItem: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
+  },
+  postComposerDraftItemMeta: {
+    gap: 4,
+  },
+  postComposerDraftItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  postComposerDraftItemSubtitle: {
+    fontSize: 12,
+  },
+  postComposerDraftItemActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
   reactionPickerCard: {
     width: 640,
     maxWidth: '94%',
@@ -3157,12 +5309,73 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   postDetailMedia: {
     width: '100%',
     height: '100%',
     maxWidth: 980,
     maxHeight: 900,
+  },
+  postDetailMediaNavButton: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 4,
+  },
+  postDetailMediaNavButtonLeft: {
+    left: 16,
+  },
+  postDetailMediaNavButtonRight: {
+    right: 16,
+  },
+  postDetailMediaCounter: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    zIndex: 4,
+  },
+  postDetailMediaCounterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  postDetailMediaThumbStrip: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 4,
+    paddingRight: 20,
+  },
+  postDetailMediaThumbButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  postDetailMediaThumbButtonActive: {
+    borderColor: '#3B82F6',
+  },
+  postDetailMediaThumbImage: {
+    width: '100%',
+    height: '100%',
   },
   postDetailMediaFallback: {
     width: '100%',
@@ -3282,6 +5495,39 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
   },
+  feedComposerCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  feedComposerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  feedComposerInputMock: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  feedComposerInputText: {
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  feedComposerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  feedComposerActionButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   profilePageCard: {
     width: '100%',
     maxWidth: 1220,
@@ -3316,8 +5562,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    minWidth: 170,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 7,
   },
   profileCoverActionText: {
@@ -3358,9 +5607,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  profileAvatarActionWrap: {
+    position: 'relative',
+    width: 180,
+    height: 214,
+    alignItems: 'center',
+  },
   profileAvatarImage: {
     width: '100%',
     height: '100%',
+  },
+  profileAvatarEditAction: {
+    position: 'absolute',
+    bottom: 0,
+    alignSelf: 'center',
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    zIndex: 10,
+    elevation: 10,
+  },
+  profileAvatarEditActionText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   profileAvatarLetter: {
     color: '#fff',
@@ -3371,6 +5645,18 @@ const styles = StyleSheet.create({
   profileIdentityMeta: {
     gap: 6,
     paddingBottom: 14,
+  },
+  profileDisplayNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  profileNameCountsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginLeft: 4,
   },
   profileDisplayName: {
     fontSize: 48,
@@ -3385,6 +5671,13 @@ const styles = StyleSheet.create({
   profileMetaText: {
     fontSize: 21,
     fontWeight: '600',
+  },
+  profileMetaCountText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  profileVerifiedBadge: {
+    transform: [{ translateY: 2 }],
   },
   profileMetaInline: {
     flexDirection: 'row',
@@ -3428,6 +5721,321 @@ const styles = StyleSheet.create({
   profileSecondaryBtnText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  profileEditModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  profileEditModalCard: {
+    width: 760,
+    maxWidth: '96%',
+    maxHeight: '90%',
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  profileEditModalScroll: {
+    maxHeight: 620,
+  },
+  profileEditModalScrollContent: {
+    padding: 14,
+    gap: 10,
+  },
+  profileEditOptionRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  profileEditOptionRowSelected: {
+    borderWidth: 2,
+  },
+  profileEditOptionIcon: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileEditOptionTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  profileEditOptionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  profileEditOptionSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 19,
+  },
+  profileEditDetailsGroup: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  profileEditMediaWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  profileEditCoverPreview: {
+    width: '100%',
+    height: 170,
+    borderBottomWidth: 1,
+    position: 'relative',
+  },
+  profileEditCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileEditCoverFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileEditCoverActions: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileEditAvatarPreview: {
+    position: 'absolute',
+    left: 16,
+    bottom: 16,
+    width: 108,
+    height: 108,
+    borderRadius: 16,
+    borderWidth: 2,
+    overflow: 'hidden',
+  },
+  profileEditAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileEditAvatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileEditAvatarFallbackLetter: {
+    color: '#fff',
+    fontSize: 34,
+    fontWeight: '800',
+    lineHeight: 38,
+  },
+  profileEditAvatarActions: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  profileEditMediaAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileEditField: {
+    gap: 6,
+  },
+  profileEditFieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  profileEditInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  profileEditTextarea: {
+    minHeight: 196,
+    lineHeight: 22,
+    textAlignVertical: 'top',
+  },
+  profileEditVisibilitySection: {
+    marginTop: 2,
+    gap: 10,
+  },
+  profileEditVisibilityHeading: {
+    fontSize: 16,
+    fontWeight: '800',
+    paddingHorizontal: 2,
+  },
+  profileEditVisibilityCheckWrap: {
+    width: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileEditModalActions: {
+    borderTopWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  profileEditModalButton: {
+    minWidth: 120,
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  profileEditModalButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileEditModalButtonTextPrimary: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileAvatarOptionsCard: {
+    width: 420,
+    maxWidth: '94%',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+  },
+  profileAvatarOptionsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  profileAvatarOptionsAction: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileAvatarOptionsActionText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  profileAvatarOptionsCancel: {
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 42,
+    marginTop: 2,
+  },
+  profileAvatarOptionsCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileAvatarEditorCard: {
+    width: 520,
+    maxWidth: '95%',
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  profileCoverEditorCard: {
+    width: 820,
+    maxWidth: '96%',
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  profileCoverEditorPreview: {
+    width: '94%',
+    aspectRatio: 3,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  profileCoverEditorImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileAvatarEditorPreview: {
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  profileAvatarEditorImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileAvatarEditorControls: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  profileAvatarControlLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  profileAvatarControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  profileAvatarControlBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarControlValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 56,
+    textAlign: 'center',
+  },
+  profileAvatarPositionPad: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  profileAvatarPositionMid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileAvatarSwitchRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   profileTabsRow: {
     marginTop: 12,
@@ -3539,6 +6147,61 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+  },
+  profileCommunitiesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  profileCommunityTile: {
+    width: '30.5%',
+    minWidth: 92,
+    maxWidth: 140,
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileCommunityAvatarWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileCommunityAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  profileCommunityAvatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileCommunityAvatarLetter: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  profileCommunityName: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+  profileShowMoreJoinedBtn: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileShowMoreJoinedText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   feedTabs: {
     flexDirection: 'row',
@@ -3724,6 +6387,78 @@ const styles = StyleSheet.create({
   feedTextWrap: {
     marginBottom: 10,
   },
+  longPostBlockList: {
+    gap: 10,
+  },
+  longPostParagraph: {
+    marginBottom: 4,
+  },
+  longPostHeading: {
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginTop: 2,
+  },
+  longPostHeadingH1: {
+    fontSize: 26,
+    lineHeight: 32,
+    marginBottom: 4,
+  },
+  longPostHeadingH2: {
+    fontSize: 22,
+    lineHeight: 28,
+    marginBottom: 3,
+  },
+  longPostHeadingH3: {
+    fontSize: 18,
+    lineHeight: 24,
+    marginBottom: 2,
+  },
+  longPostQuoteWrap: {
+    borderLeftWidth: 3,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginVertical: 2,
+  },
+  longPostQuoteText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  longPostImageWrap: {
+    marginVertical: 4,
+    overflow: 'hidden',
+    borderRadius: 12,
+  },
+  longPostImage: {
+    width: '100%',
+    minHeight: 220,
+    maxHeight: 460,
+    borderRadius: 12,
+  },
+  longPostCaption: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+    paddingHorizontal: 2,
+  },
+  longPostEmbedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginVertical: 2,
+    maxWidth: '100%',
+    alignSelf: 'flex-start',
+  },
+  longPostEmbedText: {
+    fontSize: 13,
+    fontWeight: '600',
+    maxWidth: 320,
+  },
   postInlineEditWrap: {
     marginBottom: 10,
     borderWidth: 1,
@@ -3762,6 +6497,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     gap: 12,
+  },
+  postEditModalBody: {
+    fontSize: 15,
+    lineHeight: 22,
   },
   postMetaRow: {
     marginBottom: 8,
@@ -3804,6 +6543,35 @@ const styles = StyleSheet.create({
     height: 360,
     borderRadius: 12,
     marginBottom: 10,
+  },
+  feedMediaGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  feedMediaGridItem: {
+    width: '49.1%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  feedMediaGridImage: {
+    width: '100%',
+    height: '100%',
+  },
+  feedMediaGridMoreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+  feedMediaGridMoreText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
   },
   feedMediaFallback: {
     width: '100%',
@@ -4275,6 +7043,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
+  },
+  postComposerModalBackdrop: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingVertical: 8,
   },
   externalLinkModalTitle: {
     fontSize: 19,

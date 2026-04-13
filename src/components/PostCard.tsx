@@ -4,6 +4,99 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
 
 type PostCardVariant = 'feed' | 'profile';
+type LongPostRenderBlock = {
+  type: 'heading' | 'paragraph' | 'quote' | 'image' | 'embed';
+  text?: string;
+  url?: string;
+  caption?: string;
+  level?: number;
+  objectPosition?: string;
+};
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function parseLongPostBlocks(value: unknown): LongPostRenderBlock[] {
+  const source =
+    Array.isArray(value) ? value : (typeof value === 'string' ? (() => {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })() : []);
+
+  return source
+    .filter((block): block is Record<string, unknown> => !!block && typeof block === 'object')
+    .map((block) => {
+      const type = typeof block.type === 'string' ? block.type.toLowerCase() : 'paragraph';
+      const nextType: LongPostRenderBlock['type'] =
+        type === 'heading' || type === 'quote' || type === 'image' || type === 'embed'
+          ? type
+          : 'paragraph';
+      return {
+        type: nextType,
+        text: typeof block.text === 'string' ? block.text : '',
+        url: typeof block.url === 'string' ? block.url : '',
+        caption: typeof block.caption === 'string' ? block.caption : '',
+        level: typeof block.level === 'number' ? block.level : 2,
+        objectPosition: typeof block.objectPosition === 'string' ? block.objectPosition : undefined,
+      };
+    })
+    .filter((block) => {
+      if (block.type === 'image' || block.type === 'embed') return !!block.url;
+      return !!block.text;
+    });
+}
+
+function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
+  if (!html || !html.trim()) return [];
+  const blocks: LongPostRenderBlock[] = [];
+  const pattern = /<(h[1-3]|p|blockquote|img|iframe)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(html)) !== null) {
+    const tag = (match[1] || match[3] || '').toLowerCase();
+    const raw = match[0] || '';
+    const inner = match[2] || '';
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
+      continue;
+    }
+    if (tag === 'blockquote') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'quote', text });
+      continue;
+    }
+    if (tag === 'p') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) blocks.push({ type: 'paragraph', text });
+      continue;
+    }
+    if (tag === 'img') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const alt = raw.match(/\salt=(?:"([^"]+)"|'([^']+)')/i);
+      const url = (src?.[1] || src?.[2] || '').trim();
+      const caption = decodeHtmlEntities((alt?.[1] || alt?.[2] || '').trim());
+      if (url) blocks.push({ type: 'image', url, caption });
+      continue;
+    }
+    if (tag === 'iframe') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const url = (src?.[1] || src?.[2] || '').trim();
+      if (url) blocks.push({ type: 'embed', url });
+    }
+  }
+  return blocks;
+}
 
 type ReactionGroup = {
   id: number;
@@ -59,6 +152,7 @@ type PostCardProps = {
   onSubmitReply: (postId: number, commentId: number) => void | Promise<void>;
   onOpenReportPostModal: (post: FeedPost) => void;
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
+  onOpenLongPostEdit?: (post: FeedPost) => void;
   onDeletePost: (post: FeedPost) => void | Promise<void>;
   onTogglePinPost: (post: FeedPost) => void | Promise<void>;
   pinnedPostsCount?: number;
@@ -121,6 +215,7 @@ export default function PostCard({
   onSubmitReply,
   onOpenReportPostModal,
   onEditPost,
+  onOpenLongPostEdit,
   onDeletePost,
   onTogglePinPost,
   pinnedPostsCount = 0,
@@ -136,14 +231,58 @@ export default function PostCard({
 }: PostCardProps) {
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postMenuOpen, setPostMenuOpen] = React.useState(false);
+  const [postDeleteConfirmOpen, setPostDeleteConfirmOpen] = React.useState(false);
   const [postEditing, setPostEditing] = React.useState(false);
-  const [postEditDraft, setPostEditDraft] = React.useState(post.text || '');
+  const [postEditDraft, setPostEditDraft] = React.useState(getPostText(post));
   const [postEditLoading, setPostEditLoading] = React.useState(false);
   const [postPinLoading, setPostPinLoading] = React.useState(false);
+  const [showSharedCommunities, setShowSharedCommunities] = React.useState(false);
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postActionMenuHostRef = React.useRef<any>(null);
   const creatorAvatar = post.creator?.avatar || post.creator?.profile?.avatar;
   const hasReacted = !!post.reaction?.id || !!post.reaction?.emoji?.id;
+  const mediaPreviewUrls = React.useMemo(() => {
+    const urls: string[] = [];
+    if (Array.isArray(post.media)) {
+      post.media
+        .slice()
+        .sort((a, b) => (a?.order || 0) - (b?.order || 0))
+        .forEach((item) => {
+          const uri = item?.thumbnail || item?.image || item?.file;
+          if (uri) urls.push(uri);
+        });
+    }
+    if (!urls.length && post.media_thumbnail) urls.push(post.media_thumbnail);
+    return urls;
+  }, [post.media, post.media_thumbnail]);
+  const galleryPreviewUrls = mediaPreviewUrls.slice(0, 5);
+  const hasInlineMedia = galleryPreviewUrls.length > 0;
+  const postText = getPostText(post);
+  const postType = (post.type || '').toUpperCase();
+  const longPostBlocks = React.useMemo(() => {
+    const parsedBlocks = parseLongPostBlocks(post.long_text_blocks);
+    if (parsedBlocks.length > 0) return parsedBlocks;
+    const fromHtml = parseLongPostHtml(post.long_text_rendered_html || post.long_text);
+    if (fromHtml.length > 0) return fromHtml;
+    return [];
+  }, [post.long_text, post.long_text_blocks, post.long_text_rendered_html]);
+  const sharedCommunityNames = Array.isArray(post.shared_community_names)
+    ? post.shared_community_names.filter((name): name is string => typeof name === 'string' && !!name.trim())
+    : [];
+  const primaryCommunityName = post.community?.name || sharedCommunityNames[0] || '';
+  const secondaryCommunityNames = sharedCommunityNames.filter((name) => name !== primaryCommunityName);
+  const sharedCommunitiesCount = typeof post.shared_communities_count === 'number'
+    ? post.shared_communities_count
+    : (sharedCommunityNames.length > 0 ? sharedCommunityNames.length : (primaryCommunityName ? 1 : 0));
+  const extraCommunitiesCount = Math.max(0, sharedCommunitiesCount - 1);
+  const extraCommunitiesLabel = extraCommunitiesCount > 0
+    ? t('home.postMultiCommunitySuffix', {
+        count: extraCommunitiesCount,
+        defaultValue: `+${extraCommunitiesCount} ${extraCommunitiesCount === 1 ? 'community' : 'communities'}`,
+      })
+    : '';
+  const visibleLongPostBlocks = expandedPostIds[post.id] ? longPostBlocks : longPostBlocks.slice(0, 3);
+  const hasHiddenLongBlocks = longPostBlocks.length > visibleLongPostBlocks.length;
 
   function formatRelativeTime(value?: string) {
     if (!value) return t('home.justNow');
@@ -247,8 +386,8 @@ export default function PostCard({
     !(followStateByUsername[creatorUsername] ?? !!post.creator?.is_following);
 
   React.useEffect(() => {
-    setPostEditDraft(post.text || '');
-  }, [post.id, post.text]);
+    setPostEditDraft(postText);
+  }, [post.id, postText]);
 
   async function submitPostEdit() {
     if (postEditLoading) return;
@@ -266,16 +405,17 @@ export default function PostCard({
     }
   }
 
-  async function handleDeletePost() {
+  function handleDeletePost() {
     if (postEditLoading) return;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const approved = window.confirm(t('home.postDeleteConfirm'));
-      if (!approved) return;
-    }
+    setPostMenuOpen(false);
+    setPostDeleteConfirmOpen(true);
+  }
+
+  async function confirmDeletePost() {
     setPostEditLoading(true);
     try {
       await onDeletePost(post);
-      setPostMenuOpen(false);
+      setPostDeleteConfirmOpen(false);
     } catch {
       // errors are surfaced by parent
     } finally {
@@ -284,8 +424,12 @@ export default function PostCard({
   }
 
   function openPostEditMenuAction() {
-    setPostEditing(true);
     setPostMenuOpen(false);
+    if (postType === 'LP' && onOpenLongPostEdit) {
+      onOpenLongPostEdit(post);
+    } else {
+      setPostEditing(true);
+    }
   }
 
   async function handleTogglePinPost() {
@@ -420,13 +564,52 @@ export default function PostCard({
             )}
           </View>
           <View style={styles.feedHeaderMeta}>
-            {post.community?.name ? (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => onNavigateCommunity(post.community?.name || '')}
-              >
-                <Text style={[styles.feedCommunityHeaderLink, { color: c.textLink }]}>c/{post.community.name}</Text>
-              </TouchableOpacity>
+            {primaryCommunityName ? (
+              <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => onNavigateCommunity(primaryCommunityName)}
+                  >
+                    <Text style={[styles.feedCommunityHeaderLink, { color: c.textLink }]}>
+                      {`c/${primaryCommunityName}`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {extraCommunitiesLabel ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => setShowSharedCommunities((prev) => !prev)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={[styles.feedCommunityHeaderLink, { color: c.textSecondary }]}>
+                        {extraCommunitiesLabel}
+                      </Text>
+                      <MaterialCommunityIcons
+                        name={showSharedCommunities ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={c.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {showSharedCommunities && secondaryCommunityNames.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {secondaryCommunityNames.map((communityName) => (
+                      <TouchableOpacity
+                        key={`shared-community-${post.id}-${communityName}`}
+                        activeOpacity={0.8}
+                        onPress={() => onNavigateCommunity(communityName)}
+                      >
+                        <Text style={[styles.feedCommunityHeaderLink, { color: c.textSecondary }]}>
+                          {`c/${communityName}`}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             ) : null}
             <TouchableOpacity
               activeOpacity={0.8}
@@ -512,13 +695,94 @@ export default function PostCard({
         ) : null}
       </View>
 
-      {getPostText(post) ? (
+      {postType === 'LP' && longPostBlocks.length > 0 ? (
+        <View style={styles.feedTextWrap}>
+          <View style={styles.longPostBlockList}>
+            {visibleLongPostBlocks.map((block, idx) => {
+              if (block.type === 'heading') {
+                return (
+                  <Text
+                    key={`${post.id}-lp-heading-${idx}`}
+                    style={[
+                      styles.longPostHeading,
+                      block.level === 1
+                        ? styles.longPostHeadingH1
+                        : block.level === 3
+                          ? styles.longPostHeadingH3
+                          : styles.longPostHeadingH2,
+                      { color: c.textPrimary },
+                    ]}
+                  >
+                    {block.text}
+                  </Text>
+                );
+              }
+              if (block.type === 'quote') {
+                return (
+                  <View
+                    key={`${post.id}-lp-quote-${idx}`}
+                    style={[styles.longPostQuoteWrap, { borderLeftColor: c.primary, backgroundColor: c.surface }]}
+                  >
+                    <Text style={[styles.longPostQuoteText, { color: c.textSecondary }]}>{`"${block.text || ''}"`}</Text>
+                  </View>
+                );
+              }
+              if (block.type === 'image' && block.url) {
+                return (
+                  <View key={`${post.id}-lp-image-${idx}`} style={styles.longPostImageWrap}>
+                    <Image
+                      source={{ uri: block.url }}
+                      style={[
+                        styles.longPostImage,
+                        Platform.OS === 'web' && block.objectPosition
+                          ? ({ objectFit: 'cover', objectPosition: block.objectPosition } as any)
+                          : null,
+                      ]}
+                      resizeMode="cover"
+                    />
+                    {block.caption ? (
+                      <Text style={[styles.longPostCaption, { color: c.textMuted }]}>{block.caption}</Text>
+                    ) : null}
+                  </View>
+                );
+              }
+              if (block.type === 'embed' && block.url) {
+                return (
+                  <TouchableOpacity
+                    key={`${post.id}-lp-embed-${idx}`}
+                    activeOpacity={0.85}
+                    onPress={() => onOpenLink(block.url)}
+                    style={[styles.longPostEmbedChip, { borderColor: c.border, backgroundColor: c.surface }]}
+                  >
+                    <MaterialCommunityIcons name="open-in-new" size={14} color={c.textLink} />
+                    <Text numberOfLines={1} style={[styles.longPostEmbedText, { color: c.textLink }]}>
+                      {block.url}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
+              return (
+                <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
+                  {block.text}
+                </Text>
+              );
+            })}
+          </View>
+          {hasHiddenLongBlocks ? (
+            <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
+              <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : postText ? (
         <View style={styles.feedTextWrap}>
           <Text style={[styles.feedText, { color: c.textSecondary }]}> 
             {extractTextSegmentsWithLinks(
               expandedPostIds[post.id]
-                ? getPostText(post)
-                : `${getPostText(post).slice(0, 240)}${getPostText(post).length > 240 ? '...' : ''}`
+                ? postText
+                : `${postText.slice(0, 240)}${postText.length > 240 ? '...' : ''}`
             ).map((segment, idx) => (
               <Text
                 key={`${variant}-${post.id}-text-segment-${idx}`}
@@ -529,7 +793,7 @@ export default function PostCard({
               </Text>
             ))}
           </Text>
-          {getPostText(post).length > 240 ? (
+          {postText.length > 240 ? (
             <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
               <Text style={[styles.seeMoreText, { color: c.textLink }]}>
                 {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
@@ -539,13 +803,39 @@ export default function PostCard({
         </View>
       ) : null}
 
-      {post.media_thumbnail ? (
+      {galleryPreviewUrls.length > 1 ? (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => onOpenPostDetail(post)}
+          accessibilityLabel={t('home.openPostDetailAction')}
+          style={styles.feedMediaGrid}
+        >
+          {galleryPreviewUrls.slice(0, 4).map((uri, idx) => {
+            const hiddenCount = galleryPreviewUrls.length - 4;
+            const showOverlay = idx === 3 && hiddenCount > 0;
+            return (
+              <View key={`post-media-grid-${post.id}-${idx}`} style={styles.feedMediaGridItem}>
+                <Image
+                  source={{ uri }}
+                  style={[styles.feedMediaGridImage, { backgroundColor: c.surface }]}
+                  resizeMode="cover"
+                />
+                {showOverlay ? (
+                  <View style={styles.feedMediaGridMoreOverlay}>
+                    <Text style={styles.feedMediaGridMoreText}>+{hiddenCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </TouchableOpacity>
+      ) : galleryPreviewUrls.length === 1 ? (
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => onOpenPostDetail(post)}
           accessibilityLabel={t('home.openPostDetailAction')}
         >
-          <Image source={{ uri: post.media_thumbnail }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
+          <Image source={{ uri: galleryPreviewUrls[0] }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
         </TouchableOpacity>
       ) : null}
 
@@ -601,7 +891,7 @@ export default function PostCard({
         <TouchableOpacity
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
           onPress={() => {
-            if (post.media_thumbnail) {
+            if (hasInlineMedia) {
               onToggleCommentBox(post.id);
             } else {
               onOpenPostDetail(post);
@@ -898,7 +1188,7 @@ export default function PostCard({
         animationType="fade"
         onRequestClose={() => {
           setPostEditing(false);
-          setPostEditDraft(post.text || '');
+          setPostEditDraft(postText);
         }}
       >
         <TouchableOpacity
@@ -906,7 +1196,7 @@ export default function PostCard({
           activeOpacity={1}
           onPress={() => {
             setPostEditing(false);
-            setPostEditDraft(post.text || '');
+            setPostEditDraft(postText);
           }}
         >
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
@@ -917,7 +1207,7 @@ export default function PostCard({
                   style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
                   onPress={() => {
                     setPostEditing(false);
-                    setPostEditDraft(post.text || '');
+                    setPostEditDraft(postText);
                   }}
                   activeOpacity={0.85}
                 >
@@ -939,7 +1229,7 @@ export default function PostCard({
                   disabled={postEditLoading}
                   onPress={() => {
                     setPostEditing(false);
-                    setPostEditDraft(post.text || '');
+                    setPostEditDraft(postText);
                   }}
                 >
                   <Text style={[styles.commentSendText, { color: c.textSecondary }]}>{t('home.cancelAction')}</Text>
@@ -951,6 +1241,55 @@ export default function PostCard({
                   onPress={() => void submitPostEdit()}
                 >
                   <Text style={styles.commentSendText}>{postEditLoading ? '...' : t('home.saveAction')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={postDeleteConfirmOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPostDeleteConfirmOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.postEditModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setPostDeleteConfirmOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={{ borderWidth: 1, borderRadius: 12, padding: 14, gap: 10, width: 360, maxWidth: '92%', borderColor: c.border, backgroundColor: c.surface }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.textPrimary }}>{t('home.deleteAction')}</Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={() => setPostDeleteConfirmOpen(false)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="close" size={16} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 13, lineHeight: 18, color: c.textSecondary }}>
+                {t('home.postDeleteConfirm')}
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  activeOpacity={0.85}
+                  disabled={postEditLoading}
+                  onPress={() => setPostDeleteConfirmOpen(false)}
+                >
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>{t('home.cancelAction')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.errorText ?? '#ef4444' }]}
+                  activeOpacity={0.85}
+                  disabled={postEditLoading}
+                  onPress={() => void confirmDeletePost()}
+                >
+                  <Text style={styles.commentSendText}>{postEditLoading ? '...' : t('home.deleteAction')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
