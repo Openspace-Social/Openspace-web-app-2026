@@ -20,6 +20,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import {
   api,
+  AppNotification,
   FeedPost,
   FeedType,
   ModerationCategory,
@@ -27,6 +28,8 @@ import {
   UpdateAuthenticatedUserMediaPayload,
   UpdateAuthenticatedUserPayload,
   CircleResult,
+  CommunityMember,
+  CommunityOwner,
   FollowingUserResult,
   SearchCommunityResult,
   SearchHashtagResult,
@@ -40,11 +43,13 @@ import { AppRoute } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
 import PublicProfileScreen from './PublicProfileScreen';
+import CommunityProfileScreen from './CommunityProfileScreen';
 import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
 import LongPostDrawer, { LongPostBlock } from '../components/LongPostDrawer';
+import NotificationDrawer from '../components/NotificationDrawer';
 
 interface HomeScreenProps {
   token: string;
@@ -196,6 +201,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
   const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
   const [communityRouteError, setCommunityRouteError] = useState('');
+  const [communityInfo, setCommunityInfo] = useState<SearchCommunityResult | null>(null);
+  const [communityInfoLoading, setCommunityInfoLoading] = useState(false);
+  const [communityJoinLoading, setCommunityJoinLoading] = useState(false);
+  const [communityOwner, setCommunityOwner] = useState<CommunityOwner | null>(null);
+  const [communityMembers, setCommunityMembers] = useState<CommunityMember[]>([]);
+  const [communityMembersLoading, setCommunityMembersLoading] = useState(false);
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
   const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
   const [myPinnedPosts, setMyPinnedPosts] = useState<FeedPost[]>([]);
@@ -323,6 +334,16 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const composerClosingRef = useRef(false);
   const longPostAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Notifications ────────────────────────────────────────────────────────────
+  const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifLoadingMore, setNotifLoadingMore] = useState(false);
+  const [notifHasMore, setNotifHasMore] = useState(false);
+  const [notifNextMaxId, setNotifNextMaxId] = useState<number | undefined>(undefined);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const notifPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const providerOrder: SocialProvider[] = ['google', 'apple'];
   const feedTabs: Array<{ key: FeedType; label: string; icon: string; tooltip: string }> = [
     { key: 'home', label: t('home.feedTabHome'), icon: 'home-variant', tooltip: t('home.feedTabHomeTooltip') },
@@ -360,6 +381,37 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
     return () => {
       active = false;
+    };
+  }, [token]);
+
+  // ── Notification unread-count polling ────────────────────────────────────────
+  useEffect(() => {
+    if (!token) return;
+
+    function fetchUnreadCount() {
+      api.getUnreadNotificationsCount(token).then((count) => {
+        setUnreadCount(count);
+      }).catch(() => {});
+    }
+
+    fetchUnreadCount();
+    notifPollTimerRef.current = setInterval(fetchUnreadCount, 60_000);
+
+    // Re-fetch immediately when tab regains visibility
+    function handleVisibilityChange() {
+      if (Platform.OS === 'web' && document.visibilityState === 'visible') {
+        fetchUnreadCount();
+      }
+    }
+    if (Platform.OS === 'web') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      if (notifPollTimerRef.current) clearInterval(notifPollTimerRef.current);
+      if (Platform.OS === 'web') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
   }, [token]);
 
@@ -936,31 +988,90 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       setCommunityRoutePosts([]);
       setCommunityRouteError('');
       setCommunityRouteLoading(false);
+      setCommunityInfo(null);
+      setCommunityOwner(null);
+      setCommunityMembers([]);
       return;
     }
 
     let cancelled = false;
-    async function loadCommunityRoutePosts() {
+
+    async function loadCommunityRoute() {
       setCommunityRouteLoading(true);
+      setCommunityInfoLoading(true);
+      setCommunityMembersLoading(true);
       setCommunityRouteError('');
       try {
-        const posts = await api.getCommunityPosts(token, routeCommunityName, 20);
-        if (!cancelled) setCommunityRoutePosts(posts);
+        const [posts, info, owner, members] = await Promise.all([
+          api.getCommunityPosts(token, routeCommunityName, 20),
+          api.getCommunity(token, routeCommunityName).catch(() => null),
+          api.getCommunityOwner(token, routeCommunityName).catch(() => null),
+          api.getCommunityMembers(token, routeCommunityName, 9).catch(() => []),
+        ]);
+        if (!cancelled) {
+          setCommunityRoutePosts(posts);
+          setCommunityInfo(info);
+          setCommunityOwner(owner);
+          setCommunityMembers(members as CommunityMember[]);
+        }
       } catch (e: any) {
         if (!cancelled) {
           setCommunityRoutePosts([]);
           setCommunityRouteError(e?.message || t('home.feedLoadError'));
         }
       } finally {
-        if (!cancelled) setCommunityRouteLoading(false);
+        if (!cancelled) {
+          setCommunityRouteLoading(false);
+          setCommunityInfoLoading(false);
+          setCommunityMembersLoading(false);
+        }
       }
     }
 
-    void loadCommunityRoutePosts();
+    setCommunityInfo(null);
+    setCommunityOwner(null);
+    setCommunityMembers([]);
+    void loadCommunityRoute();
     return () => {
       cancelled = true;
     };
   }, [route, token, t]);
+
+  async function handleJoinCommunity() {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityJoinLoading) return;
+    setCommunityJoinLoading(true);
+    try {
+      await api.joinCommunity(token, name);
+      setCommunityInfo((prev) => prev ? {
+        ...prev,
+        members_count: (prev.members_count ?? 0) + 1,
+        memberships: [...(prev.memberships ?? []), { user_id: -1 }],
+      } : prev);
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setCommunityJoinLoading(false);
+    }
+  }
+
+  async function handleLeaveCommunity() {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityJoinLoading) return;
+    setCommunityJoinLoading(true);
+    try {
+      await api.leaveCommunity(token, name);
+      setCommunityInfo((prev) => prev ? {
+        ...prev,
+        members_count: Math.max(0, (prev.members_count ?? 1) - 1),
+        memberships: [],
+      } : prev);
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setCommunityJoinLoading(false);
+    }
+  }
 
   useEffect(() => {
     setFollowStateByUsername((prev) => {
@@ -2144,6 +2255,103 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     };
   }, [longPostDrawerOpen, composerPostType, composerLongPostBlocks]);
 
+  // ── Notification handlers ─────────────────────────────────────────────────────
+
+  async function handleOpenNotifications() {
+    setNotifDrawerOpen(true);
+    setNotifLoading(true);
+    setNotifications([]);
+    setNotifHasMore(false);
+    setNotifNextMaxId(undefined);
+    try {
+      const result = await api.getNotifications(token);
+      setNotifications(result.notifications);
+      setNotifHasMore(result.hasMore);
+      setNotifNextMaxId(result.nextMaxId);
+    } catch {
+      // silently ignore — empty state will show
+    } finally {
+      setNotifLoading(false);
+    }
+  }
+
+  async function handleLoadMoreNotifications() {
+    if (notifLoadingMore || !notifHasMore) return;
+    setNotifLoadingMore(true);
+    try {
+      const result = await api.getNotifications(token, notifNextMaxId);
+      setNotifications((prev) => [...prev, ...result.notifications]);
+      setNotifHasMore(result.hasMore);
+      setNotifNextMaxId(result.nextMaxId);
+    } catch {
+      // silently ignore
+    } finally {
+      setNotifLoadingMore(false);
+    }
+  }
+
+  async function handleMarkAllRead() {
+    try {
+      await api.markNotificationsRead(token);
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function handleMarkRead(id: number) {
+    try {
+      await api.markNotificationRead(token, id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function handleDeleteNotification(id: number) {
+    try {
+      await api.deleteNotification(token, id);
+      const deleted = notifications.find((n) => n.id === id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (deleted && !deleted.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function handleDeleteAllNotifications() {
+    try {
+      await api.deleteAllNotifications(token);
+      setNotifications([]);
+      setNotifHasMore(false);
+      setNotifNextMaxId(undefined);
+      setUnreadCount(0);
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function handleNotificationNavigatePost(postId: number) {
+    setNotifDrawerOpen(false);
+    onNavigate({ screen: 'post', postId });
+  }
+
+  function handleNotificationNavigateProfile(username: string) {
+    setNotifDrawerOpen(false);
+    onNavigate({ screen: 'profile', username });
+  }
+
+  function handleNotificationNavigateCommunity(name: string) {
+    setNotifDrawerOpen(false);
+    onNavigate({ screen: 'community', name });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   function handleProfileComingSoon() {
     setProfileMenuOpen(false);
     onNavigate({ screen: 'me' });
@@ -2868,6 +3076,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         pinnedDisplayLimit={PIN_LIMIT}
         onNavigateProfile={handleNavigateProfile}
         onNavigateCommunity={handleNavigateCommunity}
+        token={token}
+        onFetchUserProfile={api.getUserProfile}
         getPostText={getPostText}
         getPostLengthType={getPostLengthType}
         getPostReactionCount={getPostReactionCount}
@@ -3109,8 +3319,34 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
             <MaterialCommunityIcons name="message-outline" size={18} color={c.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="bell-outline" size={18} color={c.textSecondary} />
+          <TouchableOpacity
+            style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+            activeOpacity={0.85}
+            onPress={() => void handleOpenNotifications()}
+          >
+            <MaterialCommunityIcons
+              name={unreadCount > 0 ? 'bell-badge-outline' : 'bell-outline'}
+              size={18}
+              color={unreadCount > 0 ? c.primary : c.textSecondary}
+            />
+            {unreadCount > 0 ? (
+              <View style={{
+                position: 'absolute',
+                top: 2,
+                right: 2,
+                minWidth: 14,
+                height: 14,
+                borderRadius: 7,
+                backgroundColor: c.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 2,
+              }}>
+                <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 }}>
+                  {unreadCount > 99 ? '99+' : String(unreadCount)}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.topNavProfile, { backgroundColor: c.primary }]}
@@ -4433,33 +4669,25 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
             ) : null}
 
             {viewingCommunityRoute ? (
-              <>
-                <RouteSummaryCard
-                  styles={styles}
-                  c={c}
-                  title={`c/${communityRouteName}`}
-                  subtitle={t('home.communityRouteLabel', { community: communityRouteName })}
-                />
-                <View style={[styles.feedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                  {communityRouteLoading ? (
-                    <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
-                  ) : communityRouteError ? (
-                    <Text style={[styles.feedErrorText, { color: c.errorText }]}>{communityRouteError}</Text>
-                  ) : communityRoutePosts.length === 0 ? (
-                    <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
-                      {t('home.feedEmpty')}
-                    </Text>
-                  ) : (
-                    <View style={styles.feedList}>
-                      {communityRoutePosts.map((post) => (
-                        <React.Fragment key={`community-${communityRouteName}-${post.id}`}>
-                          {renderPostCard(post, 'feed')}
-                        </React.Fragment>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </>
+              <CommunityProfileScreen
+                styles={styles}
+                c={c}
+                t={t}
+                community={communityInfo}
+                communityLoading={communityInfoLoading}
+                communityOwner={communityOwner}
+                communityMembers={communityMembers}
+                communityMembersLoading={communityMembersLoading}
+                posts={communityRoutePosts}
+                postsLoading={communityRouteLoading}
+                postsError={communityRouteError}
+                isJoined={!!(communityInfo?.memberships?.length)}
+                joinLoading={communityJoinLoading}
+                onJoin={() => void handleJoinCommunity()}
+                onLeave={() => void handleLeaveCommunity()}
+                onOpenProfile={(username) => onNavigate({ screen: 'profile', username })}
+                renderPostCard={renderPostCard}
+              />
             ) : null}
 
             {viewingHashtagRoute ? (
@@ -4538,6 +4766,26 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           </>
         )}
       </ScrollView>
+
+      <NotificationDrawer
+        visible={notifDrawerOpen}
+        c={c}
+        t={t}
+        notifications={notifications}
+        loading={notifLoading}
+        loadingMore={notifLoadingMore}
+        hasMore={notifHasMore}
+        unreadCount={unreadCount}
+        onClose={() => setNotifDrawerOpen(false)}
+        onLoadMore={() => void handleLoadMoreNotifications()}
+        onMarkAllRead={() => void handleMarkAllRead()}
+        onMarkRead={(id) => void handleMarkRead(id)}
+        onDeleteNotification={(id) => void handleDeleteNotification(id)}
+        onDeleteAll={() => void handleDeleteAllNotifications()}
+        onNavigateProfile={handleNotificationNavigateProfile}
+        onNavigatePost={handleNotificationNavigatePost}
+        onNavigateCommunity={handleNotificationNavigateCommunity}
+      />
     </View>
   );
 }
@@ -5857,6 +6105,63 @@ const styles = StyleSheet.create({
   },
   profileSecondaryBtnText: {
     fontSize: 15,
+    fontWeight: '700',
+  },
+  profileHandle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  profileCountLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  profileFollowButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileFollowButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  profileInfoCard: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  profileInfoCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  profileInfoCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  profileInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileInfoValue: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  profilePageSection: {
+    marginTop: 20,
+    marginBottom: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+  profilePageSectionTitle: {
+    fontSize: 17,
     fontWeight: '700',
   },
   profileEditModalBackdrop: {

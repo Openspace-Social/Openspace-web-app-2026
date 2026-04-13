@@ -1,7 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { FeedPost, PostComment } from '../api/client';
+import { FeedPost, PostComment, UserProfile } from '../api/client';
+import UserHoverCard from './UserHoverCard';
 
 type PostCardVariant = 'feed' | 'profile';
 type LongPostRenderBlock = {
@@ -166,6 +167,8 @@ type PostCardProps = {
   getPostLengthType: (post: FeedPost) => 'long' | 'short';
   getPostReactionCount: (post: FeedPost) => number;
   getPostCommentsCount: (post: FeedPost) => number;
+  token?: string;
+  onFetchUserProfile?: (token: string, username: string) => Promise<UserProfile>;
 };
 
 export default function PostCard({
@@ -230,6 +233,8 @@ export default function PostCard({
   getPostLengthType,
   getPostReactionCount,
   getPostCommentsCount,
+  token,
+  onFetchUserProfile,
 }: PostCardProps) {
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postMenuOpen, setPostMenuOpen] = React.useState(false);
@@ -558,13 +563,29 @@ export default function PostCard({
     >
       <View style={styles.feedPostHeader}>
         <View style={styles.feedHeaderLeft}>
-          <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
-            {creatorAvatar ? (
-              <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
-            ) : (
-              <Text style={styles.feedAvatarLetter}>{(creatorUsername?.[0] || 'O').toUpperCase()}</Text>
-            )}
-          </View>
+          <UserHoverCard
+            username={creatorUsername}
+            token={token || ''}
+            c={c}
+            isFollowing={!!(creatorUsername && followStateByUsername[creatorUsername])}
+            followLoading={!!(creatorUsername && followActionLoadingByUsername[creatorUsername])}
+            onToggleFollow={onToggleFollow}
+            onOpenProfile={onNavigateProfile}
+            fetchProfile={onFetchUserProfile || (() => Promise.reject())}
+          >
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => creatorUsername && onNavigateProfile(creatorUsername)}
+            >
+              <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                {creatorAvatar ? (
+                  <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
+                ) : (
+                  <Text style={styles.feedAvatarLetter}>{(creatorUsername?.[0] || 'O').toUpperCase()}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </UserHoverCard>
           <View style={styles.feedHeaderMeta}>
             {primaryCommunityName ? (
               <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>

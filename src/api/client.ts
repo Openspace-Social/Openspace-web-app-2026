@@ -67,16 +67,16 @@ function normalizeMediaUrl(value?: string | null): string | undefined {
   const lowered = raw.toLowerCase();
   if (lowered === 'none' || lowered === 'null' || lowered === 'undefined') return undefined;
 
-  const rewriteCommunityMediaPath = (pathValue: string) => {
+  const rewriteMediaPath = (pathValue: string) => {
     const normalizedPath = pathValue.replace(/^\/+/, '');
-    if (normalizedPath.startsWith('communities/')) {
+    if (normalizedPath.startsWith('communities/') || normalizedPath.startsWith('users/')) {
       return `${MEDIA_BASE_URL}/${normalizedPath}`;
     }
     return undefined;
   };
 
-  const directCommunityPath = rewriteCommunityMediaPath(raw);
-  if (directCommunityPath) return directCommunityPath;
+  const directMediaPath = rewriteMediaPath(raw);
+  if (directMediaPath) return directMediaPath;
 
   if (raw.startsWith('http://') || raw.startsWith('https://')) {
     try {
@@ -94,8 +94,8 @@ function normalizeMediaUrl(value?: string | null): string | undefined {
   if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(raw)) return `https://${raw}`;
 
   // If backend returns relative media paths without /media, patch into media bucket URL.
-  const relativeCommunityPath = rewriteCommunityMediaPath(raw);
-  if (relativeCommunityPath) return relativeCommunityPath;
+  const relativeMediaPath = rewriteMediaPath(raw);
+  if (relativeMediaPath) return relativeMediaPath;
 
   return raw.startsWith('/') ? `${API_BASE_URL}${raw}` : `${API_BASE_URL}/${raw}`;
 }
@@ -336,6 +336,129 @@ export type FollowingUserResult = {
   is_connected?: boolean;
 };
 
+export type UserProfile = {
+  id: number;
+  username?: string;
+  profile?: {
+    name?: string;
+    avatar?: string;
+    cover?: string;
+    bio?: string;
+    location?: string;
+    url?: string;
+    badges?: Array<{ keyword?: string; keyword_description?: string }>;
+  };
+  followers_count?: number | null; // null = private
+  following_count?: number;
+  posts_count?: number;
+  is_following?: boolean;
+  is_followed?: boolean;
+  date_joined?: string;
+  visibility?: string;
+};
+
+export type CommunityOwner = {
+  community_id?: number;
+  community_name?: string;
+  community_title?: string;
+  creator_id?: number;
+  username?: string;
+  user_name?: string;
+  user_avatar?: string;
+};
+
+export type CommunityMember = {
+  id?: number;
+  username?: string;
+  is_following?: boolean;
+  profile?: {
+    avatar?: string;
+    name?: string;
+    badges?: Array<{ keyword?: string; keyword_description?: string }>;
+  };
+};
+
+// ─── Notification types ───────────────────────────────────────────────────────
+
+export type NotificationType =
+  | 'PR'   // post reaction
+  | 'PC'   // post comment
+  | 'PCR'  // post comment reply
+  | 'PCRA' // post comment reaction
+  | 'CR'   // connection request
+  | 'CC'   // connection confirmed
+  | 'F'    // follow
+  | 'FR'   // follow request
+  | 'FRA'  // follow request approved
+  | 'CI'   // community invite
+  | 'PUM'  // post user mention
+  | 'PCUM' // post comment user mention
+  | 'CNP'  // community new post
+  | 'UNP'; // user new post
+
+type NotifUser = {
+  id?: number;
+  username?: string;
+  profile?: { name?: string; avatar?: string };
+};
+
+type NotifPost = {
+  id?: number;
+  uuid?: string;
+  text?: string;
+  creator?: NotifUser;
+  created?: string;
+  media_thumbnail?: string;
+  community?: { id?: number; name?: string; avatar?: string; color?: string };
+};
+
+type NotifComment = {
+  id?: number;
+  text?: string;
+  commenter?: NotifUser;
+  created?: string;
+  post?: NotifPost;
+};
+
+type NotifEmoji = { id?: number; keyword?: string; image?: string };
+
+export type NotificationContentObject =
+  // F
+  | { follower?: NotifUser }
+  // FR
+  | { follow_request?: { id?: number; creator?: NotifUser } }
+  // FRA
+  | { follow?: { id?: number; user?: NotifUser } }
+  // PR
+  | { post_reaction?: { id?: number; reactor?: NotifUser; emoji?: NotifEmoji; post?: NotifPost } }
+  // PC
+  | { post_comment?: NotifComment }
+  // PCR
+  | { post_comment?: NotifComment; parent_comment?: NotifComment }
+  // PCRA
+  | { post_comment_reaction?: { id?: number; reactor?: NotifUser; emoji?: NotifEmoji; post_comment?: NotifComment } }
+  // CR
+  | { connection_requester?: NotifUser }
+  // CC
+  | { connection_confirmator?: NotifUser }
+  // PUM / PCUM
+  | { post_user_mention?: { id?: number; post?: NotifPost; user?: NotifUser } }
+  | { post_comment_user_mention?: { id?: number; post_comment?: NotifComment; user?: NotifUser } }
+  // CI
+  | { community_invite?: { id?: number; creator?: NotifUser; community?: { id?: number; name?: string; avatar?: string; color?: string } } }
+  // CNP / UNP
+  | { post?: NotifPost };
+
+export type AppNotification = {
+  id: number;
+  notification_type: NotificationType;
+  read: boolean;
+  created?: string;
+  content_object?: NotificationContentObject;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type SearchCommunityResult = {
   id: number;
   name?: string;
@@ -343,7 +466,17 @@ export type SearchCommunityResult = {
   avatar?: string;
   cover?: string;
   members_count?: number;
+  posts_count?: number;
   color?: string;
+  description?: string;
+  rules?: string;
+  type?: string; // 'P' = public, 'T' = private
+  is_creator?: boolean;
+  user_adjective?: string;
+  users_adjective?: string;
+  categories?: Array<{ id?: number; name?: string; title?: string; color?: string }>;
+  administrators?: CommunityMember[];
+  moderators?: CommunityMember[];
   memberships?: Array<{
     id?: number;
     user_id?: number;
@@ -474,6 +607,16 @@ export const api = {
       throw new Error('User not found');
     }
   },
+
+  getUserProfile: (token: string, username: string) =>
+    request<UserProfile>(`/api/auth/users/${encodeURIComponent(username)}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((u) => ({
+      ...u,
+      profile: u.profile
+        ? { ...u.profile, avatar: normalizeMediaUrl(u.profile.avatar) }
+        : u.profile,
+    })),
 
   updateAuthenticatedUser: (token: string, payload: UpdateAuthenticatedUserPayload) =>
     request('/api/auth/user/', {
@@ -769,6 +912,47 @@ export const api = {
     return request<FeedPost[]>(`/api/posts/profile/pinned/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     }).then((posts) => posts.map((post) => normalizePostPayload(post)));
+  },
+
+  getCommunity: (token: string, communityName: string) =>
+    request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  joinCommunity: (token: string, communityName: string) =>
+    request<void>(`/api/communities/${encodeURIComponent(communityName)}/members/join/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  leaveCommunity: (token: string, communityName: string) =>
+    request<void>(`/api/communities/${encodeURIComponent(communityName)}/members/leave/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getCommunityOwner: (token: string, communityName: string) =>
+    request<CommunityOwner>(`/api/communities/community_owner/${encodeURIComponent(communityName)}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((owner) => ({
+      ...owner,
+      user_avatar: normalizeMediaUrl(owner.user_avatar),
+    })),
+
+  getCommunityMembers: (token: string, communityName: string, count = 9, maxId?: number) => {
+    const params = new URLSearchParams({ count: String(count) });
+    if (maxId != null) params.set('max_id', String(maxId));
+    return request<CommunityMember[]>(
+      `/api/communities/${encodeURIComponent(communityName)}/members/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } }
+    ).then((members) =>
+      members.map((m) => ({
+        ...m,
+        profile: m.profile
+          ? { ...m.profile, avatar: normalizeMediaUrl(m.profile.avatar) }
+          : m.profile,
+      }))
+    );
   },
 
   getCommunityPosts: (token: string, communityName: string, count = 20) =>
@@ -1086,4 +1270,59 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     });
   },
+
+  // ─── Notifications ──────────────────────────────────────────────────────────
+
+  getNotifications: async (
+    token: string,
+    maxId?: number,
+    pageSize = 15,
+    types?: NotificationType[],
+  ): Promise<{ notifications: AppNotification[]; hasMore: boolean; nextMaxId: number | undefined }> => {
+    const params = new URLSearchParams({ count: String(pageSize) });
+    if (maxId != null) params.set('max_id', String(maxId));
+    if (types?.length) params.set('types', types.join(','));
+    const items = await request<AppNotification[]>(`/api/notifications/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+    const notifications = Array.isArray(items) ? items : [];
+    const hasMore = notifications.length >= pageSize;
+    const nextMaxId = hasMore ? notifications[notifications.length - 1]?.id - 1 : undefined;
+    return { notifications, hasMore, nextMaxId };
+  },
+
+  getUnreadNotificationsCount: async (token: string): Promise<number> => {
+    const data = await request<{ count: number }>('/api/notifications/unread/count/', {
+      headers: { Authorization: `Token ${token}` },
+    });
+    return typeof data?.count === 'number' ? data.count : 0;
+  },
+
+  markNotificationsRead: (token: string, maxId?: number) => {
+    const body: Record<string, unknown> = {};
+    if (maxId != null) body.max_id = maxId;
+    return request<void>('/api/notifications/read/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(body),
+    });
+  },
+
+  markNotificationRead: (token: string, notificationId: number) =>
+    request<void>(`/api/notifications/${notificationId}/read/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  deleteNotification: (token: string, notificationId: number) =>
+    request<void>(`/api/notifications/${notificationId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  deleteAllNotifications: (token: string) =>
+    request<void>('/api/notifications/', {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
 };
