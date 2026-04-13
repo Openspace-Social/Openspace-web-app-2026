@@ -593,14 +593,15 @@ export const api = {
       body: JSON.stringify({ provider }),
     }).then(extractSuccessMessage),
 
-  getFeed: (token: string, feed: FeedType, count = 20) => {
+  getFeed: (token: string, feed: FeedType, count = 20, maxId?: number) => {
+    const maxIdParam = typeof maxId === 'number' ? `&max_id=${maxId}` : '';
     const path = feed === 'home'
-      ? `/api/posts/?count=${count}`
+      ? `/api/posts/?count=${count}${maxIdParam}`
       : feed === 'trending'
-        ? `/api/posts/trending/new/?count=${count}`
+        ? `/api/posts/trending/new/?count=${count}${maxIdParam}`
         : feed === 'public'
-          ? `/api/posts/top/?count=${count}`
-          : `/api/posts/top/?count=${count}&exclude_joined_communities=true`;
+          ? `/api/posts/top/?count=${count}${maxIdParam}`
+          : `/api/posts/top/?count=${count}&exclude_joined_communities=true${maxIdParam}`;
 
     return request<unknown>(path, {
       headers: { Authorization: `Token ${token}` },
@@ -892,6 +893,12 @@ export const api = {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ emoji_id: emojiId }),
+    }),
+
+  removeReactionFromPost: (token: string, postUuid: string) =>
+    request<void>(`/api/posts/${postUuid}/reactions/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
     }),
 
   pinPost: (token: string, postUuid: string) =>

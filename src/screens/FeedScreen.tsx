@@ -14,6 +14,8 @@ type Props = {
   feedError: string;
   feedPosts: FeedPost[];
   activeFeed: string;
+  feedLoadingMore?: boolean;
+  feedHasMore?: boolean;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
 };
 
@@ -28,6 +30,8 @@ export default function FeedScreen({
   feedError,
   feedPosts,
   activeFeed,
+  feedLoadingMore = false,
+  feedHasMore = false,
   renderPostCard,
 }: Props) {
   const composerName = user?.profile?.name || user?.username || 'there';
@@ -102,6 +106,13 @@ export default function FeedScreen({
               {renderPostCard(post, 'feed')}
             </React.Fragment>
           ))}
+          {feedLoadingMore ? (
+            <ActivityIndicator color={c.primary} size="small" style={{ paddingVertical: 20 }} />
+          ) : !feedHasMore && feedPosts.length > 0 ? (
+            <Text style={{ textAlign: 'center', paddingVertical: 20, fontSize: 13, color: c.textMuted }}>
+              {t('home.feedEndOfResults', { defaultValue: "You're all caught up!" })}
+            </Text>
+          ) : null}
         </View>
       )}
     </View>

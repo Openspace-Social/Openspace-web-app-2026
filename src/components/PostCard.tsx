@@ -132,6 +132,7 @@ type PostCardProps = {
   showFollowButton?: boolean;
   onEnsureReactionGroups: () => Promise<void>;
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
+  onReactToPostWithEmoji?: (post: FeedPost, emojiId?: number) => void | Promise<void>;
   onToggleFollow: (username: string, currentlyFollowing: boolean) => void;
   onOpenPostDetail: (post: FeedPost) => void;
   onToggleExpand: (postId: number) => void;
@@ -195,6 +196,7 @@ export default function PostCard({
   showFollowButton = false,
   onEnsureReactionGroups,
   onReactToComment,
+  onReactToPostWithEmoji,
   onToggleFollow,
   onOpenPostDetail,
   onToggleExpand,
@@ -848,21 +850,39 @@ export default function PostCard({
         <View style={styles.reactionSummaryWrap}>
           {(post.reactions_emoji_counts || [])
             .filter((entry) => (entry?.count || 0) > 0)
-            .map((entry, idx) => (
-              <TouchableOpacity
-                key={`${variant}-${post.id}-reaction-summary-${entry.emoji?.id || idx}`}
-                style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-                onPress={() => onOpenReactionList(post)}
-                activeOpacity={0.85}
-              >
-                {entry.emoji?.image ? (
-                  <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-                ) : (
-                  <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-                )}
-                <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>{entry.count || 0}</Text>
-              </TouchableOpacity>
-            ))}
+            .map((entry, idx) => {
+              const isMyReaction = !!entry.emoji?.id && post.reaction?.emoji?.id === entry.emoji.id;
+              return (
+                <TouchableOpacity
+                  key={`${variant}-${post.id}-reaction-summary-${entry.emoji?.id || idx}`}
+                  style={[
+                    styles.reactionSummaryChip,
+                    isMyReaction
+                      ? { borderColor: c.primary, backgroundColor: c.surface }
+                      : { borderColor: c.border, backgroundColor: c.surface },
+                  ]}
+                  onPress={() => onReactToPostWithEmoji ? void onReactToPostWithEmoji(post, entry.emoji?.id) : onOpenReactionList(post)}
+                  disabled={reactionActionLoading}
+                  activeOpacity={0.75}
+                >
+                  {entry.emoji?.image ? (
+                    <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
+                  ) : (
+                    <MaterialCommunityIcons name="emoticon-outline" size={14} color={isMyReaction ? c.primary : c.textSecondary} />
+                  )}
+                  <Text style={[styles.reactionSummaryCount, { color: isMyReaction ? c.primary : c.textSecondary }]}>
+                    {entry.count || 0}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          <TouchableOpacity
+            style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
+            onPress={() => onOpenReactionList(post)}
+            activeOpacity={0.75}
+          >
+            <MaterialCommunityIcons name="account-multiple-outline" size={14} color={c.textMuted} />
+          </TouchableOpacity>
         </View>
       ) : null}
 

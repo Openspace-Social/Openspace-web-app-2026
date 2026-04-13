@@ -190,6 +190,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedNextMaxId, setFeedNextMaxId] = useState<number | undefined>(undefined);
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
   const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
   const [communityRouteError, setCommunityRouteError] = useState('');
@@ -334,14 +337,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     Promise.all([
       api.getAuthenticatedUser(token),
       api.getLinkedSocialIdentities(token),
-      api.getFeed(token, 'home'),
     ])
-      .then(([authenticatedUser, identities, homeFeed]) => {
+      .then(([authenticatedUser, identities]) => {
         if (!active) return;
         setUser(authenticatedUser);
         setLinkedIdentities(identities);
-        setFeedPosts(homeFeed);
-        setFeedError('');
       })
       .catch(() => {
         if (!active) return;
@@ -350,9 +350,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       .finally(() => {
         if (!active) return;
         setLoading(false);
-        setFeedLoading(false);
         setIdentitiesLoading(false);
       });
+
+    // Load the feed via loadFeed so pagination state (hasMore, nextMaxId) is set correctly
+    loadFeed('home').finally(() => {
+      if (!active) setFeedLoading(false);
+    });
 
     return () => {
       active = false;
@@ -837,12 +841,24 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     };
   }, [route, token, activePost?.id, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
+  // Match the server's own page size — the existing site uses count=10
+  const FEED_PAGE_SIZE = 10;
+
   async function loadFeed(feed: FeedType) {
     setFeedLoading(true);
     setFeedError('');
+    setFeedNextMaxId(undefined);
+    setFeedHasMore(false);
     try {
-      const nextPosts = await api.getFeed(token, feed);
+      const nextPosts = await api.getFeed(token, feed, FEED_PAGE_SIZE);
       setFeedPosts(nextPosts);
+      if (nextPosts.length > 0) {
+        // Optimistically assume more pages exist whenever any posts come back.
+        // The true end is confirmed only when a subsequent page returns empty.
+        const lastId = nextPosts[nextPosts.length - 1]?.id;
+        setFeedHasMore(true);
+        setFeedNextMaxId(typeof lastId === 'number' ? lastId : undefined);
+      }
     } catch (e: any) {
       setFeedPosts([]);
       setFeedError(e.message || t('home.feedLoadError'));
@@ -850,6 +866,67 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       setFeedLoading(false);
     }
   }
+
+  async function loadMoreFeed() {
+    if (feedLoadingMore || !feedHasMore || feedNextMaxId === undefined) return;
+    setFeedLoadingMore(true);
+    try {
+      const morePosts = await api.getFeed(token, activeFeed, FEED_PAGE_SIZE, feedNextMaxId);
+      if (morePosts.length > 0) {
+        setFeedPosts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          return [...prev, ...morePosts.filter((p) => !existingIds.has(p.id))];
+        });
+        const lastId = morePosts[morePosts.length - 1]?.id;
+        setFeedNextMaxId(typeof lastId === 'number' ? lastId : undefined);
+        setFeedHasMore(true);
+      } else {
+        // Empty page = genuinely reached the end
+        setFeedHasMore(false);
+        setFeedNextMaxId(undefined);
+      }
+    } catch {
+      // silently fail — user can keep scrolling to retry
+    } finally {
+      setFeedLoadingMore(false);
+    }
+  }
+
+  // Ref to the root ScrollView so we can attach a DOM scroll listener on web
+  const mainScrollRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // On web, React Native Web renders ScrollView as a plain div.
+    // Grab the underlying DOM node and listen directly on it.
+    const node = mainScrollRef.current;
+    const scrollTarget: EventTarget | null =
+      node && typeof node.getScrollableNode === 'function'
+        ? node.getScrollableNode()
+        : node?._nativeTag
+          ? null
+          : (node as HTMLElement | null);
+
+    const target = scrollTarget ?? window;
+
+    const handleScroll = () => {
+      let distFromBottom: number;
+      if (target === window) {
+        const scrollTop = window.scrollY || document.documentElement.scrollTop;
+        distFromBottom = document.documentElement.scrollHeight - scrollTop - window.innerHeight;
+      } else {
+        const el = target as HTMLElement;
+        distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      }
+      if (distFromBottom < 600) {
+        void loadMoreFeed();
+      }
+    };
+
+    target.addEventListener('scroll', handleScroll as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => target.removeEventListener('scroll', handleScroll as EventListener);
+  }, [feedHasMore, feedLoadingMore, feedLoading, feedNextMaxId, activeFeed]);
 
   useEffect(() => {
     const isCommunityRoute = route.screen === 'community';
@@ -1479,7 +1556,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     if (!post.uuid) return;
     try {
       const counts = await api.getPostReactionCounts(token, post.uuid);
-      applyPostPatch(post.id, (current) => ({ ...current, reactions_emoji_counts: counts }));
+      applyPostPatch(post.id, (current) => {
+        const existing = current.reactions_emoji_counts || [];
+        // Update counts in place, preserving the current display order.
+        // Add any new emojis from the server at the end; drop any that hit zero.
+        const countMap = new Map(counts.map((c) => [c.emoji?.id, c.count ?? 0]));
+        const updated = existing
+          .map((e) => ({ ...e, count: countMap.has(e.emoji?.id) ? countMap.get(e.emoji?.id)! : (e.count ?? 0) }))
+          .filter((e) => (e.count ?? 0) > 0);
+        const existingIds = new Set(existing.map((e) => e.emoji?.id));
+        counts.forEach((c) => {
+          if (!existingIds.has(c.emoji?.id) && (c.count ?? 0) > 0) updated.push(c);
+        });
+        return { ...current, reactions_emoji_counts: updated };
+      });
     } catch {
       // Keep UI resilient if counts refresh fails.
     }
@@ -1499,13 +1589,45 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   async function reactToPostWithEmoji(post: FeedPost, emojiId?: number) {
     if (!post.uuid || !emojiId || reactionActionLoading) return;
+    const isAlreadyMyReaction = post.reaction?.emoji?.id === emojiId;
+    const prevReactionEmojiId = post.reaction?.emoji?.id;
+    const emojiMeta = (post.reactions_emoji_counts || []).find((e) => e.emoji?.id === emojiId)?.emoji;
+
+    // Optimistic update — apply immediately so the UI feels instant
+    if (isAlreadyMyReaction) {
+      applyPostPatch(post.id, (current) => ({
+        ...current,
+        reaction: null,
+        reactions_emoji_counts: (current.reactions_emoji_counts || [])
+          .map((e) => e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e)
+          .filter((e) => (e.count || 0) > 0),
+      }));
+    } else {
+      applyPostPatch(post.id, (current) => ({
+        ...current,
+        reaction: { emoji: emojiMeta },
+        reactions_emoji_counts: (current.reactions_emoji_counts || []).map((e) => {
+          if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
+          if (prevReactionEmojiId && e.emoji?.id === prevReactionEmojiId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
+          return e;
+        }),
+      }));
+    }
+
     setReactionActionLoading(true);
     try {
-      const reaction = await api.reactToPost(token, post.uuid, emojiId);
-      applyPostPatch(post.id, (current) => ({ ...current, reaction }));
+      if (isAlreadyMyReaction) {
+        await api.removeReactionFromPost(token, post.uuid);
+      } else {
+        const reaction = await api.reactToPost(token, post.uuid, emojiId);
+        // Reconcile with the server's canonical reaction object
+        applyPostPatch(post.id, (current) => ({ ...current, reaction }));
+      }
       await refreshPostReactionCounts(post);
       setReactionPickerPost(null);
     } catch (e: any) {
+      // Revert optimistic update on failure
+      applyPostPatch(post.id, () => post);
       setError(e?.message || t('home.reactionLoadFailed'));
     } finally {
       setReactionActionLoading(false);
@@ -2716,6 +2838,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         showFollowButton={variant === 'feed' && showFeedFollowButton}
         onEnsureReactionGroups={ensureReactionGroups}
         onReactToComment={reactToComment}
+        onReactToPostWithEmoji={reactToPostWithEmoji}
         onToggleFollow={handleToggleFollow}
         onOpenPostDetail={openPostDetail}
         onToggleExpand={toggleExpand}
@@ -4221,7 +4344,19 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.rootContent}>
+      <ScrollView
+        ref={mainScrollRef}
+        contentContainerStyle={styles.rootContent}
+        scrollEventThrottle={200}
+        onScroll={({ nativeEvent }) => {
+          // Native (iOS/Android) scroll handling — web uses the DOM listener above
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
+          if (nearBottom && feedHasMore && !feedLoadingMore && !feedLoading) {
+            void loadMoreFeed();
+          }
+        }}
+      >
         {loading ? (
           <ActivityIndicator color={c.primary} size="large" />
         ) : (
@@ -4368,6 +4503,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 feedError={feedError}
                 feedPosts={feedPosts}
                 activeFeed={activeFeed}
+                feedLoadingMore={feedLoadingMore}
+                feedHasMore={feedHasMore}
                 renderPostCard={renderPostCard}
               />
             ) : null}
