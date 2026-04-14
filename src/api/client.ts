@@ -493,6 +493,20 @@ export type CircleResult = {
   users_count?: number;
 };
 
+export type ListResult = {
+  id: number;
+  name: string;
+  emoji?: { id: number; keyword: string; image?: string };
+  follows_count: number;
+};
+
+export type EmojiGroup = {
+  id: number;
+  keyword: string;
+  color?: string;
+  emojis: { id: number; keyword: string; image?: string }[];
+};
+
 type UserCommunityMembershipResult = {
   community_id?: number;
   community_name?: string;
@@ -1324,5 +1338,104 @@ export const api = {
     request<void>('/api/notifications/', {
       method: 'DELETE',
       headers: { Authorization: `Token ${token}` },
+    }),
+
+  // ─── Lists ───────────────────────────────────────────────────────────────────
+
+  getLists: (token: string) =>
+    request<ListResult[]>('/api/lists/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getListDetail: (token: string, listId: number) =>
+    request<ListResult & { users: { id: number; username: string; profile?: { name?: string; avatar?: string } }[] }>(`/api/lists/${listId}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getEmojiGroups: (token: string) =>
+    request<EmojiGroup[]>('/api/emojis/groups/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  createList: (token: string, name: string, emojiId: number) =>
+    request<ListResult>('/api/lists/', {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ name, emoji_id: emojiId }),
+    }),
+
+  updateList: (token: string, listId: number, payload: { name?: string; usernames?: string[] }) =>
+    request<ListResult>(`/api/lists/${listId}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  deleteList: (token: string, listId: number) =>
+    request<void>(`/api/lists/${listId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  // ─── Connections ─────────────────────────────────────────────────────────────
+
+  connectWithUser: (token: string, username: string, circlesIds: number[]) =>
+    request<void>('/api/connections/connect/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username, circles_ids: circlesIds }),
+    }),
+
+  confirmConnection: (token: string, username: string, circlesIds?: number[]) =>
+    request<void>('/api/connections/confirm/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username, ...(circlesIds ? { circles_ids: circlesIds } : {}) }),
+    }),
+
+  disconnectFromUser: (token: string, username: string) =>
+    request<void>('/api/connections/disconnect/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  updateConnection: (token: string, username: string, circlesIds: number[]) =>
+    request<void>('/api/connections/update/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username, circles_ids: circlesIds }),
+    }),
+
+  // ─── Circles (create) ────────────────────────────────────────────────────────
+
+  createCircle: (token: string, name: string, color: string) =>
+    request<CircleResult>('/api/circles/', {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ name, color }),
+    }),
+
+  // ─── Blocks ──────────────────────────────────────────────────────────────────
+
+  blockUser: (token: string, username: string) =>
+    request<void>(`/api/auth/users/${encodeURIComponent(username)}/block/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  unblockUser: (token: string, username: string) =>
+    request<void>(`/api/auth/users/${encodeURIComponent(username)}/unblock/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  // ─── User reports ────────────────────────────────────────────────────────────
+
+  reportUser: (token: string, username: string, categoryId: number, description?: string) =>
+    request<void>(`/api/auth/users/${encodeURIComponent(username)}/report/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ category_id: categoryId, ...(description?.trim() ? { description: description.trim() } : {}) }),
     }),
 };

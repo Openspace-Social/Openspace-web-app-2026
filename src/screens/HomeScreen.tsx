@@ -21,21 +21,22 @@ import { useTranslation } from 'react-i18next';
 import {
   api,
   AppNotification,
-  FeedPost,
-  FeedType,
-  ModerationCategory,
-  PostComment,
-  UpdateAuthenticatedUserMediaPayload,
-  UpdateAuthenticatedUserPayload,
   CircleResult,
   CommunityMember,
   CommunityOwner,
+  FeedPost,
+  FeedType,
   FollowingUserResult,
+  ListResult,
+  ModerationCategory,
+  PostComment,
   SearchCommunityResult,
   SearchHashtagResult,
   SearchUserResult,
   SocialIdentity,
-  SocialProvider
+  SocialProvider,
+  UpdateAuthenticatedUserMediaPayload,
+  UpdateAuthenticatedUserPayload,
 } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
@@ -239,6 +240,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [profileFollowingsHasMore, setProfileFollowingsHasMore] = useState(true);
   const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
+  // Profile actions menu
+  const [userCircles, setUserCircles] = useState<CircleResult[]>([]);
+  const [userLists, setUserLists] = useState<ListResult[]>([]);
+  const [profileActionsLoading, setProfileActionsLoading] = useState(false);
   const [postRouteLoading, setPostRouteLoading] = useState(false);
   const [activePost, setActivePost] = useState<FeedPost | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
@@ -590,16 +595,28 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       api.getPinnedPosts(token, username, 10),
       loadProfileJoinedCommunitiesPage(username, 0),
       loadProfileFollowingsPage(username),
+      api.getCircles(token),
+      api.getLists(token),
     ])
-      .then(([userResult, postsResult, pinnedResult, communitiesResult, followingsResult]) => {
+      .then(([userResult, postsResult, pinnedResult, communitiesResult, followingsResult, circlesResult, listsResult]) => {
         if (!active) return;
         const nextUser = userResult.status === 'fulfilled' ? userResult.value : null;
         const nextPosts = postsResult.status === 'fulfilled' ? postsResult.value : [];
         const nextPinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
         const nextCommunities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : { communities: [], hasMore: false };
         const nextFollowings = followingsResult.status === 'fulfilled' ? followingsResult.value : { followings: [], hasMore: false };
+        if (circlesResult.status === 'fulfilled' && Array.isArray(circlesResult.value)) {
+          setUserCircles(circlesResult.value);
+        }
+        if (listsResult.status === 'fulfilled' && Array.isArray(listsResult.value)) {
+          setUserLists(listsResult.value);
+        }
 
         setProfileUser(nextUser);
+        // Seed the follow state from the profile user object so the button renders correctly
+        if (nextUser?.username && typeof nextUser?.is_following === 'boolean') {
+          setFollowStateByUsername((prev) => ({ ...prev, [nextUser.username]: nextUser.is_following }));
+        }
         setProfilePosts(Array.isArray(nextPosts) ? nextPosts : []);
         setProfilePinnedPosts(Array.isArray(nextPinned) ? nextPinned : []);
         setProfileJoinedCommunities(Array.isArray(nextCommunities.communities) ? nextCommunities.communities : []);
@@ -2291,12 +2308,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function handleMarkAllRead() {
+    // Update UI immediately so the button disappears and rows clear right away
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadCount(0);
     try {
       await api.markNotificationsRead(token);
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
     } catch {
-      // silently ignore
+      // silently ignore — UI is already updated optimistically
     }
   }
 
@@ -2348,6 +2366,117 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function handleNotificationNavigateCommunity(name: string) {
     setNotifDrawerOpen(false);
     onNavigate({ screen: 'community', name });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // ── Profile actions menu handlers ─────────────────────────────────────────────
+
+  async function handleConnect(circlesIds: number[]) {
+    if (!profileUser?.username) return;
+    setProfileActionsLoading(true);
+    try {
+      await api.connectWithUser(token, profileUser.username, circlesIds);
+      setProfileUser((prev: any) => prev ? { ...prev, is_connected: true, is_fully_connected: false } : prev);
+    } catch {
+      setError('Could not send connection request.');
+    } finally {
+      setProfileActionsLoading(false);
+    }
+  }
+
+  async function handleUpdateConnection(circlesIds: number[]) {
+    if (!profileUser?.username) return;
+    setProfileActionsLoading(true);
+    try {
+      await api.updateConnection(token, profileUser.username, circlesIds);
+      setProfileUser((prev: any) => prev ? { ...prev, connected_circles: userCircles.filter((c) => circlesIds.includes(c.id)) } : prev);
+    } catch {
+      setError('Could not update connection.');
+    } finally {
+      setProfileActionsLoading(false);
+    }
+  }
+
+  async function handleConfirmConnection(circlesIds: number[]) {
+    if (!profileUser?.username) return;
+    setProfileActionsLoading(true);
+    try {
+      await api.confirmConnection(token, profileUser.username, circlesIds);
+      setProfileUser((prev: any) => prev ? { ...prev, is_connected: true, is_fully_connected: true } : prev);
+    } catch {
+      setError('Could not confirm connection.');
+    } finally {
+      setProfileActionsLoading(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!profileUser?.username) return;
+    setProfileActionsLoading(true);
+    try {
+      await api.disconnectFromUser(token, profileUser.username);
+      setProfileUser((prev: any) => prev ? { ...prev, is_connected: false, is_fully_connected: false, connected_circles: [] } : prev);
+    } catch {
+      setError('Could not disconnect.');
+    } finally {
+      setProfileActionsLoading(false);
+    }
+  }
+
+  async function handleAddToList(listId: number, username: string) {
+    // Fetch current list members, add username, send full replacement list
+    try {
+      const detail = await api.getListDetail(token, listId);
+      const currentUsernames = (detail.users || []).map((u: any) => u.username).filter(Boolean);
+      if (!currentUsernames.includes(username)) {
+        await api.updateList(token, listId, { usernames: [...currentUsernames, username] });
+        setUserLists((prev) => prev.map((l) => l.id === listId ? { ...l, follows_count: l.follows_count + 1 } : l));
+      }
+    } catch {
+      throw new Error('Could not add to list.');
+    }
+  }
+
+  async function handleCreateList(name: string, emojiId: number): Promise<ListResult | null> {
+    try {
+      const list = await api.createList(token, name, emojiId);
+      setUserLists((prev) => [...prev, list]);
+      return list;
+    } catch {
+      setError('Could not create list.');
+      return null;
+    }
+  }
+
+  async function handleCreateCircle(name: string, color: string): Promise<typeof userCircles[0] | null> {
+    try {
+      const circle = await api.createCircle(token, name, color);
+      setUserCircles((prev) => [...prev, circle]);
+      return circle;
+    } catch {
+      setError('Could not create circle.');
+      return null;
+    }
+  }
+
+  async function handleBlockUser(username: string) {
+    try {
+      await api.blockUser(token, username);
+      setNotice(`@${username} has been blocked.`);
+      onNavigate({ screen: 'feed', feed: 'home' });
+    } catch {
+      setError('Could not block user.');
+    }
+  }
+
+  async function handleReportUser(username: string, categoryId: number, description?: string) {
+    try {
+      await api.reportUser(token, username, categoryId, description);
+      setNotice(`@${username} has been reported. Thank you.`);
+    } catch {
+      setError('Could not submit report.');
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -4665,6 +4794,27 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onNotice={setNotice}
                 renderPostCard={(post, variant) => renderPostCard(post, variant, profilePinnedPosts)}
                 isProfileLoading={profileUserLoading}
+                isFollowing={!!followStateByUsername[profileRouteUsername]}
+                followLoading={!!followActionLoadingByUsername[profileRouteUsername]}
+                onToggleFollow={handleToggleFollow}
+                isConnected={!!profileUser?.is_connected}
+                isFullyConnected={!!profileUser?.is_fully_connected}
+                isPendingConfirmation={!!profileUser?.is_pending_connection_confirmation}
+                connectionCircleIds={(profileUser?.connected_circles || []).map((c: any) => c.id).filter(Boolean)}
+                userCircles={userCircles}
+                userLists={userLists}
+                moderationCategories={moderationCategories}
+                actionsLoading={profileActionsLoading}
+                onConnect={handleConnect}
+                onUpdateConnection={handleUpdateConnection}
+                onConfirmConnection={handleConfirmConnection}
+                onDisconnect={handleDisconnect}
+                onAddToList={handleAddToList}
+                onCreateList={handleCreateList}
+                onFetchEmojiGroups={() => api.getEmojiGroups(token)}
+                onCreateCircle={handleCreateCircle}
+                onBlockUser={handleBlockUser}
+                onReportUser={handleReportUser}
               />
             ) : null}
 

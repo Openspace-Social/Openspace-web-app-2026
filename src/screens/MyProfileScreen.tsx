@@ -14,12 +14,16 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
+  CircleResult,
   FeedPost,
   FollowingUserResult,
+  ListResult,
+  ModerationCategory,
   SearchCommunityResult,
   UpdateAuthenticatedUserMediaPayload,
   UpdateAuthenticatedUserPayload
 } from '../api/client';
+import ProfileActionsMenu from '../components/ProfileActionsMenu';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
@@ -59,6 +63,28 @@ type Props = {
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
   isOwnProfile?: boolean;
   isProfileLoading?: boolean;
+  isFollowing?: boolean;
+  followLoading?: boolean;
+  onToggleFollow?: (username: string, currentlyFollowing: boolean) => void;
+  // Actions menu
+  isConnected?: boolean;
+  isFullyConnected?: boolean;
+  isPendingConfirmation?: boolean;
+  connectionCircleIds?: number[];
+  userCircles?: CircleResult[];
+  userLists?: ListResult[];
+  moderationCategories?: ModerationCategory[];
+  actionsLoading?: boolean;
+  onConnect?: (circlesIds: number[]) => void;
+  onUpdateConnection?: (circlesIds: number[]) => void;
+  onConfirmConnection?: (circlesIds: number[]) => void;
+  onDisconnect?: () => void;
+  onAddToList?: (listId: number, username: string) => Promise<void>;
+  onCreateList?: (name: string, emojiId: number) => Promise<ListResult | null>;
+  onFetchEmojiGroups?: () => Promise<any[]>;
+  onCreateCircle?: (name: string, color: string) => Promise<CircleResult | null>;
+  onBlockUser?: (username: string) => void;
+  onReportUser?: (username: string, categoryId: number, description?: string) => void;
 };
 
 export default function MyProfileScreen({
@@ -93,6 +119,27 @@ export default function MyProfileScreen({
   renderPostCard,
   isOwnProfile = true,
   isProfileLoading = false,
+  isFollowing = false,
+  followLoading = false,
+  onToggleFollow,
+  isConnected = false,
+  isFullyConnected = false,
+  isPendingConfirmation = false,
+  connectionCircleIds = [],
+  userCircles = [],
+  userLists = [],
+  moderationCategories = [],
+  actionsLoading = false,
+  onConnect,
+  onUpdateConnection,
+  onConfirmConnection,
+  onDisconnect,
+  onAddToList,
+  onCreateList,
+  onFetchEmojiGroups,
+  onCreateCircle,
+  onBlockUser,
+  onReportUser,
 }: Props) {
   const resolveImageUri = React.useCallback((value: unknown): string | undefined => {
     if (typeof value === 'string') {
@@ -146,6 +193,7 @@ export default function MyProfileScreen({
   const [coverSaving, setCoverSaving] = React.useState(false);
   const objectUrlRef = React.useRef<string[]>([]);
 
+  const [actionsMenuOpen, setActionsMenuOpen] = React.useState(false);
   const [visibleJoinedCommunities, setVisibleJoinedCommunities] = React.useState(9);
   const [visibleFollowings, setVisibleFollowings] = React.useState(9);
   const safePinnedPosts = Array.isArray(myPinnedPosts) ? myPinnedPosts : [];
@@ -1244,7 +1292,71 @@ export default function MyProfileScreen({
               <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>{t('home.profileEditProfileAction')}</Text>
             </TouchableOpacity>
           </View>
-        ) : null}
+        ) : (
+          <View style={[styles.profileIdentityActions, isCompactProfileLayout ? styles.profileIdentityActionsCompact : null]}>
+            <TouchableOpacity
+              style={[
+                styles.profilePrimaryBtn,
+                isFollowing
+                  ? { backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }
+                  : { backgroundColor: c.primary },
+              ]}
+              activeOpacity={0.85}
+              disabled={followLoading}
+              onPress={() => onToggleFollow?.(user?.username || profileRouteUsername, isFollowing)}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? c.textSecondary : '#fff'} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons
+                    name={isFollowing ? 'account-check' : 'account-plus'}
+                    size={16}
+                    color={isFollowing ? c.textSecondary : '#fff'}
+                  />
+                  <Text style={[styles.profilePrimaryBtnText, isFollowing ? { color: c.textSecondary } : {}]}>
+                    {isFollowing
+                      ? t('home.profileUnfollowAction', { defaultValue: 'Unfollow' })
+                      : t('home.profileFollowAction', { defaultValue: 'Follow' })}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border, paddingHorizontal: 10 }]}
+              activeOpacity={0.85}
+              onPress={() => setActionsMenuOpen(true)}
+            >
+              <MaterialCommunityIcons name="dots-horizontal" size={20} color={c.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <ProfileActionsMenu
+          visible={actionsMenuOpen}
+          username={user?.username || profileRouteUsername}
+          c={c}
+          t={t}
+          isConnected={isConnected}
+          isFullyConnected={isFullyConnected}
+          isPendingConfirmation={isPendingConfirmation}
+          connectionCircleIds={connectionCircleIds}
+          userCircles={userCircles}
+          userLists={userLists}
+          moderationCategories={moderationCategories}
+          actionLoading={actionsLoading}
+          onClose={() => setActionsMenuOpen(false)}
+          onConnect={(circlesIds) => onConnect?.(circlesIds)}
+          onUpdateConnection={(circlesIds) => onUpdateConnection?.(circlesIds)}
+          onConfirmConnection={(circlesIds) => onConfirmConnection?.(circlesIds)}
+          onDisconnect={() => onDisconnect?.()}
+          onAddToList={onAddToList || (() => Promise.resolve())}
+          onCreateList={onCreateList || (() => Promise.resolve(null))}
+          onFetchEmojiGroups={onFetchEmojiGroups || (() => Promise.resolve([]))}
+          onCreateCircle={onCreateCircle || (() => Promise.resolve(null))}
+          onBlock={() => onBlockUser?.(user?.username || profileRouteUsername)}
+          onReport={(catId, desc) => onReportUser?.(user?.username || profileRouteUsername, catId, desc)}
+        />
       </View>
 
       <View style={[styles.profileTabsRow, { borderTopColor: c.border }]}>

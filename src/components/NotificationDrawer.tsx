@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -63,8 +63,12 @@ export default function NotificationDrawer({
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
+  // Keep modal mounted during the close animation so it can slide out
+  const [mounted, setMounted] = useState(visible);
+
   useEffect(() => {
     if (visible) {
+      setMounted(true);
       translateX.setValue(drawerWidth);
       Animated.parallel([
         Animated.timing(translateX, { toValue: 0, duration: DURATION, useNativeDriver: true }),
@@ -74,7 +78,7 @@ export default function NotificationDrawer({
       Animated.parallel([
         Animated.timing(translateX, { toValue: drawerWidth, duration: DURATION, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 0, duration: DURATION, useNativeDriver: true }),
-      ]).start();
+      ]).start(() => setMounted(false));
     }
   }, [visible, drawerWidth]);
 
@@ -86,7 +90,7 @@ export default function NotificationDrawer({
   }, [loadingMore, hasMore, onLoadMore]);
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop */}
       <Animated.View
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropOpacity }}
