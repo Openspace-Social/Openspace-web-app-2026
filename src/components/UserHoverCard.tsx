@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { UserProfile } from '../api/client';
+import { useAppToast } from '../toast/AppToastContext';
 
 // In-memory cache keyed by lowercase username. Only populated after a successful fetch.
 const profileCache = new Map<string, UserProfile>();
@@ -56,6 +57,7 @@ function WebHoverCard({
   fetchProfile,
   children,
 }: Props) {
+  const { showToast } = useAppToast();
   const cacheKey = username.toLowerCase();
   const [visible, setVisible] = React.useState(false);
   // top = show below avatar; bottom = show above avatar (anchors card's bottom edge)
@@ -122,7 +124,11 @@ function WebHoverCard({
           profileCache.set(cacheKey, p);
           setProfile(p);
         })
-        .catch(() => setError('Could not load profile.'))
+        .catch(() => {
+          const message = 'Could not load profile.';
+          setError(message);
+          showToast(message, { type: 'error' });
+        })
         .finally(() => setLoading(false));
     }, 350);
   }

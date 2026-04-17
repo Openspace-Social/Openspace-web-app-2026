@@ -3,16 +3,43 @@ import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TextInput,
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment, UserProfile } from '../api/client';
 import UserHoverCard from './UserHoverCard';
+import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
+import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
 type PostCardVariant = 'feed' | 'profile';
 type LongPostRenderBlock = {
-  type: 'heading' | 'paragraph' | 'quote' | 'image' | 'embed';
+  type: 'heading' | 'paragraph' | 'quote' | 'image' | 'embed' | 'table';
+  position?: number;
   text?: string;
   url?: string;
   caption?: string;
   level?: number;
   objectPosition?: string;
+  imageFit?: 'cover' | 'contain';
+  imageScale?: number;
+  align?: 'left' | 'center' | 'right';
+  width?: number;
+  tableHtml?: string;
 };
+
+type MediaPreviewItem = {
+  key: string;
+  previewUri: string;
+  videoUri?: string;
+  isVideo: boolean;
+};
+
+function looksLikeVideoUrl(value?: string) {
+  if (!value) return false;
+  const clean = value.split('?')[0].toLowerCase();
+  return clean.endsWith('.mp4') || clean.endsWith('.mov') || clean.endsWith('.webm') || clean.endsWith('.m4v');
+}
+
+function looksLikeVideoType(value?: string) {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'video' || normalized === 'v' || normalized.includes('video');
+}
 
 function decodeHtmlEntities(value: string) {
   return value
@@ -40,28 +67,209 @@ function parseLongPostBlocks(value: unknown): LongPostRenderBlock[] {
     .map((block) => {
       const type = typeof block.type === 'string' ? block.type.toLowerCase() : 'paragraph';
       const nextType: LongPostRenderBlock['type'] =
-        type === 'heading' || type === 'quote' || type === 'image' || type === 'embed'
+        type === 'heading' || type === 'quote' || type === 'image' || type === 'embed' || type === 'table'
           ? type
           : 'paragraph';
       return {
         type: nextType,
+        position:
+          typeof block.position === 'number' && Number.isFinite(block.position)
+            ? block.position
+            : undefined,
         text: typeof block.text === 'string' ? block.text : '',
         url: typeof block.url === 'string' ? block.url : '',
         caption: typeof block.caption === 'string' ? block.caption : '',
         level: typeof block.level === 'number' ? block.level : 2,
         objectPosition: typeof block.objectPosition === 'string' ? block.objectPosition : undefined,
+        imageFit:
+          block.imageFit === 'contain' || block.imageFit === 'cover'
+            ? (block.imageFit as 'cover' | 'contain')
+            : undefined,
+        imageScale:
+          typeof block.imageScale === 'number' && Number.isFinite(block.imageScale)
+            ? block.imageScale
+            : undefined,
+        align:
+          block.align === 'center' || block.align === 'right' || block.align === 'left'
+            ? (block.align as 'left' | 'center' | 'right')
+            : undefined,
+        width:
+          typeof block.width === 'number' && Number.isFinite(block.width) && block.width > 0
+            ? block.width
+            : undefined,
+        tableHtml: typeof block.tableHtml === 'string' ? block.tableHtml : undefined,
       };
     })
     .filter((block) => {
       if (block.type === 'image' || block.type === 'embed') return !!block.url;
+      if (block.type === 'table') return !!block.tableHtml;
       return !!block.text;
     });
 }
 
+function getFocalOffset(position?: string) {
+  const map: Record<string, { x: number; y: number }> = {
+    'left top': { x: -1, y: -1 },
+    'center top': { x: 0, y: -1 },
+    'right top': { x: 1, y: -1 },
+    'left center': { x: -1, y: 0 },
+    'center center': { x: 0, y: 0 },
+    'right center': { x: 1, y: 0 },
+    'left bottom': { x: -1, y: 1 },
+    'center bottom': { x: 0, y: 1 },
+    'right bottom': { x: 1, y: 1 },
+  };
+  return map[position || 'center center'] || { x: 0, y: 0 };
+}
+
 function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
   if (!html || !html.trim()) return [];
+
+  // ── DOM-based path (web) ────────────────────────────────────────────────
+  // The browser's own parser traverses nodes in document order, so images
+  // placed in the middle of a Lexical post render at their authored position.
+  if (typeof DOMParser !== 'undefined') {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const blocks: LongPostRenderBlock[] = [];
+
+    function imgRenderBlock(img: Element): LongPostRenderBlock | null {
+      const src = img.getAttribute('src') || '';
+      if (!src || (!src.startsWith('http') && !src.startsWith('/'))) return null;
+      const caption = img.getAttribute('alt') || '';
+      const dataAlign = (img.getAttribute('data-align') || '').toLowerCase();
+      const widthAttr = Number(img.getAttribute('width'));
+      const styleWidth = (() => {
+        const s = (img as HTMLElement).style;
+        return s ? Number.parseInt(s.width || '', 10) : NaN;
+      })();
+      const width = Number.isFinite(widthAttr) && widthAttr > 0
+        ? Math.max(120, Math.min(1200, widthAttr))
+        : (Number.isFinite(styleWidth) && styleWidth > 0
+          ? Math.max(120, Math.min(1200, styleWidth))
+          : undefined);
+      let align: 'left' | 'center' | 'right' = 'left';
+      if (dataAlign === 'center' || dataAlign === 'right' || dataAlign === 'left') {
+        align = dataAlign as 'left' | 'center' | 'right';
+      } else {
+        const s = (img as HTMLElement).style;
+        if (s) {
+          if (s.marginLeft === 'auto' && s.marginRight === 'auto') align = 'center';
+          else if (s.marginLeft === 'auto') align = 'right';
+          else if (s.cssFloat === 'right') align = 'right';
+        }
+      }
+      const objectPosition = img.getAttribute('data-object-position') || undefined;
+      const fitRaw = img.getAttribute('data-image-fit') || '';
+      const imageFit: 'cover' | 'contain' | undefined =
+        fitRaw === 'cover' ? 'cover' : fitRaw === 'contain' ? 'contain' : undefined;
+      const scaleVal = Number(img.getAttribute('data-image-scale') || '');
+      const imageScale = Number.isFinite(scaleVal) && scaleVal > 0 ? scaleVal : undefined;
+      return { type: 'image', url: src, caption, align, width, objectPosition, imageFit, imageScale };
+    }
+
+    function processEl(el: Element) {
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) blocks.push({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
+        return;
+      }
+      if (tag === 'blockquote') {
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) blocks.push({ type: 'quote', text });
+        return;
+      }
+      if (tag === 'img') {
+        const b = imgRenderBlock(el); if (b) blocks.push(b);
+        return;
+      }
+      if (tag === 'iframe') {
+        const src = el.getAttribute('src') || '';
+        if (src) blocks.push({ type: 'embed', url: src });
+        return;
+      }
+      if (tag === 'figure') {
+        const isLinkEmbed = (el.getAttribute('data-os-link-embed') || '').toLowerCase() === 'true';
+        if (isLinkEmbed) {
+          const dataUrl = (el.getAttribute('data-url') || '').trim();
+          const anchorUrl = (el.querySelector('a')?.getAttribute('href') || '').trim();
+          const url = dataUrl || anchorUrl;
+          if (url) blocks.push({ type: 'embed', url });
+          return;
+        }
+        const iframe = el.querySelector('iframe');
+        if (iframe) {
+          const url = iframe.getAttribute('src') || '';
+          if (url) blocks.push({ type: 'embed', url });
+          return;
+        }
+        const img = el.querySelector('img');
+        if (img) { const b = imgRenderBlock(img); if (b) blocks.push(b); }
+        return;
+      }
+      if (tag === 'ul' || tag === 'ol') {
+        el.querySelectorAll('li').forEach((li) => {
+          const text = (li.textContent || '').replace(/\s+/g, ' ').trim();
+          if (text) blocks.push({ type: 'paragraph', text });
+        });
+        return;
+      }
+      if (tag === 'table') {
+        blocks.push({ type: 'table', tableHtml: el.outerHTML });
+        return;
+      }
+      if (tag === 'p') {
+        // Walk child nodes in order so inline <img> tags emit image blocks
+        // at their authored position, and surrounding text becomes paragraphs.
+        let textRun = '';
+        Array.from(el.childNodes).forEach((child) => {
+          if (child.nodeType === 3 /* TEXT_NODE */) {
+            textRun += child.textContent || '';
+          } else if (child.nodeType === 1 /* ELEMENT_NODE */) {
+            const childEl = child as Element;
+            if (childEl.tagName.toLowerCase() === 'img') {
+              const trimmed = textRun.replace(/\s+/g, ' ').trim();
+              if (trimmed) { blocks.push({ type: 'paragraph', text: trimmed }); textRun = ''; }
+              const b = imgRenderBlock(childEl); if (b) blocks.push(b);
+            } else if (childEl.tagName.toLowerCase() === 'iframe') {
+              const trimmed = textRun.replace(/\s+/g, ' ').trim();
+              if (trimmed) { blocks.push({ type: 'paragraph', text: trimmed }); textRun = ''; }
+              const url = childEl.getAttribute('src') || '';
+              if (url) blocks.push({ type: 'embed', url });
+            } else {
+              textRun += childEl.textContent || '';
+            }
+          }
+        });
+        const trimmed = textRun.replace(/\s+/g, ' ').trim();
+        if (trimmed) blocks.push({ type: 'paragraph', text: trimmed });
+        return;
+      }
+      // Generic container — collect any inner images first, then fallback to text
+      const innerImgs = Array.from(el.querySelectorAll('img'));
+      if (innerImgs.length > 0) {
+        innerImgs.forEach((img) => { const b = imgRenderBlock(img); if (b) blocks.push(b); });
+        return;
+      }
+      const innerIframes = Array.from(el.querySelectorAll('iframe'));
+      if (innerIframes.length > 0) {
+        innerIframes.forEach((iframe) => {
+          const url = iframe.getAttribute('src') || '';
+          if (url) blocks.push({ type: 'embed', url });
+        });
+        return;
+      }
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text) blocks.push({ type: 'paragraph', text });
+    }
+
+    Array.from(doc.body.children).forEach(processEl);
+    return blocks;
+  }
+
+  // ── Regex fallback (non-web environments) ───────────────────────────────
   const blocks: LongPostRenderBlock[] = [];
-  const pattern = /<(h[1-3]|p|blockquote|img|iframe)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
+  const pattern = /<(h[1-3]|p|blockquote|img|iframe|figure)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
   let match: RegExpExecArray | null = null;
   while ((match = pattern.exec(html)) !== null) {
     const tag = (match[1] || match[3] || '').toLowerCase();
@@ -70,30 +278,54 @@ function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
     if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
       const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
       if (text) blocks.push({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
-      continue;
-    }
-    if (tag === 'blockquote') {
+    } else if (tag === 'blockquote') {
       const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
       if (text) blocks.push({ type: 'quote', text });
-      continue;
-    }
-    if (tag === 'p') {
+    } else if (tag === 'p') {
       const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
       if (text) blocks.push({ type: 'paragraph', text });
-      continue;
-    }
-    if (tag === 'img') {
+    } else if (tag === 'img') {
       const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const url = decodeHtmlEntities((src?.[1] || src?.[2] || '').trim());
       const alt = raw.match(/\salt=(?:"([^"]+)"|'([^']+)')/i);
-      const url = (src?.[1] || src?.[2] || '').trim();
       const caption = decodeHtmlEntities((alt?.[1] || alt?.[2] || '').trim());
-      if (url) blocks.push({ type: 'image', url, caption });
-      continue;
-    }
-    if (tag === 'iframe') {
+      const dataAlign = (raw.match(/\sdata-align=(?:"([^"]+)"|'([^']+)')/i)?.[1] || '').trim().toLowerCase();
+      const wRaw = (raw.match(/\swidth=(?:"([^"]+)"|'([^']+)'|([0-9.]+))/i)?.[1] || raw.match(/\swidth=(?:"([^"]+)"|'([^']+)'|([0-9.]+))/i)?.[3] || '').trim();
+      const w = Number(wRaw); const width = Number.isFinite(w) && w > 0 ? Math.max(120, Math.min(1200, w)) : undefined;
+      const align: 'left' | 'center' | 'right' = dataAlign === 'center' ? 'center' : dataAlign === 'right' ? 'right' : 'left';
+      if (url) blocks.push({ type: 'image', url, caption, align, width });
+    } else if (tag === 'iframe') {
       const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
-      const url = (src?.[1] || src?.[2] || '').trim();
+      const url = decodeHtmlEntities((src?.[1] || src?.[2] || '').trim());
       if (url) blocks.push({ type: 'embed', url });
+    } else if (tag === 'figure') {
+      const isLinkEmbed = /\sdata-os-link-embed=(?:"true"|'true')/i.test(raw);
+      if (isLinkEmbed) {
+        const dataUrl =
+          raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[1]
+          || raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[2]
+          || '';
+        const anchorUrl =
+          inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[1]
+          || inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[2]
+          || '';
+        const url = decodeHtmlEntities((dataUrl || anchorUrl).trim());
+        if (url) {
+          blocks.push({ type: 'embed', url });
+          continue;
+        }
+      }
+      const iframe = inner.match(/<iframe\b[^>]*\ssrc=(?:"([^"]+)"|'([^']+)')[^>]*>/i);
+      const iframeUrl = decodeHtmlEntities((iframe?.[1] || iframe?.[2] || '').trim());
+      if (iframeUrl) {
+        blocks.push({ type: 'embed', url: iframeUrl });
+        continue;
+      }
+      const img = inner.match(/<img\b[^>]*\ssrc=(?:"([^"]+)"|'([^']+)')[^>]*\/?>/i);
+      const imgUrl = decodeHtmlEntities((img?.[1] || img?.[2] || '').trim());
+      if (imgUrl) {
+        blocks.push({ type: 'image', url: imgUrl, caption: '' });
+      }
     }
   }
   return blocks;
@@ -135,7 +367,7 @@ type PostCardProps = {
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
   onReactToPostWithEmoji?: (post: FeedPost, emojiId?: number) => void | Promise<void>;
   onToggleFollow: (username: string, currentlyFollowing: boolean) => void;
-  onOpenPostDetail: (post: FeedPost) => void;
+  onOpenPostDetail: (post: FeedPost, options?: { resumeTimeSec?: number }) => void;
   onToggleExpand: (postId: number) => void;
   onOpenReactionList: (post: FeedPost, emoji?: { id?: number; keyword?: string; image?: string }) => void | Promise<void>;
   onOpenReactionPicker: (post: FeedPost) => void;
@@ -167,6 +399,9 @@ type PostCardProps = {
   getPostLengthType: (post: FeedPost) => 'long' | 'short';
   getPostReactionCount: (post: FeedPost) => number;
   getPostCommentsCount: (post: FeedPost) => number;
+  autoPlayMedia?: boolean;
+  isPostDetailOpen?: boolean;
+  allowExpandControl?: boolean;
   token?: string;
   onFetchUserProfile?: (token: string, username: string) => Promise<UserProfile>;
 };
@@ -233,6 +468,9 @@ export default function PostCard({
   getPostLengthType,
   getPostReactionCount,
   getPostCommentsCount,
+  autoPlayMedia = false,
+  isPostDetailOpen = false,
+  allowExpandControl = true,
   token,
   onFetchUserProfile,
 }: PostCardProps) {
@@ -244,35 +482,98 @@ export default function PostCard({
   const [postEditLoading, setPostEditLoading] = React.useState(false);
   const [postPinLoading, setPostPinLoading] = React.useState(false);
   const [showSharedCommunities, setShowSharedCommunities] = React.useState(false);
+  const [inlineVideoEnded, setInlineVideoEnded] = React.useState(false);
+  const [inlineManualPlaybackStarted, setInlineManualPlaybackStarted] = React.useState(false);
+  const [longEmbedPreviewByUrl, setLongEmbedPreviewByUrl] = React.useState<Record<string, ShortPostLinkPreview>>({});
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postActionMenuHostRef = React.useRef<any>(null);
+  const inlineVideoRef = React.useRef<any>(null);
+  const inlineVideoContainerRef = React.useRef<any>(null);
   const creatorAvatar = post.creator?.avatar || post.creator?.profile?.avatar;
   const hasReacted = !!post.reaction?.id || !!post.reaction?.emoji?.id;
-  const mediaPreviewUrls = React.useMemo(() => {
-    const urls: string[] = [];
+  const mediaPreviewItems = React.useMemo(() => {
+    const items: MediaPreviewItem[] = [];
+    const seen = new Set<string>();
     if (Array.isArray(post.media)) {
       post.media
         .slice()
         .sort((a, b) => (a?.order || 0) - (b?.order || 0))
         .forEach((item) => {
-          const uri = item?.thumbnail || item?.image || item?.file;
-          if (uri) urls.push(uri);
+          const fileUri = item?.file || '';
+          const thumbnailUri = item?.thumbnail || item?.image || '';
+          const isVideo = looksLikeVideoType(item?.type) || looksLikeVideoUrl(fileUri);
+          const previewUri = (isVideo ? thumbnailUri || post.media_thumbnail || fileUri : item?.image || thumbnailUri || fileUri) || '';
+          if (!previewUri) return;
+          const key = `${item?.id || item?.order || previewUri}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          items.push({
+            key,
+            previewUri,
+            videoUri: isVideo ? fileUri || undefined : undefined,
+            isVideo,
+          });
         });
     }
-    if (!urls.length && post.media_thumbnail) urls.push(post.media_thumbnail);
-    return urls;
+    if (!items.length && post.media_thumbnail) {
+      items.push({ key: `thumb-${post.id}`, previewUri: post.media_thumbnail, isVideo: false });
+    }
+    return items;
   }, [post.media, post.media_thumbnail]);
-  const galleryPreviewUrls = mediaPreviewUrls.slice(0, 5);
-  const hasInlineMedia = galleryPreviewUrls.length > 0;
+  const galleryPreviewItems = mediaPreviewItems.slice(0, 5);
+  const hasInlineMedia = galleryPreviewItems.length > 0;
   const postText = getPostText(post);
   const postType = (post.type || '').toUpperCase();
   const longPostBlocks = React.useMemo(() => {
     const parsedBlocks = parseLongPostBlocks(post.long_text_blocks);
-    if (parsedBlocks.length > 0) return parsedBlocks;
+    if (parsedBlocks.length > 0) {
+      const withPosition = parsedBlocks.filter((block) => typeof block.position === 'number');
+      if (withPosition.length > 0) {
+        return parsedBlocks.slice().sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER));
+      }
+      return parsedBlocks;
+    }
     const fromHtml = parseLongPostHtml(post.long_text_rendered_html || post.long_text);
     if (fromHtml.length > 0) return fromHtml;
     return [];
   }, [post.long_text, post.long_text_blocks, post.long_text_rendered_html]);
+  React.useEffect(() => {
+    if (postType !== 'LP' || longPostBlocks.length === 0) return;
+    const urls = Array.from(
+      new Set(
+        longPostBlocks
+          .filter((b) => b.type === 'embed' && !!b.url)
+          .map((b) => (b.url || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const nonVideoUrls = urls.filter((url) => !getSafeExternalVideoEmbedUrl(url));
+    if (nonVideoUrls.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const nextEntries = await Promise.all(
+        nonVideoUrls.map(async (url) => {
+          try {
+            const preview = await fetchShortPostLinkPreviewCached(url);
+            return [url, preview] as const;
+          } catch {
+            return [url, { url, title: getUrlHostLabel(url) || url, siteName: getUrlHostLabel(url) }] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      setLongEmbedPreviewByUrl((prev) => {
+        const next = { ...prev };
+        nextEntries.forEach(([url, preview]) => {
+          next[url] = preview;
+        });
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [longPostBlocks, postType]);
   const sharedCommunityNames = Array.isArray(post.shared_community_names)
     ? post.shared_community_names.filter((name): name is string => typeof name === 'string' && !!name.trim())
     : [];
@@ -290,6 +591,76 @@ export default function PostCard({
     : '';
   const visibleLongPostBlocks = expandedPostIds[post.id] ? longPostBlocks : longPostBlocks.slice(0, 3);
   const hasHiddenLongBlocks = longPostBlocks.length > visibleLongPostBlocks.length;
+  // LP posts that contain inline image blocks own those images — suppress the
+  // detached media gallery so images stay in their authored body position.
+  const hasLongPostInlineImages = postType === 'LP' && longPostBlocks.some((b) => b.type === 'image' && !!b.url);
+  const hasLongPostTableBlocks = postType === 'LP' && longPostBlocks.some((b) => b.type === 'table' && !!b.tableHtml);
+  const suppressStandaloneMediaForLongPost = hasLongPostInlineImages || hasLongPostTableBlocks;
+  const shortPostLinkPreview = React.useMemo(() => {
+    if (postType === 'LP') return null;
+    const firstLink = Array.isArray(post.links) && post.links.length > 0 ? post.links[0] : null;
+    const fromApiUrl = (firstLink?.url || '').trim();
+    const fromTextUrl = extractFirstUrlFromText(post.text || '') || '';
+    const url = fromApiUrl || fromTextUrl;
+    if (!url) return null;
+    const title = (firstLink?.title || '').trim() || getUrlHostLabel(url) || url;
+    const description = ((firstLink as any)?.description || '').trim() || undefined;
+    const imageUrl = (firstLink?.image || '').trim() || undefined;
+    const siteName = ((firstLink as any)?.site_name || '').trim() || getUrlHostLabel(url);
+    const embedUrl = getSafeExternalVideoEmbedUrl(url) || undefined;
+    return { url, title, description, imageUrl, siteName, embedUrl, isVideo: !!embedUrl };
+  }, [post.links, post.text, postType]);
+  const [resolvedShortLinkPreview, setResolvedShortLinkPreview] = React.useState<{
+    url: string;
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    siteName?: string;
+    embedUrl?: string;
+    isVideo: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!shortPostLinkPreview || shortPostLinkPreview.isVideo) {
+      setResolvedShortLinkPreview(shortPostLinkPreview as any);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const needsEnrichment =
+      !shortPostLinkPreview.imageUrl ||
+      !shortPostLinkPreview.description ||
+      !shortPostLinkPreview.title ||
+      shortPostLinkPreview.title.toLowerCase() === (shortPostLinkPreview.siteName || '').toLowerCase();
+    if (!needsEnrichment) {
+      setResolvedShortLinkPreview(shortPostLinkPreview as any);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void fetchShortPostLinkPreviewCached(shortPostLinkPreview.url)
+      .then((enriched) => {
+        if (cancelled) return;
+        setResolvedShortLinkPreview({
+          ...shortPostLinkPreview,
+          title: enriched.title || shortPostLinkPreview.title,
+          description: enriched.description || shortPostLinkPreview.description,
+          imageUrl: enriched.imageUrl || shortPostLinkPreview.imageUrl,
+          siteName: enriched.siteName || shortPostLinkPreview.siteName,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedShortLinkPreview(shortPostLinkPreview as any);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shortPostLinkPreview]);
+  const showShortPostLinkPreview = postType !== 'LP' && !!shortPostLinkPreview && galleryPreviewItems.length === 0;
+  // For the comment-button inline-box heuristic, treat LP posts with block
+  // content the same as media posts (open comment box inline rather than
+  // navigating to post detail).
+  const effectiveHasInlineMedia = hasInlineMedia || (postType === 'LP' && longPostBlocks.length > 0);
 
   function formatRelativeTime(value?: string) {
     if (!value) return t('home.justNow');
@@ -324,6 +695,76 @@ export default function PostCard({
       document.removeEventListener('mousedown', handleDocumentPointerDown);
     };
   }, [commentReactionPickerForId]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
+    const isInlineAutoplayVideo =
+      autoPlayMedia &&
+      galleryPreviewItems.length === 1 &&
+      galleryPreviewItems[0]?.isVideo &&
+      !!galleryPreviewItems[0]?.videoUri;
+    if (!isInlineAutoplayVideo) return;
+
+    const host = inlineVideoContainerRef.current as HTMLElement | null;
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    if (!host || !video) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        if (isPostDetailOpen) {
+          video.pause();
+          return;
+        }
+        if (inlineVideoEnded) {
+          video.pause();
+          return;
+        }
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          void video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      {
+        threshold: [0, 0.25, 0.6, 1],
+      }
+    );
+
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      video.pause();
+    };
+  }, [autoPlayMedia, galleryPreviewItems, inlineVideoEnded, isPostDetailOpen, post.id]);
+
+  React.useEffect(() => {
+    if (!isPostDetailOpen) return;
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    if (video) {
+      video.pause();
+    }
+    if (inlineManualPlaybackStarted) {
+      setInlineManualPlaybackStarted(false);
+    }
+  }, [inlineManualPlaybackStarted, isPostDetailOpen]);
+
+  React.useEffect(() => {
+    setInlineVideoEnded(false);
+    setInlineManualPlaybackStarted(false);
+  }, [post.id]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (autoPlayMedia) return;
+    if (!inlineManualPlaybackStarted) return;
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    if (!video) return;
+    video.muted = false;
+    void video.play().catch(() => {});
+  }, [autoPlayMedia, inlineManualPlaybackStarted]);
 
   React.useEffect(() => {
     if (!postMenuOpen) return;
@@ -496,6 +937,58 @@ export default function PostCard({
 
   const menuCardBg = '#ffffff';
   const menuTileBg = '#f3f6fb';
+  function openPostDetailWithPause() {
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    const resumeTimeSec =
+      video && Number.isFinite(video.currentTime) && video.currentTime > 0
+        ? Number(video.currentTime)
+        : undefined;
+    if (video) {
+      video.pause();
+    }
+    setInlineManualPlaybackStarted(false);
+    onOpenPostDetail(post, { resumeTimeSec });
+  }
+
+  function replayInlineVideo() {
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    if (!video) return;
+    try {
+      video.currentTime = 0;
+    } catch {
+      // Ignore browser edge-case errors on seek.
+    }
+    setInlineVideoEnded(false);
+    void video.play().catch(() => {});
+  }
+
+  function startInlineVideoPlayback() {
+    setInlineVideoEnded(false);
+    setInlineManualPlaybackStarted(true);
+    const video = inlineVideoRef.current as HTMLVideoElement | null;
+    if (!video) return;
+    try {
+      video.currentTime = 0;
+    } catch {
+      // Ignore browser edge-case errors on seek.
+    }
+    video.muted = false;
+    void video.play().catch(() => {});
+  }
+
+  function handleSingleMediaPress() {
+    const single = galleryPreviewItems[0];
+    const canInlineVideo =
+      !!single?.isVideo &&
+      Platform.OS === 'web' &&
+      !!single?.videoUri &&
+      !autoPlayMedia;
+    if (canInlineVideo && !inlineManualPlaybackStarted) {
+      startInlineVideoPlayback();
+      return;
+    }
+    openPostDetailWithPause();
+  }
   type PostMenuAction = {
     key: string;
     icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -751,25 +1244,108 @@ export default function PostCard({
                 );
               }
               if (block.type === 'image' && block.url) {
+                const imageFit = block.imageFit === 'cover' ? 'cover' : 'contain';
+                const imageScale = typeof block.imageScale === 'number' && Number.isFinite(block.imageScale)
+                  ? Math.max(0.8, Math.min(1.6, block.imageScale))
+                  : 1;
+                const focal = getFocalOffset(block.objectPosition);
+                const align = block.align === 'center' || block.align === 'right' ? block.align : 'left';
+                const widthPx = typeof block.width === 'number' && Number.isFinite(block.width)
+                  ? Math.max(120, Math.min(1200, block.width))
+                  : undefined;
                 return (
-                  <View key={`${post.id}-lp-image-${idx}`} style={styles.longPostImageWrap}>
+                  <View
+                    key={`${post.id}-lp-image-${idx}`}
+                    style={[
+                      styles.longPostImageWrap,
+                      {
+                        alignSelf: align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start'),
+                        width: widthPx ? Math.min(widthPx, 640) : undefined,
+                        maxWidth: '100%',
+                      },
+                    ]}
+                  >
                     <Image
                       source={{ uri: block.url }}
                       style={[
                         styles.longPostImage,
+                        {
+                          transform: [
+                            { scale: imageScale },
+                            { translateX: imageFit === 'cover' ? focal.x * 18 : 0 },
+                            { translateY: imageFit === 'cover' ? focal.y * 18 : 0 },
+                          ],
+                        },
                         Platform.OS === 'web' && block.objectPosition
-                          ? ({ objectFit: 'cover', objectPosition: block.objectPosition } as any)
+                          ? ({ objectFit: imageFit, objectPosition: block.objectPosition } as any)
                           : null,
                       ]}
-                      resizeMode="cover"
+                      resizeMode={imageFit}
                     />
-                    {block.caption ? (
-                      <Text style={[styles.longPostCaption, { color: c.textMuted }]}>{block.caption}</Text>
-                    ) : null}
                   </View>
                 );
               }
               if (block.type === 'embed' && block.url) {
+                const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+                if (Platform.OS === 'web' && embedUrl) {
+                  const iframeProps: any = {
+                    src: embedUrl,
+                    title: 'Embedded video',
+                    loading: 'lazy',
+                    allow:
+                      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+                    allowFullScreen: true,
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      border: '0',
+                      borderRadius: 10,
+                    },
+                  };
+                  return (
+                    <View
+                      key={`${post.id}-lp-embed-${idx}`}
+                      style={{ width: '100%', marginVertical: 8 } as any}
+                    >
+                      <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                        {React.createElement('iframe', iframeProps)}
+                      </View>
+                    </View>
+                  );
+                }
+                const preview = longEmbedPreviewByUrl[(block.url || '').trim()];
+                if (preview) {
+                  return (
+                    <TouchableOpacity
+                      key={`${post.id}-lp-embed-${idx}`}
+                      style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.surface }]}
+                      activeOpacity={0.88}
+                      onPress={() => onOpenLink(preview.url)}
+                    >
+                      {preview.imageUrl ? (
+                        <Image source={{ uri: preview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+                      ) : null}
+                      <View style={styles.shortPostLinkPreviewMeta}>
+                        {preview.siteName ? (
+                          <Text numberOfLines={1} style={[styles.shortPostLinkPreviewSite, { color: c.textMuted }]}>
+                            {preview.siteName}
+                          </Text>
+                        ) : null}
+                        <Text numberOfLines={2} style={[styles.shortPostLinkPreviewTitle, { color: c.textPrimary }]}>
+                          {preview.title}
+                        </Text>
+                        {preview.description ? (
+                          <Text numberOfLines={2} style={[styles.shortPostLinkPreviewDescription, { color: c.textSecondary }]}>
+                            {preview.description}
+                          </Text>
+                        ) : null}
+                        <Text numberOfLines={1} style={[styles.shortPostLinkPreviewUrl, { color: c.textLink }]}>
+                          {preview.url}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
                 return (
                   <TouchableOpacity
                     key={`${post.id}-lp-embed-${idx}`}
@@ -784,6 +1360,43 @@ export default function PostCard({
                   </TouchableOpacity>
                 );
               }
+              if (block.type === 'table' && (block as any).tableHtml && Platform.OS === 'web') {
+                const rawTableHtml = (block as any).tableHtml as string;
+                const tableStyle = `
+                  <style>
+                    .lp-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; border: 0 !important; }
+                    .lp-table.oslx-table-bordered { border: 0 !important; }
+                    .lp-table tr { border: 0 !important; }
+                    .lp-table td, .lp-table th {
+                      padding: 7px 10px;
+                      vertical-align: top;
+                      word-break: break-word;
+                      min-width: 50px;
+                      border: 1px solid transparent !important;
+                    }
+                    .lp-table td { color: ${c.textSecondary}; }
+                    .lp-table th { background: ${c.inputBackground}; color: ${c.textPrimary}; font-weight: 700; }
+                  </style>
+                `;
+                const tableHtmlWithClass = rawTableHtml
+                  .replace(/\sborder=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                  .replace(/\scellpadding=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                  .replace(/\scellspacing=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                  .replace('<table', '<table class="lp-table"');
+                const divProps: any = {
+                  dangerouslySetInnerHTML: { __html: tableStyle + tableHtmlWithClass },
+                  style: { width: '100%', overflowX: 'auto' },
+                };
+                return (
+                  <View
+                    key={`${post.id}-lp-table-${idx}`}
+                    style={{ width: '100%', marginVertical: 8 } as any}
+                  >
+                    {React.createElement('div', divProps)}
+                  </View>
+                );
+              }
+
               return (
                 <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
                   {block.text}
@@ -791,7 +1404,7 @@ export default function PostCard({
               );
             })}
           </View>
-          {hasHiddenLongBlocks ? (
+          {allowExpandControl && hasHiddenLongBlocks ? (
             <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
               <Text style={[styles.seeMoreText, { color: c.textLink }]}>
                 {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
@@ -816,7 +1429,7 @@ export default function PostCard({
               </Text>
             ))}
           </Text>
-          {postText.length > 240 ? (
+          {allowExpandControl && postText.length > 240 ? (
             <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
               <Text style={[styles.seeMoreText, { color: c.textLink }]}>
                 {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
@@ -826,23 +1439,91 @@ export default function PostCard({
         </View>
       ) : null}
 
-      {galleryPreviewUrls.length > 1 ? (
+      {showShortPostLinkPreview && resolvedShortLinkPreview ? (
+        <View style={styles.feedTextWrap}>
+          {Platform.OS === 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl ? (
+            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+              {React.createElement('iframe', {
+                src: resolvedShortLinkPreview.embedUrl,
+                title: resolvedShortLinkPreview.title || 'Embedded video',
+                loading: 'lazy',
+                allow:
+                  'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+                allowFullScreen: true,
+                style: {
+                  width: '100%',
+                  height: '100%',
+                  border: '0',
+                },
+              } as any)}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.surface }]}
+              activeOpacity={0.88}
+              onPress={() => onOpenLink(resolvedShortLinkPreview.url)}
+            >
+              {resolvedShortLinkPreview.imageUrl ? (
+                <Image source={{ uri: resolvedShortLinkPreview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+              ) : null}
+              <View style={styles.shortPostLinkPreviewMeta}>
+                {resolvedShortLinkPreview.siteName ? (
+                  <Text numberOfLines={1} style={[styles.shortPostLinkPreviewSite, { color: c.textMuted }]}>
+                    {resolvedShortLinkPreview.siteName}
+                  </Text>
+                ) : null}
+                <Text numberOfLines={2} style={[styles.shortPostLinkPreviewTitle, { color: c.textPrimary }]}>
+                  {resolvedShortLinkPreview.title}
+                </Text>
+                {resolvedShortLinkPreview.description ? (
+                  <Text numberOfLines={2} style={[styles.shortPostLinkPreviewDescription, { color: c.textSecondary }]}>
+                    {resolvedShortLinkPreview.description}
+                  </Text>
+                ) : null}
+                <Text numberOfLines={1} style={[styles.shortPostLinkPreviewUrl, { color: c.textLink }]}>
+                  {resolvedShortLinkPreview.url}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
+
+      {!suppressStandaloneMediaForLongPost && galleryPreviewItems.length > 1 ? (
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => onOpenPostDetail(post)}
+          onPress={openPostDetailWithPause}
           accessibilityLabel={t('home.openPostDetailAction')}
           style={styles.feedMediaGrid}
         >
-          {galleryPreviewUrls.slice(0, 4).map((uri, idx) => {
-            const hiddenCount = galleryPreviewUrls.length - 4;
+          {galleryPreviewItems.slice(0, 4).map((mediaItem, idx) => {
+            const hiddenCount = galleryPreviewItems.length - 4;
             const showOverlay = idx === 3 && hiddenCount > 0;
             return (
-              <View key={`post-media-grid-${post.id}-${idx}`} style={styles.feedMediaGridItem}>
+              <View key={`post-media-grid-${post.id}-${mediaItem.key}`} style={styles.feedMediaGridItem}>
                 <Image
-                  source={{ uri }}
+                  source={{ uri: mediaItem.previewUri }}
                   style={[styles.feedMediaGridImage, { backgroundColor: c.surface }]}
                   resizeMode="cover"
                 />
+                {mediaItem.isVideo ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: [{ translateX: -22 }, { translateY: -22 }],
+                      backgroundColor: 'rgba(0,0,0,0.65)',
+                      borderRadius: 999,
+                      width: 44,
+                      height: 44,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <MaterialCommunityIcons name="play" size={24} color="#fff" />
+                  </View>
+                ) : null}
                 {showOverlay ? (
                   <View style={styles.feedMediaGridMoreOverlay}>
                     <Text style={styles.feedMediaGridMoreText}>+{hiddenCount}</Text>
@@ -852,13 +1533,129 @@ export default function PostCard({
             );
           })}
         </TouchableOpacity>
-      ) : galleryPreviewUrls.length === 1 ? (
+      ) : !suppressStandaloneMediaForLongPost && galleryPreviewItems.length === 1 ? (
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => onOpenPostDetail(post)}
+          onPress={handleSingleMediaPress}
           accessibilityLabel={t('home.openPostDetailAction')}
         >
-          <Image source={{ uri: galleryPreviewUrls[0] }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
+          <View>
+            {galleryPreviewItems[0].isVideo &&
+            Platform.OS === 'web' &&
+            galleryPreviewItems[0].videoUri &&
+            (autoPlayMedia || inlineManualPlaybackStarted) ? (
+              <View
+                ref={(node) => {
+                  inlineVideoContainerRef.current = node;
+                }}
+                style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}
+              >
+                {React.createElement('video', {
+                  key: `${post.id}-video-preview`,
+                  src: galleryPreviewItems[0].videoUri,
+                  poster: galleryPreviewItems[0].previewUri,
+                  ref: (node: HTMLVideoElement | null) => {
+                    inlineVideoRef.current = node;
+                  },
+                  style: { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: '#000' },
+                  playsInline: true,
+                  controls: true,
+                  autoPlay: autoPlayMedia || inlineManualPlaybackStarted,
+                  defaultMuted: autoPlayMedia,
+                  loop: false,
+                  preload: 'metadata',
+                  onEnded: () => {
+                    setInlineVideoEnded(true);
+                    if (!autoPlayMedia) {
+                      setInlineManualPlaybackStarted(false);
+                    }
+                  },
+                  onPlay: () => {
+                    setInlineVideoEnded(false);
+                  },
+                })}
+              </View>
+            ) : (
+              <Image source={{ uri: galleryPreviewItems[0].previewUri }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
+            )}
+            {galleryPreviewItems[0].isVideo &&
+            Platform.OS === 'web' &&
+            galleryPreviewItems[0].videoUri &&
+            inlineManualPlaybackStarted &&
+            !autoPlayMedia ? (
+              <View style={{ position: 'absolute', top: 10, right: 10 }}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={(event: any) => {
+                    event?.stopPropagation?.();
+                    openPostDetailWithPause();
+                  }}
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.68)',
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <MaterialCommunityIcons name="open-in-new" size={14} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                    {t('home.openAction', { defaultValue: 'Open' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {galleryPreviewItems[0].isVideo && Platform.OS === 'web' && autoPlayMedia && inlineVideoEnded ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: [{ translateX: -42 }, { translateY: -20 }],
+                }}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={replayInlineVideo}
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.72)',
+                    borderRadius: 999,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <MaterialCommunityIcons name="replay" size={16} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                    {t('home.replayAction', { defaultValue: 'Replay' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {galleryPreviewItems[0].isVideo &&
+            !(Platform.OS === 'web' && galleryPreviewItems[0].videoUri && (autoPlayMedia || inlineManualPlaybackStarted)) ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: [{ translateX: -28 }, { translateY: -28 }],
+                  backgroundColor: 'rgba(0,0,0,0.65)',
+                  borderRadius: 999,
+                  width: 56,
+                  height: 56,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <MaterialCommunityIcons name="play" size={30} color="#fff" />
+              </View>
+            ) : null}
+          </View>
         </TouchableOpacity>
       ) : null}
 
@@ -916,7 +1713,14 @@ export default function PostCard({
               backgroundColor: hasReacted ? c.surface : c.inputBackground,
             },
           ]}
-          onPress={() => onOpenReactionPicker(post)}
+          onPress={() => {
+            if (hasReacted && onReactToPostWithEmoji && post.reaction?.emoji?.id) {
+              void onReactToPostWithEmoji(post, post.reaction.emoji.id);
+            } else {
+              onOpenReactionPicker(post);
+            }
+          }}
+          disabled={reactionActionLoading}
           activeOpacity={0.85}
         >
           <MaterialCommunityIcons
@@ -932,7 +1736,7 @@ export default function PostCard({
         <TouchableOpacity
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
           onPress={() => {
-            if (hasInlineMedia) {
+            if (effectiveHasInlineMedia) {
               onToggleCommentBox(post.id);
             } else {
               onOpenPostDetail(post);
@@ -1013,6 +1817,42 @@ export default function PostCard({
                   ) : (
                     <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
                   )}
+                  {(() => {
+                    const activeEntries = (comment.reactions_emoji_counts || []).filter((e) => (e?.count || 0) > 0);
+                    if (activeEntries.length === 0) return null;
+                    const total = activeEntries.reduce((sum, e) => sum + (e.count || 0), 0);
+                    return (
+                      <View style={styles.commentReactionBubbleRow}>
+                        <View style={styles.commentReactionChipGroup}>
+                          {activeEntries.map((entry, idx) => {
+                            const isMyReaction = !!entry.emoji?.id && comment.reaction?.emoji?.id === entry.emoji.id;
+                            return (
+                              <TouchableOpacity
+                                key={`comment-reaction-${comment.id}-${entry.emoji?.id || idx}`}
+                                style={[
+                                  styles.commentReactionChip,
+                                  { borderColor: isMyReaction ? c.primary : c.border, backgroundColor: isMyReaction ? c.surface : c.inputBackground },
+                                ]}
+                                activeOpacity={0.75}
+                                disabled={reactionActionLoading}
+                                onPress={() => { void onReactToComment(post.id, comment.id, entry.emoji?.id); }}
+                              >
+                                {entry.emoji?.image ? (
+                                  <Image source={{ uri: entry.emoji.image }} style={styles.commentReactionEmojiImage} resizeMode="contain" />
+                                ) : (
+                                  <MaterialCommunityIcons name="emoticon-outline" size={12} color={isMyReaction ? c.primary : c.textSecondary} />
+                                )}
+                                <Text style={[styles.commentReactionCount, { color: isMyReaction ? c.primary : c.textSecondary }]}>
+                                  {entry.count || 0}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <Text style={[styles.commentReactionTotal, { color: c.textMuted }]}>{total}</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
               <View style={styles.detailCommentMetaRow}>
@@ -1041,8 +1881,8 @@ export default function PostCard({
                                     style={[styles.commentReactionPickerEmojiButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                                     activeOpacity={0.85}
                                     disabled={reactionActionLoading}
-                                    onPress={async () => {
-                                      await onReactToComment(post.id, comment.id, emoji.id);
+                                    onPress={() => {
+                                      void onReactToComment(post.id, comment.id, emoji.id);
                                       setCommentReactionPickerForId(null);
                                     }}
                                   >

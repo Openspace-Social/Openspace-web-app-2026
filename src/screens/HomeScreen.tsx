@@ -20,6 +20,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import {
   api,
+  ApiRequestError,
   AppNotification,
   CircleResult,
   CommunityMember,
@@ -49,8 +50,18 @@ import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
-import LongPostDrawer, { LongPostBlock } from '../components/LongPostDrawer';
+import LongPostDrawer, { LongPostBlock, LongPostEditorMode } from '../components/LongPostDrawer';
 import NotificationDrawer from '../components/NotificationDrawer';
+import CirclesScreen from './CirclesScreen';
+import ListsScreen from './ListsScreen';
+import FollowPeopleScreen from './FollowPeopleScreen';
+import InviteDrawer from '../components/InviteDrawer';
+import { useAppToast } from '../toast/AppToastContext';
+import {
+  ShortPostLinkPreview,
+  extractFirstUrlFromText,
+  fetchShortPostLinkPreviewCached,
+} from '../utils/shortPostEmbeds';
 
 interface HomeScreenProps {
   token: string;
@@ -62,9 +73,11 @@ interface HomeScreenProps {
 const WELCOME_NOTICE_KEY_PREFIX = '@openspace/welcome_notice_last_shown';
 const WELCOME_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
 const SEARCH_RESULTS_STATE_KEY_PREFIX = '@openspace/search_results_state';
+const AUTO_PLAY_MEDIA_SETTING_KEY = '@openspace/auto_play_media';
 const PROFILE_COMMUNITIES_PAGE_SIZE = 20;
 const PROFILE_FOLLOWINGS_PAGE_SIZE = 20;
 const SHORT_POST_MAX_LENGTH = 5000;
+const LONG_POST_MAX_IMAGES = 5;
 
 function extractPlainTextFromBlocks(blocks: LongPostBlock[]) {
   return blocks
@@ -83,6 +96,299 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
+function extractPlainTextFromHtml(html?: string) {
+  if (!html) return '';
+  const withoutTags = html
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return withoutTags
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+// DOM-based HTML → LongPostBlock[] parser. Runs in any browser context where
+// DOMParser is available. Traverses nodes in document order so the author's
+// placement of images relative to text is always preserved.
+function parseLongPostHtmlWithDom(html: string): LongPostBlock[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const blocks: LongPostBlock[] = [];
+  let pos = 0;
+
+  function nextId() {
+    return `dom-${Date.now()}-${pos}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+  function push(base: Omit<LongPostBlock, 'id' | 'position'>) {
+    blocks.push({ id: nextId(), position: pos++, ...base } as LongPostBlock);
+  }
+
+  function imgBlock(img: Element): Omit<LongPostBlock, 'id' | 'position'> | null {
+    const src = img.getAttribute('src') || '';
+    if (!src || (!src.startsWith('http') && !src.startsWith('/'))) return null;
+    const alt = img.getAttribute('alt') || '';
+    const dataAlign = (img.getAttribute('data-align') || '').toLowerCase();
+    const widthAttr = Number(img.getAttribute('width'));
+    const styleWidth = (() => {
+      const s = (img as HTMLElement).style;
+      return s ? Number.parseInt(s.width || '', 10) : NaN;
+    })();
+    const width = Number.isFinite(widthAttr) && widthAttr > 0
+      ? Math.max(120, Math.min(1200, widthAttr))
+      : (Number.isFinite(styleWidth) && styleWidth > 0
+        ? Math.max(120, Math.min(1200, styleWidth))
+        : undefined);
+    // Align: prefer data-align, then infer from style margins
+    let align: 'left' | 'center' | 'right' = 'left';
+    if (dataAlign === 'center' || dataAlign === 'right' || dataAlign === 'left') {
+      align = dataAlign as 'left' | 'center' | 'right';
+    } else {
+      const s = (img as HTMLElement).style;
+      if (s) {
+        if (s.marginLeft === 'auto' && s.marginRight === 'auto') align = 'center';
+        else if (s.marginLeft === 'auto') align = 'right';
+        else if (s.cssFloat === 'right') align = 'right';
+      }
+    }
+    const objectPosition = img.getAttribute('data-object-position') || undefined;
+    const fitRaw = img.getAttribute('data-image-fit') || '';
+    const imageFit: 'cover' | 'contain' | undefined =
+      fitRaw === 'cover' ? 'cover' : fitRaw === 'contain' ? 'contain' : undefined;
+    const scaleVal = Number(img.getAttribute('data-image-scale') || '');
+    const imageScale = Number.isFinite(scaleVal) && scaleVal > 0 ? scaleVal : undefined;
+    return { type: 'image', url: src, caption: alt, align, width, objectPosition, imageFit, imageScale };
+  }
+
+  function processEl(el: Element) {
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text) push({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
+      return;
+    }
+    if (tag === 'blockquote') {
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text) push({ type: 'quote', text });
+      return;
+    }
+    if (tag === 'img') {
+      const b = imgBlock(el); if (b) push(b);
+      return;
+    }
+    if (tag === 'iframe') {
+      const src = el.getAttribute('src') || '';
+      if (src) push({ type: 'embed', url: src });
+      return;
+    }
+    if (tag === 'figure') {
+      // Figure can wrap images, embeds, or tables.
+      const isLinkEmbed = (el.getAttribute('data-os-link-embed') || '').toLowerCase() === 'true';
+      if (isLinkEmbed) {
+        const dataUrl = (el.getAttribute('data-url') || '').trim();
+        const anchorUrl = (el.querySelector('a')?.getAttribute('href') || '').trim();
+        const url = dataUrl || anchorUrl;
+        if (url) push({ type: 'embed', url });
+        return;
+      }
+      const table = el.querySelector('table');
+      if (table) {
+        push({ type: 'table' as any, url: '', tableHtml: table.outerHTML } as any);
+        return;
+      }
+      const iframe = el.querySelector('iframe');
+      if (iframe) {
+        const src = iframe.getAttribute('src') || '';
+        if (src) push({ type: 'embed', url: src });
+        return;
+      }
+      // <figure> wrapping an <img> — treat as image block
+      const img = el.querySelector('img');
+      if (img) { const b = imgBlock(img); if (b) push(b); }
+      return;
+    }
+    if (tag === 'ul' || tag === 'ol') {
+      el.querySelectorAll('li').forEach((li) => {
+        const text = (li.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) push({ type: 'paragraph', text });
+      });
+      return;
+    }
+    if (tag === 'table') {
+      // Emit table HTML as a raw embed block so PostCard can render it
+      // with the same invisible-grid / bordered-grid styling.
+      push({ type: 'table' as any, url: '', tableHtml: el.outerHTML } as any);
+      return;
+    }
+    if (tag === 'p') {
+      // A <p> might contain an inline <img> (Lexical sometimes does this).
+      // Walk child nodes in order: emit a text block for runs of text, emit
+      // an image block each time we hit an <img>, so ordering is preserved.
+      let textRun = '';
+      let hasImg = false;
+      Array.from(el.childNodes).forEach((child) => {
+        if (child.nodeType === 3 /* TEXT_NODE */) {
+          textRun += child.textContent || '';
+        } else if (child.nodeType === 1 /* ELEMENT_NODE */) {
+          const childEl = child as Element;
+          if (childEl.tagName.toLowerCase() === 'img') {
+            hasImg = true;
+            const trimmed = textRun.replace(/\s+/g, ' ').trim();
+            if (trimmed) { push({ type: 'paragraph', text: trimmed }); textRun = ''; }
+            const b = imgBlock(childEl); if (b) push(b);
+          } else if (childEl.tagName.toLowerCase() === 'iframe') {
+            hasImg = true;
+            const trimmed = textRun.replace(/\s+/g, ' ').trim();
+            if (trimmed) { push({ type: 'paragraph', text: trimmed }); textRun = ''; }
+            const src = childEl.getAttribute('src') || '';
+            if (src) push({ type: 'embed', url: src });
+          } else {
+            textRun += childEl.textContent || '';
+          }
+        }
+      });
+      const trimmed = textRun.replace(/\s+/g, ' ').trim();
+      if (trimmed) push({ type: 'paragraph', text: trimmed });
+      if (!hasImg && !trimmed) {
+        // Fallback: the whole textContent as paragraph
+        const full = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (full) push({ type: 'paragraph', text: full });
+      }
+      return;
+    }
+    // Generic container (span, div, section…) — look for tables/images first, then text
+    const innerTables = Array.from(el.querySelectorAll('table'));
+    if (innerTables.length > 0) {
+      innerTables.forEach((table) => {
+        push({ type: 'table' as any, url: '', tableHtml: table.outerHTML } as any);
+      });
+      return;
+    }
+    const innerImgs = Array.from(el.querySelectorAll('img'));
+    if (innerImgs.length > 0) {
+      innerImgs.forEach((img) => { const b = imgBlock(img); if (b) push(b); });
+      return;
+    }
+    const innerIframes = Array.from(el.querySelectorAll('iframe'));
+    if (innerIframes.length > 0) {
+      innerIframes.forEach((iframe) => {
+        const src = iframe.getAttribute('src') || '';
+        if (src) push({ type: 'embed', url: src });
+      });
+      return;
+    }
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text) push({ type: 'paragraph', text });
+  }
+
+  Array.from(doc.body.children).forEach(processEl);
+  return blocks;
+}
+
+function parseLongPostHtmlBlocksForPreview(html?: string): LongPostBlock[] {
+  if (!html || !html.trim()) return [];
+  // Prefer DOM-based parsing — it traverses nodes in document order and
+  // handles all the Lexical HTML structures (bare <img>, <figure><img>,
+  // <p><img>, decorator <span><img>, etc.) without regex ambiguity.
+  if (typeof DOMParser !== 'undefined') {
+    return parseLongPostHtmlWithDom(html);
+  }
+  // Regex fallback for non-web environments (should rarely be reached in practice).
+  const blocks: LongPostBlock[] = [];
+  const pattern = /<(h[1-3]|p|blockquote|img|iframe|table|figure)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
+  let match: RegExpExecArray | null = null;
+  let position = 0;
+  function nextId() { return `preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+  function pushBlock(block: Omit<LongPostBlock, 'id'>) { blocks.push({ id: nextId(), position: position++, ...block } as LongPostBlock); }
+  while ((match = pattern.exec(html)) !== null) {
+    const tag = (match[1] || match[3] || '').toLowerCase();
+    const raw = match[0] || '';
+    const inner = match[2] || '';
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) pushBlock({ type: 'heading', text, level: tag === 'h1' ? 1 : tag === 'h3' ? 3 : 2 });
+    } else if (tag === 'blockquote') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) pushBlock({ type: 'quote', text });
+    } else if (tag === 'p') {
+      const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      if (text) pushBlock({ type: 'paragraph', text });
+    } else if (tag === 'img') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const url = decodeHtmlEntities((src?.[1] || src?.[2] || '').trim());
+      const alt = raw.match(/\salt=(?:"([^"]+)"|'([^']+)')/i);
+      const caption = decodeHtmlEntities((alt?.[1] || alt?.[2] || '').trim());
+      const dataAlign = (raw.match(/\sdata-align=(?:"([^"]+)"|'([^']+)')/i)?.[1] || '').trim().toLowerCase();
+      const wRaw = (raw.match(/\swidth=(?:"([^"]+)"|'([^']+)'|([0-9.]+))/i)?.[1] || raw.match(/\swidth=(?:"([^"]+)"|'([^']+)'|([0-9.]+))/i)?.[3] || '').trim();
+      const w = Number(wRaw); const width = Number.isFinite(w) && w > 0 ? Math.max(120, Math.min(1200, w)) : undefined;
+      const align: 'left' | 'center' | 'right' = dataAlign === 'center' ? 'center' : dataAlign === 'right' ? 'right' : 'left';
+      if (url) pushBlock({ type: 'image', url, caption, align, width });
+    } else if (tag === 'iframe') {
+      const src = raw.match(/\ssrc=(?:"([^"]+)"|'([^']+)')/i);
+      const url = decodeHtmlEntities((src?.[1] || src?.[2] || '').trim());
+      if (url) pushBlock({ type: 'embed', url });
+    } else if (tag === 'table') {
+      pushBlock({ type: 'table' as any, url: '', tableHtml: raw } as any);
+    } else if (tag === 'figure') {
+      const isLinkEmbed = /\sdata-os-link-embed=(?:"true"|'true')/i.test(raw);
+      if (isLinkEmbed) {
+        const dataUrl =
+          raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[1]
+          || raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[2]
+          || '';
+        const anchorUrl =
+          inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[1]
+          || inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[2]
+          || '';
+        const url = decodeHtmlEntities((dataUrl || anchorUrl).trim());
+        if (url) pushBlock({ type: 'embed', url });
+      }
+    }
+  }
+  return blocks;
+}
+
+function ensureLongPostBlocks(blocks: LongPostBlock[]) {
+  return blocks.length > 0 ? blocks : createInitialLongPostBlocks();
+}
+
+function extractImageUrlsFromLongPostHtml(html?: string) {
+  if (!html || !html.trim()) return [] as string[];
+  const urls: string[] = [];
+  const pattern = /<img\b[^>]*\ssrc=(?:"([^"]+)"|'([^']+)')[^>]*\/?>/gi;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(html)) !== null) {
+    const raw = (match[1] || match[2] || '').trim();
+    const url = decodeHtmlEntities(raw);
+    if (url) urls.push(url);
+  }
+  return Array.from(new Set(urls));
+}
+
+function canonicalizeMediaUrl(value?: string) {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const withoutQuery = trimmed.split('?')[0].split('#')[0];
+  return withoutQuery.replace(/\/+$/, '').toLowerCase();
+}
+
 function buildLongPostHtmlFromBlocks(blocks: LongPostBlock[]) {
   return blocks
     .map((block) => {
@@ -95,17 +401,89 @@ function buildLongPostHtmlFromBlocks(blocks: LongPostBlock[]) {
       }
       if (block.type === 'image') {
         if (!block.url) return '';
+        const imgAttrs: string[] = [
+          `src="${escapeHtml(block.url)}"`,
+          `alt="${escapeHtml(block.caption || '')}"`,
+          `data-align="${block.align || 'left'}"`,
+        ];
+        if (block.width) imgAttrs.push(`width="${block.width}"`);
+        if (block.objectPosition) imgAttrs.push(`data-object-position="${escapeHtml(block.objectPosition)}"`);
+        if (block.imageFit) imgAttrs.push(`data-image-fit="${block.imageFit}"`);
+        if (block.imageScale != null && Number.isFinite(block.imageScale)) imgAttrs.push(`data-image-scale="${block.imageScale}"`);
         const caption = block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : '';
-        return `<figure><img src=\"${escapeHtml(block.url)}\" alt=\"${escapeHtml(block.caption || '')}\" />${caption}</figure>`;
+        return `<figure><img ${imgAttrs.join(' ')} />${caption}</figure>`;
       }
       if (block.type === 'embed') {
         if (!block.url) return '';
         return `<p><a href=\"${escapeHtml(block.url)}\" target=\"_blank\" rel=\"noopener noreferrer\">${escapeHtml(block.url)}</a></p>`;
       }
+      if (block.type === 'table') {
+        const rawTable = (block.tableHtml || '').trim();
+        if (!rawTable) return '';
+        return rawTable;
+      }
       return `<p>${escapeHtml(block.text || '')}</p>`;
     })
     .filter(Boolean)
     .join('');
+}
+
+function createInitialLongPostBlocks(): LongPostBlock[] {
+  return [{ id: 'initial-heading', type: 'heading', level: 2, text: '' }];
+}
+
+function splitLongPostTitleFromBlocks(blocks: LongPostBlock[]) {
+  const first = blocks[0];
+  if (first?.type === 'heading' && (first.level || 2) === 1 && (first.text || '').trim()) {
+    const rest = blocks.slice(1);
+    return {
+      title: (first.text || '').trim(),
+      blocks: rest.length > 0 ? rest : createInitialLongPostBlocks(),
+    };
+  }
+  return {
+    title: '',
+    blocks: blocks.length > 0 ? blocks : createInitialLongPostBlocks(),
+  };
+}
+
+function composeLongPostBlocksWithTitle(title: string, blocks: LongPostBlock[]): LongPostBlock[] {
+  const normalizedBlocks = blocks.length > 0 ? blocks : createInitialLongPostBlocks();
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) return normalizedBlocks;
+  const titleBlock: LongPostBlock = {
+    id: `title-${Date.now()}`,
+    type: 'heading',
+    level: 1,
+    text: trimmedTitle,
+  };
+  return [
+    titleBlock,
+    ...normalizedBlocks,
+  ];
+}
+
+function composeLongPostHtmlWithTitle(title: string, rawHtml: string) {
+  const trimmedTitle = title.trim();
+  const trimmedBody = rawHtml.trim();
+  const titleHtml = trimmedTitle ? `<h1>${escapeHtml(trimmedTitle)}</h1>` : '';
+  if (!trimmedBody) return titleHtml;
+  return `${titleHtml}${trimmedBody}`;
+}
+
+function splitTitleFromLongPostHtml(html?: string) {
+  const raw = (html || '').trim();
+  if (!raw) {
+    return { title: '', bodyHtml: '' };
+  }
+  const match = raw.match(/^<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!match) {
+    return { title: '', bodyHtml: raw };
+  }
+  const titleInner = match[1] || '';
+  const title = extractPlainTextFromHtml(titleInner);
+  const bodyHtml = raw.slice(match[0].length).trim();
+  return { title, bodyHtml };
 }
 
 type ReactionEmoji = {
@@ -183,6 +561,7 @@ function matchesReportCategory(category: ModerationCategory, categoryName: Repor
 
 export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { showToast } = useAppToast();
   const { t } = useTranslation();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const c = theme.colors;
@@ -194,6 +573,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [providerLoading, setProviderLoading] = useState<SocialProvider | null>(null);
   const [activeFeed, setActiveFeed] = useState<FeedType>('home');
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [feedPostsFeed, setFeedPostsFeed] = useState<FeedType | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
@@ -246,6 +626,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [profileActionsLoading, setProfileActionsLoading] = useState(false);
   const [postRouteLoading, setPostRouteLoading] = useState(false);
   const [activePost, setActivePost] = useState<FeedPost | null>(null);
+  const [postDetailInitialMediaTimeSec, setPostDetailInitialMediaTimeSec] = useState<number | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
   const [draftComments, setDraftComments] = useState<Record<number, string>>({});
@@ -260,7 +641,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [commentRepliesExpanded, setCommentRepliesExpanded] = useState<Record<number, boolean>>({});
   const [commentRepliesLoadingById, setCommentRepliesLoadingById] = useState<Record<number, boolean>>({});
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
-  const [reactionPickerPost, setReactionPickerPost] = useState<FeedPost | null>(null);
+  const [reactionPickerPostId, setReactionPickerPostId] = useState<number | null>(null);
   const [reactionPickerLoading, setReactionPickerLoading] = useState(false);
   const [reactionActionLoading, setReactionActionLoading] = useState(false);
   const [reactionListOpen, setReactionListOpen] = useState(false);
@@ -276,17 +657,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [composerOpen, setComposerOpen] = useState(false);
   const composerTextRef = useRef('');
   const [composerTextLength, setComposerTextLength] = useState(0);
+  const [composerLinkPreview, setComposerLinkPreview] = useState<ShortPostLinkPreview | null>(null);
+  const [composerLinkPreviewLoading, setComposerLinkPreviewLoading] = useState(false);
   const [composerInputKey, setComposerInputKey] = useState(0);
   const [composerImages, setComposerImages] = useState<ComposerImageSelection[]>([]);
   const [composerVideo, setComposerVideo] = useState<ComposerVideoSelection | null>(null);
   const [composerSubmitting, setComposerSubmitting] = useState(false);
   const [composerStep, setComposerStep] = useState<'compose' | 'destination'>('compose');
   const [composerPostType, setComposerPostType] = useState<'P' | 'LP'>('P');
+  const [composerLongPostEditorMode, setComposerLongPostEditorMode] = useState<LongPostEditorMode>('lexical');
   const [composerModalMounted, setComposerModalMounted] = useState(false);
-  const [composerLongPostBlocks, setComposerLongPostBlocks] = useState<LongPostBlock[]>([
-    { id: 'initial-paragraph', type: 'paragraph', text: '' },
-  ]);
+  const [composerLongPostTitle, setComposerLongPostTitle] = useState('');
+  const [composerLongPostBlocks, setComposerLongPostBlocks] = useState<LongPostBlock[]>(createInitialLongPostBlocks());
+  const [composerLongPostLexicalHtml, setComposerLongPostLexicalHtml] = useState('');
+  const [composerLongPostLexicalResetKey, setComposerLongPostLexicalResetKey] = useState(0);
   const [composerDraftUuid, setComposerDraftUuid] = useState<string | null>(null);
+  const [composerLongPostMediaCount, setComposerLongPostMediaCount] = useState(0);
   const [composerDraftSaving, setComposerDraftSaving] = useState(false);
   const [composerDraftSavedAt, setComposerDraftSavedAt] = useState<string | null>(null);
   const [composerDraftExpiryDays, setComposerDraftExpiryDays] = useState(14);
@@ -294,13 +680,17 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [composerDraftsLoading, setComposerDraftsLoading] = useState(false);
   const [composerDrafts, setComposerDrafts] = useState<FeedPost[]>([]);
   const [composerDraftDeleteUuid, setComposerDraftDeleteUuid] = useState<string | null>(null);
+  const [composerDraftDeleteConfirmUuid, setComposerDraftDeleteConfirmUuid] = useState<string | null>(null);
   const [longPostDrawerOpen, setLongPostDrawerOpen] = useState(false);
   const [longPostDrawerExpanded, setLongPostDrawerExpanded] = useState(false);
   const [longPostEditDrawerOpen, setLongPostEditDrawerOpen] = useState(false);
   const [longPostEditDrawerExpanded, setLongPostEditDrawerExpanded] = useState(false);
+  const [longPostEditTitle, setLongPostEditTitle] = useState('');
   const [longPostEditBlocks, setLongPostEditBlocks] = useState<LongPostBlock[]>([]);
   const [editingLongPost, setEditingLongPost] = useState<FeedPost | null>(null);
   const [longPostEditError, setLongPostEditError] = useState('');
+  const [longPostPreviewOpen, setLongPostPreviewOpen] = useState(false);
+  const [longPostPreviewPost, setLongPostPreviewPost] = useState<FeedPost | null>(null);
   const [composerSelectedCircleId, setComposerSelectedCircleId] = useState<number | null>(null);
   const [composerSelectedCommunityNames, setComposerSelectedCommunityNames] = useState<string[]>([]);
   const [composerCircles, setComposerCircles] = useState<CircleResult[]>([]);
@@ -319,8 +709,10 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [searchResultsQuery, setSearchResultsQuery] = useState('');
   const [profileActiveTab, setProfileActiveTab] = useState<ProfileTabKey>('all');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoPlayMedia, setAutoPlayMedia] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
   const [externalLinkModalOpen, setExternalLinkModalOpen] = useState(false);
   const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
   const [tooltipTab, setTooltipTab] = useState<FeedType | null>(null);
@@ -329,8 +721,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const externalLinkResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inviteDrawerOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestSeqRef = useRef(0);
   const committedSearchRequestSeqRef = useRef(0);
+  const composerLinkPreviewSeqRef = useRef(0);
+  const composerLinkPreviewUrlRef = useRef<string | null>(null);
   const lastNonPostRouteRef = useRef<AppRoute>(
     route.screen === 'post' ? { screen: 'feed', feed: route.feed || 'home' } : route
   );
@@ -338,6 +733,110 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const composerTranslateX = useRef(new Animated.Value(0)).current;
   const composerClosingRef = useRef(false);
   const longPostAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPostInlineMediaOrderRef = useRef(1000);
+  const longPostMediaSyncInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!notice) return;
+    showToast(notice, { type: 'success' });
+    setNotice('');
+  }, [notice, showToast]);
+
+  useEffect(() => {
+    if (!error) return;
+    showToast(error, { type: 'error' });
+    setError('');
+  }, [error, showToast]);
+
+  useEffect(() => {
+    if (!longPostEditError) return;
+    showToast(longPostEditError, { type: 'error' });
+    setLongPostEditError('');
+  }, [longPostEditError, showToast]);
+
+  const longPostPreviewExpandState = React.useMemo(() => {
+    if (!longPostPreviewPost) {
+      return { canExpand: false, isExpanded: false };
+    }
+
+    const postType = (longPostPreviewPost.type || '').toUpperCase();
+    const blocksFromPayload = Array.isArray(longPostPreviewPost.long_text_blocks)
+      ? (longPostPreviewPost.long_text_blocks as LongPostBlock[])
+      : [];
+    const blocks = blocksFromPayload.length > 0
+      ? blocksFromPayload
+      : parseLongPostHtmlBlocksForPreview(longPostPreviewPost.long_text_rendered_html);
+    const htmlLength = (longPostPreviewPost.long_text_rendered_html || '').length;
+    const hasAnyLongPostContent = blocks.length > 0 || htmlLength > 0 || !!longPostPreviewPost.long_text;
+    const canExpand =
+      postType === 'LP'
+        ? hasAnyLongPostContent
+        : getPostText(longPostPreviewPost).length > 240;
+
+    return {
+      canExpand,
+      isExpanded: !!expandedPostIds[longPostPreviewPost.id],
+    };
+  }, [expandedPostIds, getPostText, longPostPreviewPost]);
+
+  function handleOpenInviteDrawerFromMenu() {
+    setMenuOpen(false);
+    if (inviteDrawerOpenTimerRef.current) {
+      clearTimeout(inviteDrawerOpenTimerRef.current);
+      inviteDrawerOpenTimerRef.current = null;
+    }
+    inviteDrawerOpenTimerRef.current = setTimeout(() => {
+      setInviteDrawerOpen(true);
+      inviteDrawerOpenTimerRef.current = null;
+    }, 180);
+  }
+
+  async function refreshComposerLinkPreview(nextText: string) {
+    const url = extractFirstUrlFromText(nextText);
+    if (url && composerLinkPreviewUrlRef.current === url && (composerLinkPreview || composerLinkPreviewLoading)) {
+      return;
+    }
+    const seq = composerLinkPreviewSeqRef.current + 1;
+    composerLinkPreviewSeqRef.current = seq;
+    if (!url) {
+      composerLinkPreviewUrlRef.current = null;
+      setComposerLinkPreview(null);
+      setComposerLinkPreviewLoading(false);
+      return;
+    }
+    composerLinkPreviewUrlRef.current = url;
+    setComposerLinkPreviewLoading(true);
+    try {
+      const preview = await fetchShortPostLinkPreviewCached(url);
+      if (composerLinkPreviewSeqRef.current !== seq) return;
+      setComposerLinkPreview(preview);
+    } catch {
+      if (composerLinkPreviewSeqRef.current !== seq) return;
+      setComposerLinkPreview({
+        url,
+        title: url,
+      });
+    } finally {
+      if (composerLinkPreviewSeqRef.current === seq) {
+        setComposerLinkPreviewLoading(false);
+      }
+    }
+  }
+
+  function handleOpenSettingsFromMenu() {
+    setMenuOpen(false);
+    setSettingsOpen(true);
+  }
+
+  async function handleToggleAutoPlayMedia() {
+    const next = !autoPlayMedia;
+    setAutoPlayMedia(next);
+    try {
+      await AsyncStorage.setItem(AUTO_PLAY_MEDIA_SETTING_KEY, next ? '1' : '0');
+    } catch {
+      // Keep in-memory preference if persistence fails.
+    }
+  }
 
   // ── Notifications ────────────────────────────────────────────────────────────
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
@@ -356,6 +855,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     { key: 'public', label: t('home.feedTabPublic'), icon: 'earth', tooltip: t('home.feedTabPublicTooltip') },
     { key: 'explore', label: t('home.feedTabExplore'), icon: 'compass-outline', tooltip: t('home.feedTabExploreTooltip') },
   ];
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(AUTO_PLAY_MEDIA_SETTING_KEY);
+        if (!active || stored === null) return;
+        setAutoPlayMedia(stored === '1');
+      } catch {
+        // Use default if read fails.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -824,9 +1339,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
 
     if (route.screen === 'feed') {
-      if (route.feed !== activeFeed) {
-        setActiveFeed(route.feed);
-        loadFeed(route.feed);
+      const targetFeed = route.feed;
+      if (targetFeed !== activeFeed) {
+        setActiveFeed(targetFeed);
+      }
+      if (feedPostsFeed !== targetFeed && !feedLoading) {
+        loadFeed(targetFeed);
       }
       setActivePost(null);
       return;
@@ -847,7 +1365,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     if (route.screen === 'post') {
       if (activeFeed !== route.feed && route.feed) {
         setActiveFeed(route.feed);
-        loadFeed(route.feed);
       }
       const postInCurrentContext =
         feedPosts.find((post) => post.id === route.postId) ||
@@ -863,7 +1380,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
 
     setActivePost(null);
-  }, [route, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
+  }, [route, activeFeed, feedLoading, feedPostsFeed, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
   useEffect(() => {
     const routePostId = route.screen === 'post' ? route.postId : null;
@@ -921,6 +1438,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     try {
       const nextPosts = await api.getFeed(token, feed, FEED_PAGE_SIZE);
       setFeedPosts(nextPosts);
+      setFeedPostsFeed(feed);
       if (nextPosts.length > 0) {
         // Optimistically assume more pages exist whenever any posts come back.
         // The true end is confirmed only when a subsequent page returns empty.
@@ -930,6 +1448,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       }
     } catch (e: any) {
       setFeedPosts([]);
+      setFeedPostsFeed(feed);
       setFeedError(e.message || t('home.feedLoadError'));
     } finally {
       setFeedLoading(false);
@@ -1463,8 +1982,23 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     activeEl?.blur?.();
   }
 
-  function openPostDetail(post: FeedPost) {
+  function openPostDetail(post: FeedPost, options?: { resumeTimeSec?: number }) {
     clearWebFocus();
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const playingVideos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+      playingVideos.forEach((video) => {
+        try {
+          video.pause();
+        } catch {
+          // Ignore browser/runtime pause edge cases.
+        }
+      });
+    }
+    setPostDetailInitialMediaTimeSec(
+      typeof options?.resumeTimeSec === 'number' && Number.isFinite(options.resumeTimeSec)
+        ? options.resumeTimeSec
+        : null
+    );
     setActivePost(post);
     void loadCommentsForPost(post);
     onNavigate({ screen: 'post', postId: post.id, feed: activeFeed });
@@ -1472,6 +2006,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   function closePostDetail() {
     clearWebFocus();
+    setPostDetailInitialMediaTimeSec(null);
     setActivePost(null);
     const returnRoute = lastNonPostRouteRef.current;
     onNavigate(returnRoute, true);
@@ -1482,12 +2017,14 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     setCommunityRoutePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setMyProfilePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setMyPinnedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
+    setProfilePosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
+    setProfilePinnedPosts((prev) => prev.map((post) => (post.id === postId ? patch(post) : post)));
     setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
   }
 
   function openLongPostEdit(post: FeedPost) {
-    const rawBlocks = Array.isArray(post.long_text_blocks) ? post.long_text_blocks : [];
-    const blocks: LongPostBlock[] = rawBlocks.map((b, idx) => {
+    const sourceBlocks = Array.isArray(post.long_text_blocks) ? post.long_text_blocks : [];
+    const blocks: LongPostBlock[] = sourceBlocks.map((b, idx) => {
       const block = b as Record<string, unknown>;
       return {
         id: `edit-${idx}-${Date.now()}`,
@@ -1498,8 +2035,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         caption: typeof block.caption === 'string' ? block.caption : undefined,
       };
     });
+    const fallbackBlocks = blocks.length > 0
+      ? blocks
+      : (post.long_text
+        ? [{ id: `edit-legacy-${Date.now()}`, type: 'paragraph' as const, text: post.long_text }]
+        : createInitialLongPostBlocks());
+    const normalized = splitLongPostTitleFromBlocks(fallbackBlocks);
     setEditingLongPost(post);
-    setLongPostEditBlocks(blocks.length > 0 ? blocks : [{ id: 'edit-initial', type: 'paragraph', text: '' }]);
+    setLongPostEditTitle(normalized.title);
+    setLongPostEditBlocks(normalized.blocks);
     setLongPostEditError('');
     setLongPostEditDrawerOpen(true);
   }
@@ -1507,24 +2051,27 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   async function saveLongPostEdit() {
     if (!editingLongPost?.uuid) return;
     try {
-      const plainText = extractPlainTextFromBlocks(longPostEditBlocks);
+      const composedBlocks = composeLongPostBlocksWithTitle(longPostEditTitle, longPostEditBlocks);
+      const plainText = extractPlainTextFromBlocks(composedBlocks);
       const updated = await api.updatePostContent(token, editingLongPost.uuid, {
-        long_text_blocks: longPostEditBlocks,
+        long_text_blocks: composedBlocks,
         long_text: plainText.length >= 500 ? plainText : undefined,
-        long_text_rendered_html: buildLongPostHtmlFromBlocks(longPostEditBlocks),
+        long_text_rendered_html: buildLongPostHtmlFromBlocks(composedBlocks),
       });
       const returnedBlocks = Array.isArray(updated?.long_text_blocks) && (updated.long_text_blocks as unknown[]).length > 0
-        ? updated.long_text_blocks
-        : longPostEditBlocks;
+        ? (updated.long_text_blocks as LongPostBlock[])
+        : composedBlocks;
+      const normalizedReturned = splitLongPostTitleFromBlocks(returnedBlocks);
       applyPostPatch(editingLongPost.id, (current) => ({
         ...current,
         type: 'LP',
-        long_text_blocks: returnedBlocks,
+        long_text_blocks: composeLongPostBlocksWithTitle(normalizedReturned.title, normalizedReturned.blocks),
         long_text: updated?.long_text ?? current.long_text,
         long_text_rendered_html: updated?.long_text_rendered_html ?? current.long_text_rendered_html,
       }));
       setLongPostEditDrawerOpen(false);
       setEditingLongPost(null);
+      setLongPostEditTitle('');
       setNotice(t('home.postEditSuccess'));
     } catch (e: any) {
       console.error('[saveLongPostEdit] 400 response body:', e?.data);
@@ -1705,14 +2252,14 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   async function openReactionPicker(post: FeedPost) {
     requestAnimationFrame(() => {
-      setReactionPickerPost(post);
+      setReactionPickerPostId(post.id);
     });
     await ensureReactionGroups();
   }
 
   function closeReactionPicker() {
     if (reactionActionLoading) return;
-    setReactionPickerPost(null);
+    setReactionPickerPostId(null);
   }
 
   async function reactToPostWithEmoji(post: FeedPost, emojiId?: number) {
@@ -1745,14 +2292,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     setReactionActionLoading(true);
     try {
       if (isAlreadyMyReaction) {
+        // Removal: optimistic update is already correct — no reconciliation needed
         await api.removeReactionFromPost(token, post.uuid);
       } else {
+        // Add: reconcile with server to get canonical reaction object and counts
         const reaction = await api.reactToPost(token, post.uuid, emojiId);
-        // Reconcile with the server's canonical reaction object
         applyPostPatch(post.id, (current) => ({ ...current, reaction }));
+        await refreshPostReactionCounts(post);
       }
-      await refreshPostReactionCounts(post);
-      setReactionPickerPost(null);
+      setReactionPickerPostId(null);
     } catch (e: any) {
       // Revert optimistic update on failure
       applyPostPatch(post.id, () => post);
@@ -1765,23 +2313,62 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   async function reactToComment(postId: number, commentId: number, emojiId?: number) {
     const sourcePost = getSourcePost(postId);
     if (!sourcePost?.uuid || !emojiId || reactionActionLoading) return;
+
+    const currentComment = (localComments[postId] || []).find((c) => c.id === commentId);
+    const isAlreadyMyReaction = currentComment?.reaction?.emoji?.id === emojiId;
+
+    // Optimistic update
+    setLocalComments((prev) => ({
+      ...prev,
+      [postId]: (prev[postId] || []).map((comment) => {
+        if (comment.id !== commentId) return comment;
+        if (isAlreadyMyReaction) {
+          return {
+            ...comment,
+            reaction: null,
+            reactions_emoji_counts: (comment.reactions_emoji_counts || [])
+              .map((e) => e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e)
+              .filter((e) => (e.count || 0) > 0),
+          };
+        }
+        const prevEmojiId = comment.reaction?.emoji?.id;
+        const emojiMeta = (comment.reactions_emoji_counts || []).find((e) => e.emoji?.id === emojiId)?.emoji;
+        return {
+          ...comment,
+          reaction: { emoji: emojiMeta },
+          reactions_emoji_counts: (comment.reactions_emoji_counts || []).map((e) => {
+            if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
+            if (prevEmojiId && e.emoji?.id === prevEmojiId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
+            return e;
+          }),
+        };
+      }),
+    }));
+
     setReactionActionLoading(true);
     try {
-      const reaction = await api.reactToPostComment(token, sourcePost.uuid, commentId, emojiId);
-      const counts = await api.getPostCommentReactionCounts(token, sourcePost.uuid, commentId);
-      setLocalComments((prev) => ({
-        ...prev,
-        [postId]: (prev[postId] || []).map((comment) =>
-          comment.id === commentId
-            ? {
-                ...comment,
-                reaction,
-                reactions_emoji_counts: counts,
-              }
-            : comment
-        ),
-      }));
+      if (isAlreadyMyReaction) {
+        // Removal: optimistic update is already correct — no reconciliation needed
+        await api.removeReactionFromPostComment(token, sourcePost.uuid, commentId);
+      } else {
+        // Add: use server's canonical reaction object so emoji metadata and id are always correct
+        const reaction = await api.reactToPostComment(token, sourcePost.uuid, commentId, emojiId);
+        const counts = await api.getPostCommentReactionCounts(token, sourcePost.uuid, commentId);
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map((comment) =>
+            comment.id === commentId ? { ...comment, reaction, reactions_emoji_counts: counts } : comment
+          ),
+        }));
+      }
     } catch (e: any) {
+      // Revert optimistic update on failure
+      if (currentComment) {
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map((c) => (c.id === commentId ? currentComment : c)),
+        }));
+      }
       setError(e?.message || t('home.reactionLoadFailed'));
     } finally {
       setReactionActionLoading(false);
@@ -2149,6 +2736,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (inviteDrawerOpenTimerRef.current) {
+        clearTimeout(inviteDrawerOpenTimerRef.current);
+        inviteDrawerOpenTimerRef.current = null;
+      }
+    };
+  }, []);
+
   function hideWelcomeNotice() {
     if (welcomeTimerRef.current) {
       clearTimeout(welcomeTimerRef.current);
@@ -2247,12 +2843,14 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   useEffect(() => {
     if (!longPostDrawerOpen || composerPostType !== 'LP') return;
 
-    const hasDraftContent = composerLongPostBlocks.some((block) => {
-      const text = (block.text || '').trim();
-      const url = (block.url || '').trim();
-      const caption = (block.caption || '').trim();
-      return !!text || !!url || !!caption;
-    });
+    const hasDraftContent = composerLongPostEditorMode === 'lexical'
+      ? !!composerLongPostTitle.trim() || !!extractPlainTextFromHtml(composerLongPostLexicalHtml)
+      : !!composerLongPostTitle.trim() || composerLongPostBlocks.some((block) => {
+        const text = (block.text || '').trim();
+        const url = (block.url || '').trim();
+        const caption = (block.caption || '').trim();
+        return !!text || !!url || !!caption;
+      });
     if (!hasDraftContent) return;
 
     if (longPostAutosaveTimerRef.current) {
@@ -2270,7 +2868,14 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         longPostAutosaveTimerRef.current = null;
       }
     };
-  }, [longPostDrawerOpen, composerPostType, composerLongPostBlocks]);
+  }, [
+    longPostDrawerOpen,
+    composerPostType,
+    composerLongPostEditorMode,
+    composerLongPostTitle,
+    composerLongPostBlocks,
+    composerLongPostLexicalHtml,
+  ]);
 
   // ── Notification handlers ─────────────────────────────────────────────────────
 
@@ -2424,6 +3029,19 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
   }
 
+  async function handleDeclineConnection() {
+    if (!profileUser?.username) return;
+    setProfileActionsLoading(true);
+    try {
+      await api.disconnectFromUser(token, profileUser.username);
+      setProfileUser((prev: any) => prev ? { ...prev, is_connected: false, is_fully_connected: false, is_pending_connection_confirmation: false, connected_circles: [] } : prev);
+    } catch {
+      setError('Could not decline connection.');
+    } finally {
+      setProfileActionsLoading(false);
+    }
+  }
+
   async function handleAddToList(listId: number, username: string) {
     // Fetch current list members, add username, send full replacement list
     try {
@@ -2482,7 +3100,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   // ─────────────────────────────────────────────────────────────────────────────
 
   function handleProfileComingSoon() {
-    setProfileMenuOpen(false);
+    setMenuOpen(false);
     onNavigate({ screen: 'me' });
   }
 
@@ -2512,12 +3130,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function openComposerModal(action?: 'video' | 'image' | 'emoji') {
     composerTextRef.current = '';
     setComposerTextLength(0);
+    setComposerLinkPreview(null);
+    setComposerLinkPreviewLoading(false);
+    composerLinkPreviewUrlRef.current = null;
     setComposerInputKey((prev) => prev + 1);
     setComposerPostType('P');
-    setComposerLongPostBlocks([{ id: 'initial-paragraph', type: 'paragraph', text: '' }]);
+    setComposerLongPostEditorMode('lexical');
+    setComposerLongPostTitle('');
+    setComposerLongPostBlocks(createInitialLongPostBlocks());
+    setComposerLongPostLexicalHtml('');
+    setComposerLongPostLexicalResetKey((prev) => prev + 1);
     showComposerDrawer();
     setComposerStep('compose');
     setComposerDraftUuid(null);
+    setComposerLongPostMediaCount(0);
     setComposerDraftSavedAt(null);
     setComposerDraftExpiryDays(14);
     setComposerDraftsOpen(false);
@@ -2554,11 +3180,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function resetComposerState() {
     composerTextRef.current = '';
     setComposerTextLength(0);
+    setComposerLinkPreview(null);
+    setComposerLinkPreviewLoading(false);
+    composerLinkPreviewUrlRef.current = null;
     setComposerInputKey((prev) => prev + 1);
     clearComposerMedia();
     setComposerSubmitting(false);
     setComposerStep('compose');
     setComposerDraftUuid(null);
+    setComposerLongPostMediaCount(0);
     setComposerDraftSavedAt(null);
     setComposerDraftExpiryDays(14);
     setComposerDraftsOpen(false);
@@ -2570,13 +3200,155 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     setComposerCommunitySearch('');
     setComposerDestinationsLoading(false);
     setComposerPostType('P');
-    setComposerLongPostBlocks([{ id: 'initial-paragraph', type: 'paragraph', text: '' }]);
+    setComposerLongPostEditorMode('lexical');
+    setComposerLongPostTitle('');
+    setComposerLongPostBlocks(createInitialLongPostBlocks());
+    setComposerLongPostLexicalHtml('');
+    setComposerLongPostLexicalResetKey((prev) => prev + 1);
+    longPostInlineMediaOrderRef.current = 1000;
     setLongPostDrawerOpen(false);
     setLongPostDrawerExpanded(false);
     if (longPostAutosaveTimerRef.current) {
       clearTimeout(longPostAutosaveTimerRef.current);
       longPostAutosaveTimerRef.current = null;
     }
+  }
+
+  async function refreshComposerDraftMediaCount(draftUuid?: string | null) {
+    if (!draftUuid) {
+      setComposerLongPostMediaCount(0);
+      return;
+    }
+    try {
+      const media = await api.getPostMedia(token, draftUuid);
+      setComposerLongPostMediaCount(media.length);
+    } catch {
+      // Non-fatal: keep current UI state.
+    }
+  }
+
+  async function syncRemovedLongPostMedia(removedUrls: string[]) {
+    if (!composerDraftUuid || !removedUrls.length || longPostMediaSyncInFlightRef.current) return;
+    longPostMediaSyncInFlightRef.current = true;
+    try {
+      const removedSet = new Set(removedUrls.map(canonicalizeMediaUrl).filter(Boolean));
+      const media = await api.getPostMedia(token, composerDraftUuid);
+      const toDelete = media.filter((item) => {
+        const content = item.content_object || {};
+        const candidates = [
+          canonicalizeMediaUrl(content.image),
+          canonicalizeMediaUrl(content.thumbnail),
+          canonicalizeMediaUrl(content.file),
+        ].filter(Boolean);
+        return candidates.some((url) => removedSet.has(url));
+      });
+
+      for (const item of toDelete) {
+        if (typeof item.id !== 'number') continue;
+        await api.deletePostMedia(token, composerDraftUuid, item.id);
+      }
+
+      if (toDelete.length > 0) {
+        const nextMedia = await api.getPostMedia(token, composerDraftUuid);
+        setComposerLongPostMediaCount(nextMedia.length);
+      }
+    } catch (e: any) {
+      setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not update media right now.' }));
+    } finally {
+      longPostMediaSyncInFlightRef.current = false;
+    }
+  }
+
+  async function uploadLongPostBlockImages(files: Array<Blob & { name?: string; type?: string }>) {
+    if (!files.length) return [];
+    if (Platform.OS !== 'web') {
+      throw new Error(
+        t('home.postComposerMediaUnsupported', { defaultValue: 'Media upload is currently available on web.' })
+      );
+    }
+
+    const longPayload = getComposerLongPayload();
+    let draftUuid = composerDraftUuid;
+    if (!draftUuid) {
+      const createdDraft = await api.createPost(token, {
+        ...longPayload,
+        is_draft: true,
+      });
+      draftUuid = createdDraft.uuid || null;
+      if (!draftUuid) {
+        throw new Error(
+          t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' })
+        );
+      }
+      setComposerDraftUuid(draftUuid);
+      setComposerDraftSavedAt(new Date().toISOString());
+    }
+    const existingMedia = await api.getPostMedia(token, draftUuid);
+    setComposerLongPostMediaCount(existingMedia.length);
+    const existingCount = existingMedia.length;
+    const remainingSlots = Math.max(0, LONG_POST_MAX_IMAGES - existingCount);
+    if (remainingSlots <= 0) {
+      throw new Error(
+        t('home.postComposerMaxImagesReached', {
+          count: LONG_POST_MAX_IMAGES,
+          defaultValue: `You can upload up to ${LONG_POST_MAX_IMAGES} photos.`,
+        })
+      );
+    }
+
+    if (files.length > remainingSlots) {
+      throw new Error(
+        t('home.postComposerMaxImagesReached', {
+          count: LONG_POST_MAX_IMAGES,
+          defaultValue: `You can upload up to ${LONG_POST_MAX_IMAGES} photos.`,
+        })
+      );
+    }
+
+    const maxExistingOrder = existingMedia.reduce((max, item) => {
+      const val = typeof item.order === 'number' && Number.isFinite(item.order) ? item.order : max;
+      return Math.max(max, val);
+    }, -1);
+    if (maxExistingOrder >= longPostInlineMediaOrderRef.current) {
+      longPostInlineMediaOrderRef.current = maxExistingOrder + 1;
+    }
+
+    const orders = files.map(() => longPostInlineMediaOrderRef.current++);
+
+    for (let i = 0; i < files.length; i += 1) {
+      try {
+        await api.addPostMedia(token, draftUuid, {
+          file: files[i],
+          order: orders[i],
+        });
+      } catch (e: any) {
+        if (e instanceof ApiRequestError && e.status === 400 && /maximum amount of post media items reached/i.test(e.message || '')) {
+          throw new Error(
+            t('home.postComposerMaxImagesReached', {
+              count: LONG_POST_MAX_IMAGES,
+              defaultValue: `You can upload up to ${LONG_POST_MAX_IMAGES} photos.`,
+            })
+          );
+        }
+        throw e;
+      }
+    }
+
+    const media = await api.getPostMedia(token, draftUuid);
+    setComposerLongPostMediaCount(media.length);
+    const uploadedUrls = orders.map((order) => {
+      const match = media.find((item) => item.order === order);
+      const content = match?.content_object;
+      return content?.image || content?.thumbnail || content?.file || '';
+    }).filter((url): url is string => !!url);
+
+    if (uploadedUrls.length !== files.length) {
+      throw new Error(
+        t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' })
+      );
+    }
+
+    return uploadedUrls;
   }
 
   function hideComposerDrawer(onHidden?: () => void) {
@@ -2626,15 +3398,149 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   function getComposerLongPayload() {
-    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
+    if (composerLongPostEditorMode === 'lexical') {
+      const renderedHtml = composeLongPostHtmlWithTitle(composerLongPostTitle, composerLongPostLexicalHtml);
+      const trimmedLongText = extractPlainTextFromHtml(renderedHtml);
+      // Parse body blocks from the Lexical HTML so images and their authored
+      // positions are stored as structured data, not just as raw HTML.
+      const bodyBlocks = parseLongPostHtmlBlocksForPreview(composerLongPostLexicalHtml);
+      const trimmedTitle = composerLongPostTitle.trim();
+      const blocksWithTitle: LongPostBlock[] = trimmedTitle
+        ? [
+            { id: `lexical-title-${Date.now()}`, position: 0, type: 'heading', level: 1, text: trimmedTitle },
+            ...bodyBlocks.map((b, i) => ({ ...b, position: i + 1 })),
+          ]
+        : bodyBlocks.map((b, i) => ({ ...b, position: i }));
+      return {
+        long_text: trimmedLongText.length >= 500 ? trimmedLongText : undefined,
+        long_text_blocks: blocksWithTitle.length > 0 ? blocksWithTitle : undefined,
+        long_text_rendered_html: renderedHtml || undefined,
+        long_text_version: 2,
+        type: 'LP' as const,
+        draft_expiry_days: composerDraftExpiryDays,
+      };
+    }
+
+    const composedBlocks = composeLongPostBlocksWithTitle(composerLongPostTitle, composerLongPostBlocks);
+    const trimmedLongText = extractPlainTextFromBlocks(composedBlocks);
     return {
       long_text: trimmedLongText.length >= 500 ? trimmedLongText : undefined,
-      long_text_blocks: composerLongPostBlocks,
-      long_text_rendered_html: buildLongPostHtmlFromBlocks(composerLongPostBlocks),
+      long_text_blocks: composedBlocks,
+      long_text_rendered_html: buildLongPostHtmlFromBlocks(composedBlocks),
       long_text_version: 1,
       type: 'LP' as const,
       draft_expiry_days: composerDraftExpiryDays,
     };
+  }
+
+  function buildLongPostPreviewPost(params: {
+    title: string;
+    blocks: LongPostBlock[];
+    editorMode: LongPostEditorMode;
+    lexicalHtml?: string;
+  }): FeedPost {
+    const nowIso = new Date().toISOString();
+    let longText = '';
+    let renderedHtml = '';
+    let blocksPayload: LongPostBlock[] | undefined;
+    let version = 1;
+
+    if (params.editorMode === 'lexical') {
+      const lexicalBodyHtml = params.lexicalHtml || '';
+      renderedHtml = composeLongPostHtmlWithTitle(params.title, lexicalBodyHtml);
+      longText = extractPlainTextFromHtml(renderedHtml);
+      const parsedBodyBlocks = parseLongPostHtmlBlocksForPreview(lexicalBodyHtml);
+      const trimmedTitle = params.title.trim();
+      blocksPayload = trimmedTitle
+        ? [
+            {
+              id: `preview-title-${Date.now()}`,
+              position: 0,
+              type: 'heading',
+              level: 1,
+              text: trimmedTitle,
+            },
+            ...parsedBodyBlocks.map((block, idx) => ({
+              ...block,
+              position: idx + 1,
+            })),
+          ]
+        : parsedBodyBlocks.map((block, idx) => ({
+          ...block,
+          position: idx,
+        }));
+      version = 2;
+    } else {
+      const composed = composeLongPostBlocksWithTitle(params.title, params.blocks);
+      blocksPayload = composed.map((block, idx) => ({ ...block, position: idx }));
+      renderedHtml = buildLongPostHtmlFromBlocks(composed);
+      longText = extractPlainTextFromBlocks(composed);
+      version = 1;
+    }
+
+    const imageUrls = extractImageUrlsFromLongPostHtml(renderedHtml);
+    const hasInlineImageBlocks = Array.isArray(blocksPayload)
+      && blocksPayload.some((block) => block.type === 'image' && !!block.url);
+    const mediaPreview = hasInlineImageBlocks
+      ? []
+      : imageUrls.map((url, index) => ({
+          id: index + 1,
+          type: 'image',
+          order: index,
+          image: url,
+          thumbnail: url,
+          file: url,
+          content_object: {
+            image: url,
+            thumbnail: url,
+            file: url,
+          },
+        }));
+
+    return {
+      id: -Math.floor(Date.now() / 1000),
+      uuid: `preview-${Date.now()}`,
+      type: 'LP',
+      created: nowIso,
+      text: undefined,
+      long_text: longText || undefined,
+      long_text_blocks: blocksPayload as unknown[] | undefined,
+      long_text_rendered_html: renderedHtml || undefined,
+      long_text_version: version,
+      media: mediaPreview,
+      media_thumbnail: mediaPreview[0]?.thumbnail,
+      comments_count: 0,
+      reactions_emoji_counts: [],
+      creator: {
+        name: user?.name || user?.username || t('home.youLabel', { defaultValue: 'You' }),
+        username: user?.username || 'you',
+        avatar: user?.avatar,
+      },
+    };
+  }
+
+  function openComposerLongPostPreview() {
+    const previewPost = buildLongPostPreviewPost({
+      title: composerLongPostTitle,
+      blocks: composerLongPostBlocks,
+      editorMode: composerLongPostEditorMode,
+      lexicalHtml: composerLongPostLexicalHtml,
+    });
+    setExpandedPostIds((prev) => ({ ...prev, [previewPost.id]: false }));
+    setLongPostPreviewPost(previewPost);
+    setLongPostPreviewOpen(true);
+  }
+
+  function openEditLongPostPreview() {
+    const previewPost = buildLongPostPreviewPost({
+      title: longPostEditTitle,
+      blocks: longPostEditBlocks,
+      editorMode: 'blocks',
+      lexicalHtml: '',
+    });
+    setExpandedPostIds((prev) => ({ ...prev, [previewPost.id]: false }));
+    setLongPostPreviewPost(previewPost);
+    setLongPostPreviewOpen(true);
   }
 
   async function saveLongPostDraft(showSuccessNotice = true) {
@@ -2649,10 +3555,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           is_draft: true,
         });
         setComposerDraftUuid(created.uuid || null);
+        await refreshComposerDraftMediaCount(created.uuid || null);
       } else {
         await api.updatePostContent(token, composerDraftUuid, {
           ...longPayload,
         });
+        await refreshComposerDraftMediaCount(composerDraftUuid);
       }
       setComposerDraftSavedAt(new Date().toISOString());
       if (showSuccessNotice) {
@@ -2685,12 +3593,37 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function resumeLongPostDraft(post: FeedPost) {
-    const blocks = Array.isArray(post.long_text_blocks) && post.long_text_blocks.length > 0
+    const draftRenderedHtml =
+      typeof post.long_text_rendered_html === 'string' ? post.long_text_rendered_html : '';
+    const rawBlocks = Array.isArray(post.long_text_blocks) && post.long_text_blocks.length > 0
       ? (post.long_text_blocks as LongPostBlock[])
-      : [{ id: 'initial-paragraph', type: 'paragraph' as const, text: post.long_text || '' }];
+      : (post.long_text
+        ? [{ id: `draft-legacy-${Date.now()}`, type: 'paragraph' as const, text: post.long_text }]
+        : createInitialLongPostBlocks());
+    const normalized = splitLongPostTitleFromBlocks(rawBlocks);
+    const fromRendered = draftRenderedHtml
+      ? splitTitleFromLongPostHtml(draftRenderedHtml)
+      : { title: '', bodyHtml: '' };
+    const blocksHtml = buildLongPostHtmlFromBlocks(normalized.blocks);
+    const blocksContainTable = normalized.blocks.some((block) => block.type === 'table' && !!block.tableHtml);
+    const renderedContainsTable = /<table\b/i.test(fromRendered.bodyHtml || '');
+    // Always resume drafts in Lexical mode. If rendered HTML lost table nodes,
+    // rebuild from stored blocks so grids/tables survive draft restore.
+    const lexicalBodyHtml =
+      blocksContainTable && !renderedContainsTable
+        ? blocksHtml
+        : (fromRendered.bodyHtml || blocksHtml);
+    const lexicalBodyBlocks = parseLongPostHtmlBlocksForPreview(lexicalBodyHtml);
+    const resolvedTitle = fromRendered.title || normalized.title;
+
     setComposerPostType('LP');
-    setComposerLongPostBlocks(blocks);
+    setComposerLongPostTitle(resolvedTitle);
+    setComposerLongPostBlocks(ensureLongPostBlocks(lexicalBodyBlocks));
+    setComposerLongPostEditorMode('lexical');
+    setComposerLongPostLexicalHtml(lexicalBodyHtml);
+    setComposerLongPostLexicalResetKey((prev) => prev + 1);
     setComposerDraftUuid(post.uuid || null);
+    await refreshComposerDraftMediaCount(post.uuid || null);
     setComposerDraftSavedAt(post.created || null);
     setComposerDraftsOpen(false);
     setLongPostDrawerOpen(true);
@@ -2705,6 +3638,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       setComposerDrafts((prev) => prev.filter((post) => post.uuid !== postUuid));
       if (composerDraftUuid === postUuid) {
         setComposerDraftUuid(null);
+        setComposerLongPostMediaCount(0);
         setComposerDraftSavedAt(null);
       }
       setNotice(t('home.postDeletedNotice', { defaultValue: 'Post deleted.' }));
@@ -2713,6 +3647,18 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     } finally {
       setComposerDraftDeleteUuid(null);
     }
+  }
+
+  function requestDeleteLongPostDraft(postUuid?: string) {
+    if (!postUuid || composerDraftDeleteUuid) return;
+    setComposerDraftDeleteConfirmUuid(postUuid);
+  }
+
+  async function confirmDeleteLongPostDraft() {
+    const targetUuid = composerDraftDeleteConfirmUuid;
+    if (!targetUuid) return;
+    setComposerDraftDeleteConfirmUuid(null);
+    await deleteLongPostDraft(targetUuid);
   }
 
   function openComposerMediaPicker(kind: ComposerMediaType) {
@@ -2866,7 +3812,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   async function goToComposerDestinationStep() {
     if (composerSubmitting || composerDestinationsLoading) return;
     const trimmedText = composerTextRef.current.trim();
-    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
+    const longPayload = composerPostType === 'LP' ? getComposerLongPayload() : null;
+    const trimmedLongText = longPayload?.long_text || extractPlainTextFromHtml(longPayload?.long_text_rendered_html);
     const hasImages = composerImages.length > 0;
     const hasVideo = !!composerVideo;
     const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
@@ -2891,11 +3838,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       return;
     }
     const trimmedText = composerTextRef.current.trim();
-    const trimmedLongText = extractPlainTextFromBlocks(composerLongPostBlocks);
-    const longTextBlocks = composerPostType === 'LP' ? composerLongPostBlocks : undefined;
-    const longTextRenderedHtml = composerPostType === 'LP'
-      ? buildLongPostHtmlFromBlocks(composerLongPostBlocks)
-      : undefined;
+    const longPayload = composerPostType === 'LP' ? getComposerLongPayload() : null;
+    const trimmedLongText = longPayload?.long_text || extractPlainTextFromHtml(longPayload?.long_text_rendered_html);
     const hasImages = composerImages.length > 0;
     const hasVideo = !!composerVideo;
     const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
@@ -2919,11 +3863,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     try {
       const postPayload = {
         text: composerPostType === 'LP' ? undefined : (trimmedText || undefined),
-        long_text: composerPostType === 'LP' && trimmedLongText.length >= 500 ? trimmedLongText : undefined,
-        long_text_blocks: composerPostType === 'LP' ? longTextBlocks : undefined,
-        long_text_rendered_html: longTextRenderedHtml,
-        long_text_version: composerPostType === 'LP' ? 1 : undefined,
-        draft_expiry_days: composerPostType === 'LP' ? composerDraftExpiryDays : undefined,
+        long_text: composerPostType === 'LP' ? longPayload?.long_text : undefined,
+        long_text_blocks: composerPostType === 'LP' ? longPayload?.long_text_blocks : undefined,
+        long_text_rendered_html: composerPostType === 'LP' ? longPayload?.long_text_rendered_html : undefined,
+        long_text_version: composerPostType === 'LP' ? longPayload?.long_text_version : undefined,
+        draft_expiry_days: composerPostType === 'LP' ? longPayload?.draft_expiry_days : undefined,
         type: composerPostType,
       } as const;
 
@@ -2940,11 +3884,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
       if (composerPostType === 'LP' && composerDraftUuid && !hasImages && !hasVideo && !saveAsDraft) {
         await api.updatePostContent(token, composerDraftUuid, {
-          long_text: trimmedLongText.length >= 500 ? trimmedLongText : undefined,
-          long_text_blocks: composerLongPostBlocks,
-          long_text_rendered_html: longTextRenderedHtml,
-          long_text_version: 1,
-          draft_expiry_days: composerDraftExpiryDays,
+          long_text: longPayload?.long_text,
+          long_text_blocks: longPayload?.long_text_blocks,
+          long_text_rendered_html: longPayload?.long_text_rendered_html,
+          long_text_version: longPayload?.long_text_version,
+          draft_expiry_days: longPayload?.draft_expiry_days,
           type: 'LP',
         });
         await api.updatePostTargets(token, composerDraftUuid, {
@@ -3073,6 +4017,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const viewingProfileRoute = displayRoute.screen === 'profile' || displayRoute.screen === 'me';
   const viewingCommunityRoute = displayRoute.screen === 'community';
   const viewingHashtagRoute = displayRoute.screen === 'hashtag';
+  const viewingFollowPeopleRoute = displayRoute.screen === 'followers' || displayRoute.screen === 'following';
   const profileRouteUsername = displayRoute.screen === 'profile'
     ? displayRoute.username
     : user?.username || '';
@@ -3114,7 +4059,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     { key: 'reels', label: t('home.profileTabReels') },
     { key: 'more', label: t('home.profileTabMore') },
   ];
-  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults;
+  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
   const composerDrawerWidth =
     Platform.OS === 'web'
@@ -3141,7 +4086,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   function renderPostCard(
     post: FeedPost,
     variant: 'feed' | 'profile' = 'feed',
-    pinnedPostsSource: FeedPost[] = myPinnedPosts
+    pinnedPostsSource: FeedPost[] = myPinnedPosts,
+    options?: { allowExpandControl?: boolean }
   ) {
     const PIN_LIMIT = 5;
     const pinnedIndex = pinnedPostsSource.findIndex((item) => item.id === post.id);
@@ -3211,6 +4157,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         getPostLengthType={getPostLengthType}
         getPostReactionCount={getPostReactionCount}
         getPostCommentsCount={getPostCommentsCount}
+        autoPlayMedia={autoPlayMedia}
+        isPostDetailOpen={!!activePost}
+        allowExpandControl={options?.allowExpandControl ?? true}
       />
     );
   }
@@ -3437,14 +4386,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </View>
 
         <View style={styles.topNavRight}>
-          <TouchableOpacity
-            style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-            onPress={() => setMenuOpen(true)}
-            activeOpacity={0.85}
-            accessibilityLabel={t('language.select')}
-          >
-            <MaterialCommunityIcons name="grid" size={18} color={c.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
             <MaterialCommunityIcons name="message-outline" size={18} color={c.textSecondary} />
           </TouchableOpacity>
@@ -3478,14 +4419,17 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
             ) : null}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.topNavProfile, { backgroundColor: c.primary }]}
+            style={[styles.topNavProfile, { backgroundColor: user ? c.primary : 'transparent' }]}
             activeOpacity={0.85}
-            onPress={() => setProfileMenuOpen(true)}
+            onPress={() => setMenuOpen(true)}
             accessibilityLabel={t('home.profileMenuTitle')}
+            disabled={!user}
           >
-            <Text style={styles.topNavProfileText}>
-              {(user?.username?.[0] || 'U').toUpperCase()}
-            </Text>
+            {user && (
+              user.profile?.avatar
+                ? <Image source={{ uri: user.profile.avatar }} style={styles.topNavProfileImage} resizeMode="cover" />
+                : <Text style={styles.topNavProfileText}>{user.username[0].toUpperCase()}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -3497,58 +4441,171 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onRequestClose={() => setMenuOpen(false)}
       >
         <TouchableOpacity
-          style={styles.menuBackdrop}
+          style={styles.profileMenuBackdrop}
           activeOpacity={1}
           onPress={() => setMenuOpen(false)}
         >
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View
-              style={[
-                styles.menuCard,
-                { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-            >
-              <TouchableOpacity
-                style={[styles.menuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                onPress={toggleTheme}
-                activeOpacity={0.85}
-                accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-              >
-                <MaterialCommunityIcons
-                  name={isDark ? 'weather-sunny' : 'weather-night'}
-                  size={18}
-                  color={c.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: c.textSecondary }]}>
-                  {isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-                </Text>
-              </TouchableOpacity>
+            <View style={[styles.sideMenuCard, { backgroundColor: c.surface, borderColor: c.border }]}>
 
-              <TouchableOpacity
-                style={[styles.menuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                onPress={() => {
-                  setMenuOpen(false);
-                  setLinkedAccountsOpen(true);
-                }}
-                activeOpacity={0.85}
-                accessibilityLabel={t('home.linkedAccountsTitle')}
-              >
-                <MaterialCommunityIcons
-                  name="account-cog-outline"
-                  size={18}
-                  color={c.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: c.textSecondary }]}>
-                  {t('home.linkedAccountsTitle')}
-                </Text>
-              </TouchableOpacity>
+              {/* ── Header ────────────────────────────────── */}
+              <View style={[styles.sideMenuHeader, { borderBottomColor: c.border }]}>
+                <View style={[styles.sideMenuAvatar, { backgroundColor: c.primary }]}>
+                  {user?.profile?.avatar
+                    ? <Image source={{ uri: user.profile.avatar }} style={styles.sideMenuAvatarImage} resizeMode="cover" />
+                    : <Text style={styles.sideMenuAvatarLetter}>{(user?.username?.[0] || '').toUpperCase()}</Text>
+                  }
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sideMenuUsername, { color: c.textPrimary }]} numberOfLines={1}>
+                    {user?.profile?.name || user?.username || ''}
+                  </Text>
+                  <Text style={[styles.sideMenuHandle, { color: c.textMuted }]} numberOfLines={1}>
+                    @{user?.username || ''}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setMenuOpen(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textMuted} />
+                </TouchableOpacity>
+              </View>
 
-              <View style={[styles.menuLanguageWrap, { borderColor: c.border }]}>
-                <Text style={[styles.menuLabel, { color: c.textMuted }]}>
-                  {t('language.select')}
-                </Text>
+              {/* ── MY OPENSPACE ──────────────────────────── */}
+              <Text style={[styles.sideMenuSectionLabel, { color: c.textMuted }]}>
+                {t('home.sideMenuSectionMyOpenspace', { defaultValue: 'MY OPENSPACE' })}
+              </Text>
+
+              {[
+                { icon: 'account-outline', label: t('home.sideMenuProfile', { defaultValue: 'Profile' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'me' }); } },
+                { icon: 'circle-outline', label: t('home.sideMenuCircles', { defaultValue: 'Circles' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'circles' }); } },
+                { icon: 'format-list-bulleted', label: t('home.sideMenuLists', { defaultValue: 'Lists' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'lists' }); } },
+                { icon: 'account-arrow-down-outline', label: t('home.sideMenuFollowers', { defaultValue: 'Followers' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'followers' }); } },
+                { icon: 'account-arrow-up-outline', label: t('home.sideMenuFollowing', { defaultValue: 'Following' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'following' }); } },
+                { icon: 'email-plus-outline', label: t('home.sideMenuInvites', { defaultValue: 'Invites' }), onPress: handleOpenInviteDrawerFromMenu },
+                { icon: 'shield-check-outline', label: t('home.sideMenuModerationTasks', { defaultValue: 'Moderation tasks' }), onPress: () => { setMenuOpen(false); setNotice('Moderation tasks — coming soon'); } },
+                { icon: 'gavel', label: t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation penalties' }), onPress: () => { setMenuOpen(false); setNotice('Moderation penalties — coming soon'); } },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  style={[styles.sideMenuItem, { borderColor: c.border }]}
+                  activeOpacity={0.75}
+                  onPress={item.onPress}
+                >
+                  <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
+                  <Text style={[styles.sideMenuItemText, { color: c.textPrimary }]}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+
+              {/* ── APP & ACCOUNT ─────────────────────────── */}
+              <Text style={[styles.sideMenuSectionLabel, { color: c.textMuted, marginTop: 6 }]}>
+                {t('home.sideMenuSectionAppAccount', { defaultValue: 'APP & ACCOUNT' })}
+              </Text>
+
+              {[
+                { icon: 'cog-outline', label: t('home.sideMenuSettings', { defaultValue: 'Settings' }), onPress: handleOpenSettingsFromMenu },
+                { icon: isDark ? 'weather-sunny' : 'weather-night', label: isDark ? t('theme.switchToLight') : t('theme.switchToDark'), onPress: () => { toggleTheme(); } },
+                { icon: 'account-cog-outline', label: t('home.linkedAccountsTitle'), onPress: () => { setMenuOpen(false); setLinkedAccountsOpen(true); } },
+                { icon: 'help-circle-outline', label: t('home.sideMenuSupport', { defaultValue: 'Support & Feedback' }), onPress: () => { setMenuOpen(false); setNotice('Support & Feedback — coming soon'); } },
+                { icon: 'link-variant', label: t('home.sideMenuUsefulLinks', { defaultValue: 'Useful links' }), onPress: () => { setMenuOpen(false); setNotice('Useful links — coming soon'); } },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  style={[styles.sideMenuItem, { borderColor: c.border }]}
+                  activeOpacity={0.75}
+                  onPress={item.onPress}
+                >
+                  <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
+                  <Text style={[styles.sideMenuItemText, { color: c.textPrimary }]}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+
+              {/* Language picker */}
+              <View style={[styles.sideMenuLanguageWrap, { borderTopColor: c.border }]}>
+                <Text style={[styles.sideMenuLabel, { color: c.textMuted }]}>{t('language.select')}</Text>
                 <LanguagePicker />
               </View>
+
+              {/* Logout */}
+              <TouchableOpacity
+                style={[styles.sideMenuLogout, { borderColor: c.border }]}
+                activeOpacity={0.75}
+                onPress={() => { setMenuOpen(false); onLogout(); }}
+              >
+                <MaterialCommunityIcons name="logout" size={18} color={c.logoutText} />
+                <Text style={[styles.sideMenuItemText, { color: c.logoutText }]}>
+                  {t('auth.signOut')}
+                </Text>
+              </TouchableOpacity>
+
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={settingsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSettingsOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuBackdrop}
+          activeOpacity={1}
+          onPress={() => setSettingsOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={[styles.settingsModalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {t('home.sideMenuSettings', { defaultValue: 'Settings' })}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={() => setSettingsOpen(false)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => void handleToggleAutoPlayMedia()}
+                style={[styles.settingsToggleRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              >
+                <View style={styles.settingsToggleMeta}>
+                  <Text style={[styles.settingsToggleTitle, { color: c.textPrimary }]}>
+                    {t('home.settingsAutoplayMediaTitle', { defaultValue: 'Auto-play audio/video' })}
+                  </Text>
+                  <Text style={[styles.settingsToggleSubtitle, { color: c.textMuted }]}>
+                    {t('home.settingsAutoplayMediaSubtitle', {
+                      defaultValue: 'Automatically play videos in your feed.',
+                    })}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.settingsTogglePill,
+                    {
+                      backgroundColor: autoPlayMedia ? c.primary : (isDark ? '#2A3342' : '#D6DEEA'),
+                      borderColor: autoPlayMedia ? c.primary : (isDark ? '#4A5A73' : '#B4C1D3'),
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.settingsToggleKnob,
+                      {
+                        backgroundColor: autoPlayMedia ? '#ffffff' : (isDark ? '#9FB0C8' : '#5F708B'),
+                      },
+                      autoPlayMedia ? styles.settingsToggleKnobOn : styles.settingsToggleKnobOff,
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -3650,68 +4707,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </TouchableOpacity>
       </Modal>
 
-      <Modal
-        visible={profileMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setProfileMenuOpen(false)}
-      >
-        <TouchableOpacity
-          style={styles.profileMenuBackdrop}
-          activeOpacity={1}
-          onPress={() => setProfileMenuOpen(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View
-              style={[
-                styles.profileMenuCard,
-                { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-            >
-              <View style={[styles.profileMenuHeader, { borderBottomColor: c.border }]}>
-                <View style={[styles.profileMenuAvatar, { backgroundColor: c.primary }]}>
-                  <Text style={styles.topNavProfileText}>
-                    {(user?.username?.[0] || 'U').toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.profileMenuHeaderText}>
-                  <Text style={[styles.profileMenuTitle, { color: c.textPrimary }]}>
-                    {user?.username || t('home.profileMenuTitle')}
-                  </Text>
-                  <Text style={[styles.profileMenuSubtitle, { color: c.textMuted }]}>
-                    {t('home.profileMenuTitle')}
-                  </Text>
-                </View>
-              </View>
+      <InviteDrawer
+        visible={inviteDrawerOpen}
+        token={token}
+        inviterName={user?.profile?.name || user?.username}
+        onClose={() => setInviteDrawerOpen(false)}
+      />
 
-              <TouchableOpacity
-                style={[styles.profileMenuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                activeOpacity={0.85}
-                onPress={handleProfileComingSoon}
-              >
-                <MaterialCommunityIcons name="account-outline" size={18} color={c.textSecondary} />
-                <Text style={[styles.profileMenuItemText, { color: c.textSecondary }]}>
-                  {t('home.viewProfileAction')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.profileMenuItem, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setProfileMenuOpen(false);
-                  onLogout();
-                }}
-              >
-                <MaterialCommunityIcons name="logout" size={18} color={c.logoutText} />
-                <Text style={[styles.profileMenuItemText, { color: c.logoutText }]}>
-                  {t('auth.signOut')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
 
       <Modal
         visible={externalLinkModalOpen}
@@ -3844,6 +4846,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                     onChangeText={(value) => {
                       composerTextRef.current = value;
                       setComposerTextLength(value.length);
+                      void refreshComposerLinkPreview(value);
                       if (composerPostType === 'LP') {
                         setComposerPostType('P');
                       }
@@ -3890,6 +4893,51 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                       </Text>
                     </View>
                   </View>
+
+                  {!composerVideo && composerImages.length === 0 && composerTextLength > 0 ? (
+                    <View style={[styles.postComposerLinkPreviewWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                      {composerLinkPreviewLoading ? (
+                        <View style={styles.postComposerLinkPreviewLoading}>
+                          <ActivityIndicator size="small" color={c.primary} />
+                          <Text style={[styles.postComposerLinkPreviewLoadingText, { color: c.textMuted }]}>
+                            {t('home.postComposerLinkPreviewLoading', { defaultValue: 'Loading link preview...' })}
+                          </Text>
+                        </View>
+                      ) : composerLinkPreview ? (
+                        <TouchableOpacity
+                          style={styles.postComposerLinkPreviewCard}
+                          activeOpacity={0.9}
+                          onPress={() => openLink(composerLinkPreview.url)}
+                        >
+                          {composerLinkPreview.imageUrl ? (
+                            <Image
+                              source={{ uri: composerLinkPreview.imageUrl }}
+                              style={styles.postComposerLinkPreviewImage}
+                              resizeMode="cover"
+                            />
+                          ) : null}
+                          <View style={styles.postComposerLinkPreviewMeta}>
+                            {composerLinkPreview.siteName ? (
+                              <Text numberOfLines={1} style={[styles.postComposerLinkPreviewSite, { color: c.textMuted }]}>
+                                {composerLinkPreview.siteName}
+                              </Text>
+                            ) : null}
+                            <Text numberOfLines={2} style={[styles.postComposerLinkPreviewTitle, { color: c.textPrimary }]}>
+                              {composerLinkPreview.title}
+                            </Text>
+                            {composerLinkPreview.description ? (
+                              <Text numberOfLines={2} style={[styles.postComposerLinkPreviewDescription, { color: c.textSecondary }]}>
+                                {composerLinkPreview.description}
+                              </Text>
+                            ) : null}
+                            <Text numberOfLines={1} style={[styles.postComposerLinkPreviewUrl, { color: c.textLink }]}>
+                              {composerLinkPreview.url}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   {composerVideo ? (
                     <View style={[styles.postComposerPreviewWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
@@ -4259,6 +5307,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         getPostText={getPostText}
         getPostReactionCount={getPostReactionCount}
         getPostCommentsCount={getPostCommentsCount}
+        initialMediaTimeSec={postDetailInitialMediaTimeSec}
+        onConsumeInitialMediaTime={() => setPostDetailInitialMediaTimeSec(null)}
         onClose={closePostDetail}
         onLoadReactionList={loadReactionListInline}
         onEnsureReactionGroups={ensureReactionGroups}
@@ -4287,9 +5337,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       <LongPostDrawer
         visible={longPostDrawerOpen}
         expanded={longPostDrawerExpanded}
+        editorMode={composerLongPostEditorMode}
+        lexicalHtml={composerLongPostLexicalHtml}
+        lexicalResetKey={composerLongPostLexicalResetKey}
+        title={composerLongPostTitle}
         blocks={composerLongPostBlocks}
+        onUploadImageFiles={uploadLongPostBlockImages}
+        onNotify={(message) => {
+          setNotice(message);
+          showToast(message, { type: 'error' });
+        }}
         draftExpiryDays={composerDraftExpiryDays}
         draftSaving={composerDraftSaving}
+        mediaCount={composerLongPostMediaCount}
+        maxImages={LONG_POST_MAX_IMAGES}
         draftSavedAtLabel={
           composerDraftSavedAt
             ? t('home.longPostDraftSavedAt', {
@@ -4302,35 +5363,50 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           setComposerLongPostBlocks(value);
           setComposerPostType('LP');
         }}
+        onChangeEditorMode={(mode) => {
+          if (
+            mode === 'lexical' &&
+            !composerLongPostLexicalHtml.trim()
+          ) {
+            const bootstrapBlocks = composeLongPostBlocksWithTitle(composerLongPostTitle, composerLongPostBlocks);
+            const bootstrapHtml = buildLongPostHtmlFromBlocks(bootstrapBlocks);
+            if (bootstrapHtml.trim()) {
+              setComposerLongPostLexicalHtml(bootstrapHtml);
+            }
+          }
+          setComposerLongPostEditorMode(mode);
+          setComposerPostType('LP');
+          setComposerLongPostLexicalResetKey((prev) => prev + 1);
+        }}
+        onChangeLexicalHtml={(value) => {
+          const previousUrls = new Set(
+            extractImageUrlsFromLongPostHtml(composerLongPostLexicalHtml).map(canonicalizeMediaUrl).filter(Boolean)
+          );
+          const nextUrls = new Set(
+            extractImageUrlsFromLongPostHtml(value).map(canonicalizeMediaUrl).filter(Boolean)
+          );
+          const removed = Array.from(previousUrls).filter((url) => !nextUrls.has(url));
+          setComposerLongPostLexicalHtml(value);
+          setComposerPostType('LP');
+          if (removed.length > 0) {
+            void syncRemovedLongPostMedia(removed);
+          }
+        }}
+        onChangeTitle={(value) => {
+          setComposerLongPostTitle(value);
+          setComposerPostType('LP');
+        }}
         onChangeDraftExpiryDays={setComposerDraftExpiryDays}
         onSaveDraft={() => {
           void saveLongPostDraft(true);
         }}
+        onPreview={openComposerLongPostPreview}
         onOpenDrafts={openLongPostDraftsDrawer}
         onClose={() => setLongPostDrawerOpen(false)}
         onApply={() => {
           void openComposerDestinationFromLongPost();
         }}
         onToggleExpanded={() => setLongPostDrawerExpanded((prev) => !prev)}
-      />
-
-      <LongPostDrawer
-        visible={longPostEditDrawerOpen}
-        expanded={longPostEditDrawerExpanded}
-        blocks={longPostEditBlocks}
-        draftExpiryDays={0}
-        onChangeBlocks={setLongPostEditBlocks}
-        onChangeDraftExpiryDays={() => {}}
-        onSaveDraft={() => {}}
-        onOpenDrafts={() => {}}
-        errorMessage={longPostEditError}
-        onClose={() => {
-          setLongPostEditDrawerOpen(false);
-          setEditingLongPost(null);
-          setLongPostEditError('');
-        }}
-        onApply={() => { setLongPostEditError(''); void saveLongPostEdit(); }}
-        onToggleExpanded={() => setLongPostEditDrawerExpanded((prev) => !prev)}
       />
 
       <Modal
@@ -4407,15 +5483,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                           style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.surface }]}
                           activeOpacity={0.85}
                           disabled={composerDraftDeleteUuid === draft.uuid}
-                          onPress={() => void deleteLongPostDraft(draft.uuid)}
+                          onPress={() => requestDeleteLongPostDraft(draft.uuid)}
                         >
-                          <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
-                            {t('home.deleteAction', { defaultValue: 'Delete' })}
-                          </Text>
+                          {composerDraftDeleteUuid === draft.uuid ? (
+                            <ActivityIndicator color={c.textSecondary} size="small" />
+                          ) : (
+                            <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                              {t('home.deleteAction', { defaultValue: 'Delete' })}
+                            </Text>
+                          )}
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
                           activeOpacity={0.85}
+                          disabled={composerDraftDeleteUuid === draft.uuid}
                           onPress={() => void resumeLongPostDraft(draft)}
                         >
                           <Text style={styles.externalLinkContinueButtonText}>
@@ -4437,8 +5518,147 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         </TouchableOpacity>
       </Modal>
 
+      <LongPostDrawer
+        visible={longPostEditDrawerOpen}
+        expanded={longPostEditDrawerExpanded}
+        title={longPostEditTitle}
+        blocks={longPostEditBlocks}
+        draftExpiryDays={0}
+        onChangeTitle={setLongPostEditTitle}
+        onChangeBlocks={setLongPostEditBlocks}
+        onChangeDraftExpiryDays={() => {}}
+        onSaveDraft={() => {}}
+        onPreview={openEditLongPostPreview}
+        onOpenDrafts={() => {}}
+        errorMessage={longPostEditError}
+        onClose={() => {
+          setLongPostEditDrawerOpen(false);
+          setEditingLongPost(null);
+          setLongPostEditTitle('');
+          setLongPostEditError('');
+        }}
+        onApply={() => { setLongPostEditError(''); void saveLongPostEdit(); }}
+        onToggleExpanded={() => setLongPostEditDrawerExpanded((prev) => !prev)}
+      />
+
       <Modal
-        visible={!!reactionPickerPost}
+        visible={longPostPreviewOpen && !!longPostPreviewPost}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLongPostPreviewOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.postComposerModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setLongPostPreviewOpen(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.postComposerModalCard,
+                {
+                  backgroundColor: c.surface,
+                  borderColor: c.border,
+                  width: Math.min(760, composerDrawerWidth),
+                },
+              ]}
+            >
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {t('home.longPostPreviewTitle', { defaultValue: 'Feed Preview' })}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={() => setLongPostPreviewOpen(false)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                style={styles.postComposerDraftsList}
+                contentContainerStyle={[
+                  styles.postComposerDraftsListContent,
+                  longPostPreviewExpandState.canExpand ? styles.postComposerDraftsListWithFooter : null,
+                ]}
+              >
+                <View pointerEvents="none">
+                  {longPostPreviewPost ? renderPostCard(longPostPreviewPost, 'feed', [], { allowExpandControl: false }) : null}
+                </View>
+              </ScrollView>
+              {longPostPreviewPost && longPostPreviewExpandState.canExpand ? (
+                <View style={[styles.previewExpandFooter, { borderTopColor: c.border, backgroundColor: c.surface }]}>
+                  <TouchableOpacity
+                    style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => toggleExpand(longPostPreviewPost.id)}
+                  >
+                    <Text style={[styles.footerGhostText, { color: c.textSecondary }]}>
+                      {longPostPreviewExpandState.isExpanded
+                        ? t('home.seeLess', { defaultValue: 'See less' })
+                        : t('home.seeMore', { defaultValue: 'See more' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={!!composerDraftDeleteConfirmUuid}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setComposerDraftDeleteConfirmUuid(null)}
+      >
+        <TouchableOpacity
+          style={styles.externalLinkModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setComposerDraftDeleteConfirmUuid(null)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View
+              style={[
+                styles.externalLinkModalCard,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <Text style={[styles.externalLinkModalTitle, { color: c.textPrimary }]}>
+                {t('home.longPostDraftDeleteConfirmTitle', { defaultValue: 'Delete draft?' })}
+              </Text>
+              <Text style={[styles.externalLinkModalBody, { color: c.textSecondary }]}>
+                {t('home.longPostDraftDeleteConfirmBody', {
+                  defaultValue: 'Are you sure you want to delete this draft?',
+                })}
+              </Text>
+              <View style={styles.externalLinkModalActions}>
+                <TouchableOpacity
+                  style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  onPress={() => setComposerDraftDeleteConfirmUuid(null)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                    {t('home.cancelAction', { defaultValue: 'Cancel' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                  onPress={() => void confirmDeleteLongPostDraft()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.externalLinkContinueButtonText}>
+                    {t('home.deleteAction', { defaultValue: 'Delete' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={reactionPickerPostId !== null}
         transparent
         animationType="fade"
         onRequestClose={closeReactionPicker}
@@ -4479,7 +5699,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                               style={[styles.reactionEmojiButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                               activeOpacity={0.85}
                               disabled={reactionActionLoading}
-                              onPress={() => void reactToPostWithEmoji(reactionPickerPost as FeedPost, emoji.id)}
+                              onPress={() => { const p = reactionPickerPostId !== null ? getSourcePost(reactionPickerPostId) : null; if (p) void reactToPostWithEmoji(p, emoji.id); }}
                             >
                               {emoji.image ? (
                                 <Image source={{ uri: emoji.image }} style={styles.reactionEmojiImage} resizeMode="contain" />
@@ -4753,6 +5973,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 myFollowingsHasMore={myFollowingsHasMore}
                 onLoadMoreFollowings={loadMoreMyFollowings}
                 onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onOpenFollowersScreen={() => onNavigate({ screen: 'followers' })}
+                onOpenFollowingScreen={() => onNavigate({ screen: 'following' })}
                 onUpdateProfile={updateMyProfile}
                 onUpdateProfileMedia={updateMyProfileMedia}
                 onNotice={setNotice}
@@ -4808,6 +6030,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onConnect={handleConnect}
                 onUpdateConnection={handleUpdateConnection}
                 onConfirmConnection={handleConfirmConnection}
+                onDeclineConnection={handleDeclineConnection}
                 onDisconnect={handleDisconnect}
                 onAddToList={handleAddToList}
                 onCreateList={handleCreateList}
@@ -4849,6 +6072,46 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               />
             ) : null}
 
+            {displayRoute.screen === 'circles' ? (
+              <CirclesScreen
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'lists' ? (
+              <ListsScreen
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'followers' ? (
+              <FollowPeopleScreen
+                mode="followers"
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'following' ? (
+              <FollowPeopleScreen
+                mode="following"
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+              />
+            ) : null}
+
             {showingMainSearchResults ? (
               <SearchResultsScreen
                 styles={styles}
@@ -4869,7 +6132,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               />
             ) : null}
 
-            {!viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !showingMainSearchResults ? (
+            {!viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
               <FeedScreen
                 styles={styles}
                 c={c}
@@ -4900,19 +6163,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
             </View>
           )}
 
-          {!!notice && (
-            <View
-              style={[
-                styles.noticeBox,
-                { backgroundColor: c.inputBackground, borderColor: c.inputBorder },
-              ]}
-            >
-              <Text style={[styles.noticeText, { color: c.textSecondary }]}>
-                {notice}
-              </Text>
-            </View>
-          )}
-
           </>
         )}
       </ScrollView>
@@ -4935,6 +6185,18 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onNavigateProfile={handleNotificationNavigateProfile}
         onNavigatePost={handleNotificationNavigatePost}
         onNavigateCommunity={handleNotificationNavigateCommunity}
+        onAcceptConnection={async (username) => {
+          await api.confirmConnection(token, username, []);
+          if (profileUser?.username === username) {
+            setProfileUser((prev: any) => prev ? { ...prev, is_connected: true, is_fully_connected: true, is_pending_connection_confirmation: false } : prev);
+          }
+        }}
+        onDeclineConnection={async (username) => {
+          await api.disconnectFromUser(token, username);
+          if (profileUser?.username === username) {
+            setProfileUser((prev: any) => prev ? { ...prev, is_connected: false, is_fully_connected: false, is_pending_connection_confirmation: false, connected_circles: [] } : prev);
+          }
+        }}
       />
     </View>
   );
@@ -5231,6 +6493,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  topNavProfileImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
   },
   topNavProfileText: {
     color: '#fff',
@@ -5347,6 +6615,61 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: 90,
     maxHeight: 280,
+  },
+  postComposerLinkPreviewWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    minHeight: 70,
+  },
+  postComposerLinkPreviewLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 70,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  postComposerLinkPreviewLoadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  postComposerLinkPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 78,
+  },
+  postComposerLinkPreviewImage: {
+    width: 108,
+    minWidth: 108,
+    height: '100%',
+  },
+  postComposerLinkPreviewMeta: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  postComposerLinkPreviewSite: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  postComposerLinkPreviewTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  postComposerLinkPreviewDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  postComposerLinkPreviewUrl: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   postComposerPreviewImage: {
     width: '100%',
@@ -5546,6 +6869,27 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     gap: 8,
   },
+  postComposerDraftsListWithFooter: {
+    paddingBottom: 16,
+  },
+  previewExpandFooter: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: 'flex-end',
+  },
+  footerButtonGhost: {
+    borderWidth: 1,
+    borderRadius: 999,
+    minHeight: 34,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerGhostText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   postComposerDraftItem: {
     borderWidth: 1,
     borderRadius: 12,
@@ -5714,78 +7058,108 @@ const styles = StyleSheet.create({
   },
   profileMenuBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.22)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
-    paddingTop: 70,
-    paddingRight: 16,
   },
-  profileMenuCard: {
-    width: 270,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
+  // ── Side menu (consolidated profile + settings menu) ──────────────────────
+  sideMenuCard: {
+    width: 300,
+    minHeight: '100%',
+    borderLeftWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 56,
+    paddingBottom: 32,
+    gap: 2,
   },
-  profileMenuHeader: {
+  sideMenuHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingBottom: 10,
+    gap: 12,
+    paddingBottom: 16,
+    marginBottom: 8,
     borderBottomWidth: 1,
   },
-  profileMenuAvatar: {
-    width: 34,
-    height: 34,
+  sideMenuAvatar: {
+    width: 44,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  profileMenuHeaderText: {
-    flex: 1,
+  sideMenuAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
   },
-  profileMenuTitle: {
-    fontSize: 14,
+  sideMenuAvatarLetter: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  sideMenuUsername: {
+    fontSize: 15,
     fontWeight: '700',
   },
-  profileMenuSubtitle: {
+  sideMenuHandle: {
     fontSize: 12,
+    marginTop: 1,
   },
-  profileMenuItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  sideMenuSectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  sideMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 0,
   },
-  profileMenuItemText: {
+  sideMenuItemText: {
     fontSize: 14,
     fontWeight: '600',
   },
-  menuItem: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  menuItemText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  menuLanguageWrap: {
+  sideMenuLanguageWrap: {
     borderTopWidth: 1,
-    paddingTop: 10,
+    paddingTop: 12,
+    marginTop: 8,
     gap: 8,
   },
-  menuLabel: {
+  sideMenuLabel: {
     fontSize: 12,
     fontWeight: '600',
   },
+  sideMenuLogout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  // Legacy — kept so any remaining references don't crash
+  profileMenuCard: { width: 0, height: 0 },
+  profileMenuHeader: {},
+  profileMenuAvatar: { width: 0, height: 0, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
+  profileMenuHeaderText: {},
+  profileMenuTitle: {},
+  profileMenuSubtitle: {},
+  profileMenuItem: {},
+  profileMenuItemText: {},
+  menuItem: {},
+  menuItemText: {},
+  menuLanguageWrap: {},
+  menuLabel: {},
   rootContent: {
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -7051,6 +8425,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: 320,
   },
+  shortPostVideoEmbedWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginVertical: 2,
+  },
+  shortPostLinkPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 86,
+  },
+  shortPostLinkPreviewImage: {
+    width: 132,
+    minWidth: 132,
+    height: '100%',
+  },
+  shortPostLinkPreviewMeta: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  shortPostLinkPreviewSite: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  shortPostLinkPreviewTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginBottom: 5,
+  },
+  shortPostLinkPreviewDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  shortPostLinkPreviewUrl: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   postInlineEditWrap: {
     marginBottom: 10,
     borderWidth: 1,
@@ -7446,6 +8867,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
+  commentReactionBubbleRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  commentReactionChipGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
   commentReactionChip: {
     borderWidth: 1,
     borderRadius: 999,
@@ -7462,6 +8894,10 @@ const styles = StyleSheet.create({
   commentReactionCount: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  commentReactionTotal: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   commentRepliesWrap: {
     marginLeft: 42,
@@ -7549,17 +8985,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 14,
   },
-  noticeBox: {
-    width: '100%',
-    maxWidth: 560,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-  },
-  noticeText: {
-    fontSize: 14,
-  },
   linkedCard: {
     width: '100%',
     maxWidth: 560,
@@ -7576,6 +9001,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     marginBottom: 12,
+  },
+  settingsModalCard: {
+    width: 420,
+    maxWidth: '92%',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  settingsToggleRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsToggleMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  settingsToggleTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  settingsToggleSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  settingsTogglePill: {
+    width: 52,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  settingsToggleKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+  },
+  settingsToggleKnobOn: {
+    transform: [{ translateX: 24 }],
+  },
+  settingsToggleKnobOff: {
+    transform: [{ translateX: 0 }],
   },
   providerList: {
     gap: 10,

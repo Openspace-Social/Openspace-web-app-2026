@@ -17,22 +17,16 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
-import LexicalLongPostEditor from './LexicalLongPostEditor';
 
-export type LongPostBlockType = 'paragraph' | 'heading' | 'quote' | 'image' | 'embed' | 'table';
-export type LongPostEditorMode = 'blocks' | 'lexical';
+export type LongPostBlockType = 'paragraph' | 'heading' | 'quote' | 'image' | 'embed';
 
 export type LongPostBlock = {
   id: string;
   type: LongPostBlockType;
-  position?: number;
   text?: string;
   level?: 1 | 2 | 3;
   url?: string;
   caption?: string;
-  align?: 'left' | 'center' | 'right';
-  width?: number;
-  tableHtml?: string;
   objectPosition?: string;
   imageFit?: 'cover' | 'contain';
   imageScale?: number;
@@ -43,24 +37,16 @@ interface LongPostDrawerProps {
   expanded: boolean;
   title: string;
   blocks: LongPostBlock[];
-  editorMode?: LongPostEditorMode;
-  lexicalHtml?: string;
-  lexicalResetKey?: string | number;
   draftExpiryDays: number;
   draftSaving?: boolean;
   draftSavedAtLabel?: string | null;
-  mediaCount?: number;
-  maxImages?: number;
   errorMessage?: string;
   onChangeTitle: (value: string) => void;
   onChangeBlocks: (blocks: LongPostBlock[]) => void;
-  onChangeEditorMode?: (mode: LongPostEditorMode) => void;
-  onChangeLexicalHtml?: (html: string) => void;
   onUploadImageFiles?: (files: Array<Blob & { name?: string; type?: string }>) => Promise<string[]>;
   onNotify?: (message: string) => void;
   onChangeDraftExpiryDays: (days: number) => void;
   onSaveDraft: () => void;
-  onPreview?: () => void;
   onOpenDrafts: () => void;
   onClose: () => void;
   onApply: () => void;
@@ -68,7 +54,6 @@ interface LongPostDrawerProps {
 }
 
 const DURATION = 280;
-const LONG_POST_MAX_IMAGES = 5;
 
 const FOCAL_POSITIONS = [
   [{ label: '↖', value: 'left top' }, { label: '↑', value: 'center top' }, { label: '↗', value: 'right top' }],
@@ -99,8 +84,6 @@ function ImageBlockEditor({
   onUploadImageFiles,
   onInsertImagesAfter,
   onNotify,
-  currentImageCount,
-  maxImages = LONG_POST_MAX_IMAGES,
 }: {
   block: LongPostBlock;
   c: any;
@@ -109,8 +92,6 @@ function ImageBlockEditor({
   onUploadImageFiles?: (files: Array<Blob & { name?: string; type?: string }>) => Promise<string[]>;
   onInsertImagesAfter: (urls: string[]) => void;
   onNotify?: (message: string) => void;
-  currentImageCount: number;
-  maxImages?: number;
 }) {
   const [imageError, setImageError] = useState(false);
   const [uploadingSingle, setUploadingSingle] = useState(false);
@@ -143,19 +124,6 @@ function ImageBlockEditor({
         .filter((file) => file.type?.startsWith('image/'))
         .map((file) => file as Blob & { name?: string; type?: string });
       if (!files.length) return;
-      const hasCurrentImage = !!(block.url && block.url.trim());
-      const remainingSlots = Math.max(0, maxImages - currentImageCount + (hasCurrentImage ? 1 : 0));
-      if (remainingSlots <= 0) {
-        onNotify?.(
-          t('home.longPostImageLimitReached', {
-            defaultValue: `You can add up to ${maxImages} images in a long post.`,
-            max: maxImages,
-          })
-        );
-        return;
-      }
-      const limitedFiles = files.slice(0, remainingSlots);
-      if (!limitedFiles.length) return;
 
       if (multiple) {
         setUploadingBatch(true);
@@ -164,7 +132,7 @@ function ImageBlockEditor({
       }
 
       try {
-        const uploadedUrls = await onUploadImageFiles(limitedFiles);
+        const uploadedUrls = await onUploadImageFiles(files);
         if (!uploadedUrls.length) return;
         onUpdate({ url: uploadedUrls[0] });
         setImageError(false);
@@ -386,24 +354,16 @@ export default function LongPostDrawer({
   expanded,
   title,
   blocks,
-  editorMode = 'blocks',
-  lexicalHtml = '',
-  lexicalResetKey,
   onUploadImageFiles,
   onNotify,
   draftExpiryDays,
   draftSaving,
   draftSavedAtLabel,
-  mediaCount = 0,
-  maxImages = LONG_POST_MAX_IMAGES,
   errorMessage,
   onChangeTitle,
   onChangeBlocks,
-  onChangeEditorMode,
-  onChangeLexicalHtml,
   onChangeDraftExpiryDays,
   onSaveDraft,
-  onPreview,
   onOpenDrafts,
   onClose,
   onApply,
@@ -412,7 +372,7 @@ export default function LongPostDrawer({
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
   const drawerWidth = useMemo(() => {
     if (Platform.OS !== 'web') return width;
@@ -424,12 +384,6 @@ export default function LongPostDrawer({
   const animatedDrawerWidth = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const wasVisibleRef = useRef(visible);
-  const [lexicalHeightExpanded, setLexicalHeightExpanded] = useState(false);
-  const isLexicalFocusMode = editorMode === 'lexical' && lexicalHeightExpanded;
-  const longPostImageCount = useMemo(
-    () => blocks.filter((block) => block.type === 'image' && !!(block.url || '').trim()).length,
-    [blocks]
-  );
 
   useEffect(() => {
     if (!visible) {
@@ -479,33 +433,12 @@ export default function LongPostDrawer({
     wasVisibleRef.current = visible;
   }, [visible, drawerWidth, translateX, backdropOpacity]);
 
-  useEffect(() => {
-    if (!visible) {
-      setLexicalHeightExpanded(false);
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    if (editorMode !== 'lexical' && lexicalHeightExpanded) {
-      setLexicalHeightExpanded(false);
-    }
-  }, [editorMode, lexicalHeightExpanded]);
-
   function ensureAtLeastOneBlock(next: LongPostBlock[]) {
     if (next.length > 0) return next;
     return [newBlock('heading')];
   }
 
   function addBlock(type: LongPostBlockType, index?: number) {
-    if (type === 'image' && longPostImageCount >= maxImages) {
-      onNotify?.(
-        t('home.longPostImageLimitReached', {
-          defaultValue: `You can add up to ${maxImages} images in a long post.`,
-          max: maxImages,
-        })
-      );
-      return;
-    }
     const block = newBlock(type);
     if (typeof index === 'number') {
       const next = [...blocks];
@@ -528,15 +461,6 @@ export default function LongPostDrawer({
   function duplicateBlock(id: string) {
     const idx = blocks.findIndex((block) => block.id === id);
     if (idx < 0) return;
-    if (blocks[idx].type === 'image' && longPostImageCount >= maxImages) {
-      onNotify?.(
-        t('home.longPostImageLimitReached', {
-          defaultValue: `You can add up to ${maxImages} images in a long post.`,
-          max: maxImages,
-        })
-      );
-      return;
-    }
     const clone = { ...blocks[idx], id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
     const next = [...blocks];
     next.splice(idx + 1, 0, clone);
@@ -558,18 +482,7 @@ export default function LongPostDrawer({
     if (!urls.length) return;
     const idx = blocks.findIndex((block) => block.id === blockId);
     if (idx < 0) return;
-    const remaining = Math.max(0, maxImages - longPostImageCount);
-    if (remaining <= 0) {
-      onNotify?.(
-        t('home.longPostImageLimitReached', {
-          defaultValue: `You can add up to ${maxImages} images in a long post.`,
-          max: maxImages,
-        })
-      );
-      return;
-    }
-    const limitedUrls = urls.slice(0, remaining);
-    const imageBlocks: LongPostBlock[] = limitedUrls.map((url) => ({
+    const imageBlocks: LongPostBlock[] = urls.map((url) => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type: 'image',
       url,
@@ -590,8 +503,6 @@ export default function LongPostDrawer({
           onUploadImageFiles={onUploadImageFiles}
           onNotify={onNotify}
           onInsertImagesAfter={(urls) => insertImageBlocksAfterId(block.id, urls)}
-          currentImageCount={longPostImageCount}
-          maxImages={maxImages}
         />
       );
     }
@@ -719,25 +630,6 @@ export default function LongPostDrawer({
                     color={c.textSecondary}
                   />
                 </TouchableOpacity>
-                {editorMode === 'lexical' ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.headerIconButton,
-                      {
-                        backgroundColor: lexicalHeightExpanded ? `${c.primary}1A` : c.inputBackground,
-                        borderColor: lexicalHeightExpanded ? c.primary : c.border,
-                      },
-                    ]}
-                    onPress={() => setLexicalHeightExpanded((prev) => !prev)}
-                    activeOpacity={0.85}
-                  >
-                    <MaterialCommunityIcons
-                      name={lexicalHeightExpanded ? 'arrow-collapse-vertical' : 'arrow-expand-vertical'}
-                      size={18}
-                      color={c.textSecondary}
-                    />
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity
                   style={[styles.headerIconButton, { backgroundColor: c.inputBackground, borderColor: c.border }]}
                   onPress={onClose}
@@ -755,166 +647,144 @@ export default function LongPostDrawer({
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator
               >
-                {!isLexicalFocusMode ? (
-                  <>
-                    <View style={[styles.titleCard, { borderColor: c.border, backgroundColor: c.surface }]}>
-                      <Text style={[styles.titleCardLabel, { color: c.textSecondary }]}>
-                        {t('home.longPostTitleLabel', { defaultValue: 'Title' })}
+                <View style={[styles.titleCard, { borderColor: c.border, backgroundColor: c.surface }]}>
+                  <Text style={[styles.titleCardLabel, { color: c.textSecondary }]}>
+                    {t('home.longPostTitleLabel', { defaultValue: 'Title' })}
+                  </Text>
+                  <TextInput
+                    style={[styles.titleInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                    placeholder={t('home.longPostTitlePlaceholder', { defaultValue: 'Write post title...' })}
+                    placeholderTextColor={c.placeholder}
+                    value={title}
+                    onChangeText={onChangeTitle}
+                  />
+                </View>
+
+                <View style={styles.addRow}>
+                  {(['heading', 'paragraph', 'quote', 'image', 'embed'] as LongPostBlockType[]).map((type) => (
+                    <TouchableOpacity
+                      key={`add-${type}`}
+                      style={[styles.addButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.85}
+                      onPress={() => addBlock(type)}
+                    >
+                      <Text style={[styles.addButtonText, { color: c.textSecondary }]}> 
+                        {type === 'paragraph'
+                          ? t('home.longPostBlockParagraph', { defaultValue: 'Paragraph' })
+                          : type === 'heading'
+                            ? t('home.longPostBlockHeading', { defaultValue: 'Heading' })
+                            : type === 'quote'
+                              ? t('home.longPostBlockQuote', { defaultValue: 'Quote' })
+                              : type === 'image'
+                                ? t('home.longPostBlockImage', { defaultValue: 'Image' })
+                                : t('home.longPostBlockEmbed', { defaultValue: 'Embed' })}
                       </Text>
-                      <TextInput
-                        style={[styles.titleInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        placeholder={t('home.longPostTitlePlaceholder', { defaultValue: 'Write post title...' })}
-                        placeholderTextColor={c.placeholder}
-                        value={title}
-                        onChangeText={onChangeTitle}
-                      />
-                    </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-                  </>
-                ) : null}
-
-                {editorMode === 'blocks' ? (
-                  <>
-                    <View style={styles.addRow}>
-                      {(['heading', 'paragraph', 'quote', 'image', 'embed'] as LongPostBlockType[]).map((type) => (
+                <View style={styles.draftOptionsRow}>
+                  <Text style={[styles.draftOptionsLabel, { color: c.textMuted }]}>
+                    {t('home.longPostDraftExpiryLabel', { defaultValue: 'Draft expiry' })}
+                  </Text>
+                  <View style={styles.draftExpiryChoices}>
+                    {[10, 14, 20].map((days) => {
+                      const selected = draftExpiryDays === days;
+                      return (
                         <TouchableOpacity
-                          key={`add-${type}`}
-                          style={[styles.addButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          key={`draft-expiry-${days}`}
+                          style={[
+                            styles.draftExpiryChoice,
+                            {
+                              borderColor: selected ? c.primary : c.border,
+                              backgroundColor: selected ? `${c.primary}1A` : c.inputBackground,
+                            },
+                          ]}
                           activeOpacity={0.85}
-                          onPress={() => addBlock(type)}
+                          onPress={() => onChangeDraftExpiryDays(days)}
                         >
-                          <Text style={[styles.addButtonText, { color: c.textSecondary }]}> 
-                            {type === 'paragraph'
-                              ? t('home.longPostBlockParagraph', { defaultValue: 'Paragraph' })
-                              : type === 'heading'
-                                ? t('home.longPostBlockHeading', { defaultValue: 'Heading' })
-                                : type === 'quote'
-                                  ? t('home.longPostBlockQuote', { defaultValue: 'Quote' })
-                                  : type === 'image'
-                                    ? t('home.longPostBlockImage', { defaultValue: 'Image' })
-                                    : t('home.longPostBlockEmbed', { defaultValue: 'Embed' })}
+                          <Text style={[styles.draftExpiryChoiceText, { color: selected ? c.primary : c.textSecondary }]}>
+                            {t('home.longPostDraftExpiryDays', { defaultValue: '{{days}} days', days })}
                           </Text>
                         </TouchableOpacity>
-                      ))}
-                    </View>
-                    {blocks.map((block, index) => (
-                      <View key={block.id} style={[styles.blockCard, { borderColor: c.border, backgroundColor: c.surface }]}> 
-                        <View style={styles.blockCardHeader}>
-                          <View style={styles.blockCardTitleWrap}>
-                            <MaterialCommunityIcons name="drag-vertical" size={16} color={c.textMuted} />
-                            <Text style={[styles.blockCardTitle, { color: c.textPrimary }]}> 
-                              {block.type === 'paragraph'
-                                ? t('home.longPostBlockParagraph', { defaultValue: 'Paragraph' })
-                                : block.type === 'heading'
-                                  ? t('home.longPostBlockHeading', { defaultValue: 'Heading' })
-                                  : block.type === 'quote'
-                                    ? t('home.longPostBlockQuote', { defaultValue: 'Quote' })
-                                    : block.type === 'image'
-                                      ? t('home.longPostBlockImage', { defaultValue: 'Image' })
-                                      : t('home.longPostBlockEmbed', { defaultValue: 'Embed' })}
-                            </Text>
-                          </View>
-
-                          <View style={styles.blockCardActions}>
-                            <TouchableOpacity
-                              style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                              onPress={() => moveBlock(block.id, -1)}
-                              activeOpacity={0.85}
-                              disabled={index === 0}
-                            >
-                              <MaterialCommunityIcons name="arrow-up" size={16} color={index === 0 ? c.placeholder : c.textSecondary} />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                              onPress={() => moveBlock(block.id, 1)}
-                              activeOpacity={0.85}
-                              disabled={index === blocks.length - 1}
-                            >
-                              <MaterialCommunityIcons name="arrow-down" size={16} color={index === blocks.length - 1 ? c.placeholder : c.textSecondary} />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                              onPress={() => duplicateBlock(block.id)}
-                              activeOpacity={0.85}
-                            >
-                              <MaterialCommunityIcons name="content-copy" size={16} color={c.textSecondary} />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                              onPress={() => removeBlock(block.id)}
-                              activeOpacity={0.85}
-                            >
-                              <MaterialCommunityIcons name="delete-outline" size={16} color={c.textSecondary} />
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-
-                        {renderBlockEditor(block)}
-
-                        <View style={styles.blockFooter}>
-                          <TouchableOpacity
-                            style={[styles.insertAfterButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                            onPress={() => addBlock('paragraph', index)}
-                            activeOpacity={0.85}
-                          >
-                            <MaterialCommunityIcons name="plus" size={14} color={c.textSecondary} />
-                            <Text style={[styles.insertAfterText, { color: c.textSecondary }]}> 
-                              {t('home.longPostInsertParagraph', { defaultValue: 'Insert paragraph below' })}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-                  </>
-                ) : (
-                  <View
-                    style={[
-                      styles.lexicalWrap,
-                      {
-                        borderColor: c.border,
-                        backgroundColor: c.surface,
-                        minHeight: isLexicalFocusMode ? Math.max(760, height - 220) : undefined,
-                        flex: isLexicalFocusMode ? 1 : undefined,
-                      },
-                    ]}
-                  >
-                    <View style={styles.lexicalMetaRow}>
-                      {!isLexicalFocusMode ? (
-                        <Text style={[styles.lexicalHint, { color: c.textMuted }]}>
-                          {t('home.longPostLexicalHint', {
-                            defaultValue: 'Lexical beta: rich formatting for fast long-form writing.',
-                          })}
-                        </Text>
-                      ) : (
-                        <View />
-                      )}
-                      <View style={styles.lexicalMetaRight}>
-                        {draftSavedAtLabel ? (
-                          <Text style={[styles.draftSavedAtText, { color: c.textMuted }]}>
-                            {draftSavedAtLabel}
-                          </Text>
-                        ) : null}
-                        <Text style={[styles.mediaUsageText, { color: c.textMuted }]}>
-                          {t('home.longPostImageUsage', {
-                            defaultValue: 'Images used: {{count}} / {{max}}',
-                            count: mediaCount,
-                            max: maxImages,
-                          })}
-                        </Text>
-                      </View>
-                    </View>
-                    <LexicalLongPostEditor
-                      key={`lexical-${lexicalResetKey ?? 'default'}`}
-                      value={lexicalHtml}
-                      placeholder={t('home.longPostLexicalPlaceholder', { defaultValue: 'Start writing your long post...' })}
-                      onChange={(html) => onChangeLexicalHtml?.(html)}
-                      onUploadImageFiles={onUploadImageFiles}
-                      expandedHeight={lexicalHeightExpanded}
-                      maxImages={maxImages}
-                      onNotify={onNotify}
-                    />
+                      );
+                    })}
                   </View>
-                )}
+                  {draftSavedAtLabel ? (
+                    <Text style={[styles.draftSavedAtText, { color: c.textMuted }]}>
+                      {draftSavedAtLabel}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {blocks.map((block, index) => (
+                  <View key={block.id} style={[styles.blockCard, { borderColor: c.border, backgroundColor: c.surface }]}> 
+                    <View style={styles.blockCardHeader}>
+                      <View style={styles.blockCardTitleWrap}>
+                        <MaterialCommunityIcons name="drag-vertical" size={16} color={c.textMuted} />
+                        <Text style={[styles.blockCardTitle, { color: c.textPrimary }]}> 
+                          {block.type === 'paragraph'
+                            ? t('home.longPostBlockParagraph', { defaultValue: 'Paragraph' })
+                            : block.type === 'heading'
+                              ? t('home.longPostBlockHeading', { defaultValue: 'Heading' })
+                              : block.type === 'quote'
+                                ? t('home.longPostBlockQuote', { defaultValue: 'Quote' })
+                                : block.type === 'image'
+                                  ? t('home.longPostBlockImage', { defaultValue: 'Image' })
+                                  : t('home.longPostBlockEmbed', { defaultValue: 'Embed' })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.blockCardActions}>
+                        <TouchableOpacity
+                          style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => moveBlock(block.id, -1)}
+                          activeOpacity={0.85}
+                          disabled={index === 0}
+                        >
+                          <MaterialCommunityIcons name="arrow-up" size={16} color={index === 0 ? c.placeholder : c.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => moveBlock(block.id, 1)}
+                          activeOpacity={0.85}
+                          disabled={index === blocks.length - 1}
+                        >
+                          <MaterialCommunityIcons name="arrow-down" size={16} color={index === blocks.length - 1 ? c.placeholder : c.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => duplicateBlock(block.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="content-copy" size={16} color={c.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.blockActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => removeBlock(block.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="delete-outline" size={16} color={c.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {renderBlockEditor(block)}
+
+                    <View style={styles.blockFooter}>
+                      <TouchableOpacity
+                        style={[styles.insertAfterButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        onPress={() => addBlock('paragraph', index)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="plus" size={14} color={c.textSecondary} />
+                        <Text style={[styles.insertAfterText, { color: c.textSecondary }]}> 
+                          {t('home.longPostInsertParagraph', { defaultValue: 'Insert paragraph below' })}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
               </ScrollView>
             </View>
 
@@ -925,83 +795,40 @@ export default function LongPostDrawer({
             )}
 
             <View style={[styles.footer, { borderTopColor: c.border }]}>
-              <View style={styles.footerLeft}>
-                <Text style={[styles.draftOptionsLabel, { color: c.textMuted }]}>
-                  {t('home.longPostDraftExpiryLabel', { defaultValue: 'Draft expiry' })}
+              <TouchableOpacity
+                style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={onClose}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.footerGhostText, { color: c.textSecondary }]}> 
+                  {t('home.cancelAction', { defaultValue: 'Cancel' })}
                 </Text>
-                <View style={styles.draftExpiryChoices}>
-                  {[10, 14, 20].map((days) => {
-                    const selected = draftExpiryDays === days;
-                    return (
-                      <TouchableOpacity
-                        key={`draft-expiry-footer-${days}`}
-                        style={[
-                          styles.draftExpiryChoice,
-                          {
-                            borderColor: selected ? c.primary : c.border,
-                            backgroundColor: selected ? `${c.primary}1A` : c.inputBackground,
-                          },
-                        ]}
-                        activeOpacity={0.85}
-                        onPress={() => onChangeDraftExpiryDays(days)}
-                      >
-                        <Text style={[styles.draftExpiryChoiceText, { color: selected ? c.primary : c.textSecondary }]}>
-                          {t('home.longPostDraftExpiryDays', { defaultValue: '{{days}} days', days })}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <View style={styles.footerMetaRow}>
-                  <View />
-                </View>
-              </View>
-              <View style={styles.footerRight}>
-                <TouchableOpacity
-                  style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                  onPress={onClose}
-                  activeOpacity={0.85}
-                >
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={onSaveDraft}
+                activeOpacity={0.85}
+                disabled={!!draftSaving}
+              >
+                {draftSaving ? (
                   <Text style={[styles.footerGhostText, { color: c.textSecondary }]}>
-                    {t('home.cancelAction', { defaultValue: 'Cancel' })}
+                    {t('home.savingAction', { defaultValue: 'Saving...' })}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                  onPress={onPreview}
-                  activeOpacity={0.85}
-                  disabled={!onPreview}
-                >
+                ) : (
                   <Text style={[styles.footerGhostText, { color: c.textSecondary }]}>
-                    {t('home.previewAction', { defaultValue: 'Preview' })}
+                    {t('home.postComposerDraftAction', { defaultValue: 'Save as Draft' })}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.footerButtonGhost, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                  onPress={onSaveDraft}
-                  activeOpacity={0.85}
-                  disabled={!!draftSaving}
-                >
-                  {draftSaving ? (
-                    <Text style={[styles.footerGhostText, { color: c.textSecondary }]}>
-                      {t('home.savingAction', { defaultValue: 'Saving...' })}
-                    </Text>
-                  ) : (
-                    <Text style={[styles.footerGhostText, { color: c.textSecondary }]}>
-                      {t('home.postComposerDraftAction', { defaultValue: 'Save as Draft' })}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.footerButtonPrimary, { backgroundColor: c.primary }]}
-                  onPress={onApply}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.footerPrimaryText}>
-                    {t('home.longPostSaveAndPublish', { defaultValue: 'Save and Publish' })}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.footerButtonPrimary, { backgroundColor: c.primary }]}
+                onPress={onApply}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.footerPrimaryText}> 
+                  {t('home.longPostSaveAndPublish', { defaultValue: 'Save and Publish' })}
+                </Text>
+              </TouchableOpacity>
             </View>
           </SafeAreaView>
         </Animated.View>
@@ -1069,15 +896,14 @@ const styles = StyleSheet.create({
   editorWrap: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   blockScroll: {
     flex: 1,
   },
   blockScrollContent: {
-    flexGrow: 1,
-    paddingBottom: 16,
-    gap: 8,
+    paddingBottom: 20,
+    gap: 12,
   },
   titleCard: {
     borderWidth: 1,
@@ -1103,6 +929,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  draftOptionsRow: {
+    gap: 8,
+    marginTop: 2,
+  },
   draftOptionsLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -1115,21 +945,15 @@ const styles = StyleSheet.create({
   draftExpiryChoice: {
     borderWidth: 1,
     borderRadius: 999,
-    minHeight: 42,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   draftExpiryChoiceText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
   draftSavedAtText: {
     fontSize: 12,
-  },
-  mediaUsageText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   addButton: {
     borderWidth: 1,
@@ -1148,27 +972,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     gap: 10,
-  },
-  lexicalWrap: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    gap: 10,
-  },
-  lexicalMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  lexicalMetaRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  lexicalHint: {
-    fontSize: 13,
-    flexShrink: 1,
   },
   blockCardHeader: {
     flexDirection: 'row',
@@ -1367,24 +1170,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  footerLeft: {
-    flexShrink: 1,
-    gap: 6,
-    minWidth: 260,
-  },
-  footerMetaRow: {
-    minHeight: 0,
-  },
-  footerRight: {
-    flexDirection: 'row',
     justifyContent: 'flex-end',
-    alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 10,
   },
   footerButtonGhost: {

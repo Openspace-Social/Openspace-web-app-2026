@@ -1,0 +1,16 @@
+declare module '@lexical/react/LexicalComposer';
+declare module '@lexical/react/LexicalRichTextPlugin';
+declare module '@lexical/react/LexicalContentEditable';
+declare module '@lexical/react/LexicalHistoryPlugin';
+declare module '@lexical/react/LexicalOnChangePlugin';
+declare module '@lexical/react/LexicalListPlugin';
+declare module '@lexical/react/LexicalLinkPlugin';
+declare module '@lexical/react/LexicalErrorBoundary';
+declare module '@lexical/react/LexicalComposerContext';
+declare module '@lexical/react/useLexicalNodeSelection';
+declare module '@lexical/html';
+declare module '@lexical/selection';
+declare module '@lexical/rich-text';
+declare module '@lexical/link';
+declare module '@lexical/list';
+declare module 'lexical';

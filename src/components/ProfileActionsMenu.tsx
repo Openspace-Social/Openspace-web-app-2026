@@ -17,6 +17,42 @@ import { CircleResult, EmojiGroup, ListResult, ModerationCategory } from '../api
 
 type Panel = 'main' | 'lists' | 'circles' | 'report';
 
+// Normalise an API label the same way HomeScreen does, then map to i18n key
+function normalizeCatLabel(value?: string) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function resolveCategoryI18nKey(cat: { name: string; title: string }): string | null {
+  const n = normalizeCatLabel(cat.name);
+  const ti = normalizeCatLabel(cat.title);
+  const match = (s: string) => n.includes(s) || ti.includes(s);
+
+  if (match('spam')) return 'spam';
+  if (match('copyright') || match('trademark')) return 'copyright';
+  if (match('platform abuse') || match('abuse')) return 'abuse';
+  if (match('pornograph')) return 'pornography';
+  if (match('guideline')) return 'guidelines';
+  if (match('hatred') || match('bullying')) return 'hatred';
+  if (match('self harm')) return 'selfHarm';
+  if (match('violent') || match('gory')) return 'violent';
+  if (match('child') || match('csam') || match('exploitation')) return 'csam';
+  if (match('illegal') || match('drug')) return 'illegal';
+  if (match('deceptive')) return 'deceptive';
+  if (match('other')) return 'other';
+  return null;
+}
+
+function resolveCategoryTitle(cat: { name: string; title: string }, t: (k: string, o?: any) => string): string {
+  const key = resolveCategoryI18nKey(cat);
+  return key ? t(`home.reportCategory.${key}.title`) : cat.title || cat.name;
+}
+
+function resolveCategoryDescription(cat: { name: string; title: string; description?: string }, t: (k: string, o?: any) => string): string | undefined {
+  const key = resolveCategoryI18nKey(cat);
+  if (key) return t(`home.reportCategory.${key}.description`);
+  return cat.description;
+}
+
 const PRESET_COLORS = [
   '#3B82F6', '#8B5CF6', '#EC4899', '#EF4444',
   '#F97316', '#EAB308', '#22C55E', '#14B8A6',
@@ -301,20 +337,20 @@ export default function ProfileActionsMenu({
 
   function MainPanel() {
     const connectLabel = isFullyConnected
-      ? 'Update connection circles'
+      ? t('home.profileActionsUpdateCircles')
       : isPendingConfirmation
-        ? 'Confirm connection request'
+        ? t('home.profileActionsConfirmConnection')
         : isConnected
-          ? 'Connection pending…'
-          : 'Connect';
+          ? t('home.profileActionsConnectionPending')
+          : t('home.profileActionsConnect');
 
     const connectSublabel = isFullyConnected
-      ? 'Change which circles they are in'
+      ? t('home.profileActionsUpdateCirclesSub')
       : isPendingConfirmation
-        ? 'They want to connect with you'
+        ? t('home.profileActionsConfirmConnectionSub')
         : isConnected
-          ? 'Waiting for them to confirm'
-          : 'Grant access to your circle posts';
+          ? t('home.profileActionsConnectionPendingSub')
+          : t('home.profileActionsConnectSub');
 
     const connectIcon = isFullyConnected ? 'account-edit' : isPendingConfirmation ? 'account-check' : isConnected ? 'account-clock' : 'account-multiple-plus';
 
@@ -324,8 +360,8 @@ export default function ProfileActionsMenu({
 
         <MenuItem
           icon="playlist-plus"
-          label="Add to list"
-          sublabel="Organise who you follow"
+          label={t('home.profileActionsAddToList')}
+          sublabel={t('home.profileActionsAddToListSub')}
           onPress={() => setPanel('lists')}
         />
 
@@ -345,26 +381,26 @@ export default function ProfileActionsMenu({
               borderBottomWidth: 1, borderBottomColor: c.border,
             }}>
               <Text style={{ flex: 1, fontSize: 14, color: c.textPrimary }}>
-                Disconnect from @{username}?
+                {t('home.profileActionsDisconnectConfirm', { username })}
               </Text>
               <TouchableOpacity
                 onPress={() => { onDisconnect(); onClose(); }}
                 style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: c.errorText }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>Disconnect</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>{t('home.profileActionsDisconnect')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setConfirmDisconnect(false)}
                 style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: c.inputBackground }}
               >
-                <Text style={{ fontSize: 13, color: c.textSecondary }}>Cancel</Text>
+                <Text style={{ fontSize: 13, color: c.textSecondary }}>{t('home.cancelAction')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <MenuItem
               icon="account-remove"
-              label="Disconnect"
-              sublabel="Remove this connection"
+              label={t('home.profileActionsDisconnect')}
+              sublabel={t('home.profileActionsDisconnectSub')}
               danger
               onPress={() => setConfirmDisconnect(true)}
               rightContent={<View />}
@@ -381,26 +417,26 @@ export default function ProfileActionsMenu({
             borderBottomWidth: 1, borderBottomColor: c.border,
           }}>
             <Text style={{ flex: 1, fontSize: 14, color: c.textPrimary }}>
-              Block @{username}?
+              {t('home.profileActionsBlockConfirm', { username })}
             </Text>
             <TouchableOpacity
               onPress={() => { onBlock(); onClose(); }}
               style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: c.errorText }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>Block</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>{t('home.profileActionsBlock')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setConfirmBlock(false)}
               style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: c.inputBackground }}
             >
-              <Text style={{ fontSize: 13, color: c.textSecondary }}>Cancel</Text>
+              <Text style={{ fontSize: 13, color: c.textSecondary }}>{t('home.cancelAction')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <MenuItem
             icon="block-helper"
-            label="Block user"
-            sublabel="They won't be able to interact with you"
+            label={t('home.profileActionsBlockUser')}
+            sublabel={t('home.profileActionsBlockUserSub')}
             danger
             onPress={() => setConfirmBlock(true)}
             rightContent={<View />}
@@ -409,8 +445,8 @@ export default function ProfileActionsMenu({
 
         <MenuItem
           icon="flag-outline"
-          label="Report user"
-          sublabel="Report inappropriate behaviour"
+          label={t('home.profileActionsReportUser')}
+          sublabel={t('home.profileActionsReportUserSub')}
           danger
           onPress={() => setPanel('report')}
         />
@@ -421,11 +457,11 @@ export default function ProfileActionsMenu({
   function ListsPanel() {
     return (
       <>
-        <PanelHeader title="Add to list" onBack={() => setPanel('main')} />
+        <PanelHeader title={t('home.profileActionsAddToList')} onBack={() => setPanel('main')} />
         <ScrollView style={{ flex: 1 }}>
           {userLists.length === 0 && !createListMode ? (
             <Text style={{ padding: 20, textAlign: 'center', color: c.textMuted, fontSize: 14 }}>
-              You don't have any lists yet.
+              {t('home.profileActionsListsEmpty')}
             </Text>
           ) : null}
 
@@ -441,7 +477,7 @@ export default function ProfileActionsMenu({
                 <MaterialCommunityIcons name="playlist-check" size={20} color={c.textSecondary} />
                 <Text style={{ flex: 1, fontSize: 15, color: c.textPrimary }}>{list.name}</Text>
                 <Text style={{ fontSize: 12, color: c.textMuted, marginRight: 8 }}>
-                  {list.follows_count} {list.follows_count === 1 ? 'member' : 'members'}
+                  {t('home.profileActionsListMember', { count: list.follows_count })}
                 </Text>
                 {isLoading ? (
                   <ActivityIndicator size="small" color={c.primary} />
@@ -452,7 +488,7 @@ export default function ProfileActionsMenu({
                     onPress={() => handleAddToList(list.id)}
                     style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, backgroundColor: c.primary }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>Add</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>{t('home.profileActionsListAdd')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -464,7 +500,7 @@ export default function ProfileActionsMenu({
               <TextInput
                 value={newListName}
                 onChangeText={setNewListName}
-                placeholder="List name…"
+                placeholder={t('home.profileActionsListNamePlaceholder')}
                 placeholderTextColor={c.textMuted}
                 style={{
                   borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10,
@@ -478,7 +514,7 @@ export default function ProfileActionsMenu({
                 <ActivityIndicator size="small" color={c.primary} />
               ) : emojiGroups.length > 0 ? (
                 <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 12, color: c.textMuted }}>Choose an icon</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>{t('home.profileActionsListChooseIcon')}</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
                     <View style={{ flexDirection: 'row', gap: 6 }}>
                       {emojiGroups.flatMap((g) => g.emojis || []).slice(0, 30).map((emoji) => (
@@ -514,14 +550,14 @@ export default function ProfileActionsMenu({
                 >
                   {createListLoading
                     ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={{ fontSize: 14, fontWeight: '600', color: (!newListName.trim() || !selectedEmojiId) ? c.textMuted : '#fff' }}>Create & add</Text>
+                    : <Text style={{ fontSize: 14, fontWeight: '600', color: (!newListName.trim() || !selectedEmojiId) ? c.textMuted : '#fff' }}>{t('home.profileActionsListCreateAndAdd')}</Text>
                   }
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { setCreateListMode(false); setNewListName(''); }}
                   style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: c.inputBackground }}
                 >
-                  <Text style={{ fontSize: 14, color: c.textSecondary }}>Cancel</Text>
+                  <Text style={{ fontSize: 14, color: c.textSecondary }}>{t('home.cancelAction')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -534,7 +570,7 @@ export default function ProfileActionsMenu({
               }}
             >
               <MaterialCommunityIcons name="plus-circle-outline" size={20} color={c.primary} />
-              <Text style={{ fontSize: 15, color: c.primary, fontWeight: '500' }}>Create new list</Text>
+              <Text style={{ fontSize: 15, color: c.primary, fontWeight: '500' }}>{t('home.profileActionsListCreateNew')}</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -545,12 +581,12 @@ export default function ProfileActionsMenu({
   function CirclesPanel() {
     const isUpdate = isFullyConnected;
     const isConfirm = isPendingConfirmation;
-    const title = isUpdate ? 'Update circles' : isConfirm ? 'Confirm connection' : 'Connect';
+    const title = isUpdate ? t('home.profileActionsCirclesUpdate') : isConfirm ? t('home.profileActionsCirclesConfirm') : t('home.profileActionsConnect');
     const sublabel = isUpdate
-      ? 'Choose which circles to include them in'
+      ? t('home.profileActionsCirclesUpdateSub')
       : isConfirm
-        ? 'Choose which circles to add them to'
-        : 'Choose which circles to include them in';
+        ? t('home.profileActionsCirclesConfirmSub')
+        : t('home.profileActionsCirclesConnectSub');
 
     return (
       <>
@@ -581,7 +617,7 @@ export default function ProfileActionsMenu({
                 }} />
                 <Text style={{ flex: 1, fontSize: 15, color: c.textPrimary }}>{circle.name}</Text>
                 {isConnectionsCircle
-                  ? <Text style={{ fontSize: 12, color: c.textMuted }}>Always included</Text>
+                  ? <Text style={{ fontSize: 12, color: c.textMuted }}>{t('home.profileActionsCircleAlwaysIncluded')}</Text>
                   : selected
                     ? <MaterialCommunityIcons name="checkbox-marked-circle" size={22} color={c.primary} />
                     : <MaterialCommunityIcons name="checkbox-blank-circle-outline" size={22} color={c.textMuted} />
@@ -595,7 +631,7 @@ export default function ProfileActionsMenu({
               <TextInput
                 value={newCircleName}
                 onChangeText={setNewCircleName}
-                placeholder="Circle name…"
+                placeholder={t('home.profileActionsCircleNamePlaceholder')}
                 placeholderTextColor={c.textMuted}
                 style={{
                   borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10,
@@ -629,14 +665,14 @@ export default function ProfileActionsMenu({
                 >
                   {createCircleLoading
                     ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={{ fontSize: 14, fontWeight: '600', color: !newCircleName.trim() ? c.textMuted : '#fff' }}>Create circle</Text>
+                    : <Text style={{ fontSize: 14, fontWeight: '600', color: !newCircleName.trim() ? c.textMuted : '#fff' }}>{t('home.profileActionsCircleCreate')}</Text>
                   }
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { setCreateCircleMode(false); setNewCircleName(''); }}
                   style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: c.inputBackground }}
                 >
-                  <Text style={{ fontSize: 14, color: c.textSecondary }}>Cancel</Text>
+                  <Text style={{ fontSize: 14, color: c.textSecondary }}>{t('home.cancelAction')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -649,7 +685,7 @@ export default function ProfileActionsMenu({
               }}
             >
               <MaterialCommunityIcons name="plus-circle-outline" size={20} color={c.primary} />
-              <Text style={{ fontSize: 15, color: c.primary, fontWeight: '500' }}>Create new circle</Text>
+              <Text style={{ fontSize: 15, color: c.primary, fontWeight: '500' }}>{t('home.profileActionsCircleCreateNew')}</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -666,7 +702,7 @@ export default function ProfileActionsMenu({
             {actionLoading
               ? <ActivityIndicator size="small" color="#fff" />
               : <Text style={{ fontSize: 15, fontWeight: '700', color: selectedCircleIds.length === 0 ? c.textMuted : '#fff' }}>
-                  {isUpdate ? 'Update' : isConfirm ? 'Confirm connection' : 'Send connection request'}
+                  {isUpdate ? t('home.profileActionsCircleUpdate') : isConfirm ? t('home.profileActionsCircleConfirmBtn') : t('home.profileActionsCircleSendRequest')}
                 </Text>
             }
           </TouchableOpacity>
@@ -678,9 +714,9 @@ export default function ProfileActionsMenu({
   function ReportPanel() {
     return (
       <>
-        <PanelHeader title={`Report @${username}`} onBack={() => setPanel('main')} />
+        <PanelHeader title={t('home.profileActionsReportTitle', { username })} onBack={() => setPanel('main')} />
         <Text style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, fontSize: 13, color: c.textMuted }}>
-          Why are you reporting this account?
+          {t('home.profileActionsReportPrompt')}
         </Text>
         <ScrollView style={{ flex: 1 }}>
           {moderationCategories.map((cat) => {
@@ -704,10 +740,10 @@ export default function ProfileActionsMenu({
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: selected ? '600' : '400', color: c.textPrimary }}>
-                    {cat.title || cat.name}
+                    {resolveCategoryTitle(cat, t)}
                   </Text>
-                  {cat.description ? (
-                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }}>{cat.description}</Text>
+                  {resolveCategoryDescription(cat, t) ? (
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }}>{resolveCategoryDescription(cat, t)}</Text>
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -716,12 +752,12 @@ export default function ProfileActionsMenu({
 
           <View style={{ padding: 16 }}>
             <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 6 }}>
-              Additional details (optional)
+              {t('home.profileActionsReportDetailsLabel')}
             </Text>
             <TextInput
               value={reportDescription}
               onChangeText={setReportDescription}
-              placeholder="Describe the issue…"
+              placeholder={t('home.profileActionsReportDetailsPlaceholder')}
               placeholderTextColor={c.textMuted}
               multiline
               numberOfLines={3}
@@ -746,7 +782,7 @@ export default function ProfileActionsMenu({
             }}
           >
             <Text style={{ fontSize: 15, fontWeight: '700', color: !reportCategoryId ? c.textMuted : '#fff' }}>
-              Submit report
+              {t('home.profileActionsReportSubmit')}
             </Text>
           </TouchableOpacity>
         </View>

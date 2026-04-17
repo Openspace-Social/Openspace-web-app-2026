@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -11,6 +12,8 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
+import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
+import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
 type ReactionEmoji = {
   id?: number;
@@ -47,7 +50,29 @@ type LongPostRenderBlock = {
   url?: string;
   caption?: string;
   level?: number;
+  objectPosition?: string;
+  imageFit?: 'cover' | 'contain';
+  imageScale?: number;
 };
+
+type MediaGalleryItem = {
+  key: string;
+  previewUri: string;
+  videoUri?: string;
+  isVideo: boolean;
+};
+
+function looksLikeVideoUrl(value?: string) {
+  if (!value) return false;
+  const clean = value.split('?')[0].toLowerCase();
+  return clean.endsWith('.mp4') || clean.endsWith('.mov') || clean.endsWith('.webm') || clean.endsWith('.m4v');
+}
+
+function looksLikeVideoType(value?: string) {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'video' || normalized === 'v' || normalized.includes('video');
+}
 
 function decodeHtmlEntities(value: string) {
   return value
@@ -84,6 +109,15 @@ function parseLongPostBlocks(value: unknown): LongPostRenderBlock[] {
         url: typeof block.url === 'string' ? block.url : '',
         caption: typeof block.caption === 'string' ? block.caption : '',
         level: typeof block.level === 'number' ? block.level : 2,
+        objectPosition: typeof block.objectPosition === 'string' ? block.objectPosition : undefined,
+        imageFit:
+          block.imageFit === 'contain' || block.imageFit === 'cover'
+            ? (block.imageFit as 'cover' | 'contain')
+            : undefined,
+        imageScale:
+          typeof block.imageScale === 'number' && Number.isFinite(block.imageScale)
+            ? block.imageScale
+            : undefined,
       };
     })
     .filter((block) => {
@@ -92,10 +126,25 @@ function parseLongPostBlocks(value: unknown): LongPostRenderBlock[] {
     });
 }
 
+function getFocalOffset(position?: string) {
+  const map: Record<string, { x: number; y: number }> = {
+    'left top': { x: -1, y: -1 },
+    'center top': { x: 0, y: -1 },
+    'right top': { x: 1, y: -1 },
+    'left center': { x: -1, y: 0 },
+    'center center': { x: 0, y: 0 },
+    'right center': { x: 1, y: 0 },
+    'left bottom': { x: -1, y: 1 },
+    'center bottom': { x: 0, y: 1 },
+    'right bottom': { x: 1, y: 1 },
+  };
+  return map[position || 'center center'] || { x: 0, y: 0 };
+}
+
 function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
   if (!html || !html.trim()) return [];
   const blocks: LongPostRenderBlock[] = [];
-  const pattern = /<(h[1-3]|p|blockquote|img|iframe)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
+  const pattern = /<(h[1-3]|p|blockquote|img|iframe|figure)\b[^>]*>([\s\S]*?)<\/\1>|<(img)\b[^>]*\/?>/gi;
   let match: RegExpExecArray | null = null;
   while ((match = pattern.exec(html)) !== null) {
     const tag = (match[1] || match[3] || '').toLowerCase();
@@ -114,6 +163,36 @@ function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
     if (tag === 'p') {
       const text = decodeHtmlEntities(inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
       if (text) blocks.push({ type: 'paragraph', text });
+      continue;
+    }
+    if (tag === 'figure') {
+      const isLinkEmbed = /\sdata-os-link-embed=(?:"true"|'true')/i.test(raw);
+      if (isLinkEmbed) {
+        const dataUrl =
+          raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[1]
+          || raw.match(/\sdata-url=(?:"([^"]+)"|'([^']+)')/i)?.[2]
+          || '';
+        const anchorUrl =
+          inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[1]
+          || inner.match(/<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>/i)?.[2]
+          || '';
+        const url = decodeHtmlEntities((dataUrl || anchorUrl).trim());
+        if (url) {
+          blocks.push({ type: 'embed', url });
+          continue;
+        }
+      }
+      const iframe = inner.match(/<iframe\b[^>]*\ssrc=(?:"([^"]+)"|'([^']+)')[^>]*>/i);
+      const iframeUrl = (iframe?.[1] || iframe?.[2] || '').trim();
+      if (iframeUrl) {
+        blocks.push({ type: 'embed', url: iframeUrl });
+        continue;
+      }
+      const img = inner.match(/<img\b[^>]*\ssrc=(?:"([^"]+)"|'([^']+)')[^>]*\/?>/i);
+      const imgUrl = (img?.[1] || img?.[2] || '').trim();
+      if (imgUrl) {
+        blocks.push({ type: 'image', url: imgUrl, caption: '' });
+      }
       continue;
     }
     if (tag === 'img') {
@@ -160,6 +239,8 @@ type Props = {
   getPostText: (post: FeedPost) => string;
   getPostReactionCount: (post: FeedPost) => number;
   getPostCommentsCount: (post: FeedPost) => number;
+  initialMediaTimeSec?: number | null;
+  onConsumeInitialMediaTime?: () => void;
   onClose: () => void;
   onLoadReactionList: (post: FeedPost, emoji?: ReactionEmoji) => void | Promise<void>;
   onEnsureReactionGroups: () => Promise<void>;
@@ -212,6 +293,8 @@ export default function PostDetailModal({
   getPostText,
   getPostReactionCount,
   getPostCommentsCount,
+  initialMediaTimeSec,
+  onConsumeInitialMediaTime,
   onClose,
   onLoadReactionList,
   onEnsureReactionGroups,
@@ -241,24 +324,42 @@ export default function PostDetailModal({
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postReactionHostRef = React.useRef<any>(null);
+  const detailVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const creatorAvatar = activePost?.creator?.avatar || activePost?.creator?.profile?.avatar;
   const hasReacted = !!activePost?.reaction?.id || !!activePost?.reaction?.emoji?.id;
-  const mediaGalleryUris = React.useMemo(() => {
+  const mediaGalleryItems = React.useMemo(() => {
     if (!activePost) return [];
-    const urls: string[] = [];
+    const items: MediaGalleryItem[] = [];
+    const seen = new Set<string>();
     if (Array.isArray(activePost.media)) {
       activePost.media
         .slice()
         .sort((a, b) => (a?.order || 0) - (b?.order || 0))
         .forEach((item) => {
-          const uri = item?.thumbnail || item?.image || item?.file;
-          if (uri && !urls.includes(uri)) urls.push(uri);
+          const fileUri = item?.file || '';
+          const thumbnailUri = item?.thumbnail || item?.image || '';
+          const isVideo = looksLikeVideoType(item?.type) || looksLikeVideoUrl(fileUri);
+          const previewUri = (isVideo ? thumbnailUri || fileUri : item?.image || thumbnailUri || fileUri) || '';
+          if (!previewUri) return;
+          const key = `${item?.id || item?.order || previewUri}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          items.push({
+            key,
+            previewUri,
+            videoUri: isVideo ? fileUri || undefined : undefined,
+            isVideo,
+          });
         });
     }
-    if (!urls.length && activePost.media_thumbnail) {
-      urls.push(activePost.media_thumbnail);
+    if (!items.length && activePost.media_thumbnail) {
+      items.push({
+        key: `thumb-${activePost.id}`,
+        previewUri: activePost.media_thumbnail,
+        isVideo: false,
+      });
     }
-    return urls;
+    return items;
   }, [activePost]);
   const longPostBlocks = React.useMemo(() => {
     if (!activePost) return [];
@@ -269,8 +370,99 @@ export default function PostDetailModal({
     return [];
   }, [activePost]);
   const isLongPost = (activePost?.type || '').toUpperCase() === 'LP';
+  const [longEmbedPreviewByUrl, setLongEmbedPreviewByUrl] = React.useState<Record<string, ShortPostLinkPreview>>({});
+  React.useEffect(() => {
+    if (!isLongPost || longPostBlocks.length === 0) return;
+    const urls = Array.from(
+      new Set(
+        longPostBlocks
+          .filter((b) => b.type === 'embed' && !!b.url)
+          .map((b) => (b.url || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const nonVideoUrls = urls.filter((url) => !getSafeExternalVideoEmbedUrl(url));
+    if (nonVideoUrls.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        nonVideoUrls.map(async (url) => {
+          try {
+            const preview = await fetchShortPostLinkPreviewCached(url);
+            return [url, preview] as const;
+          } catch {
+            return [url, { url, title: getUrlHostLabel(url) || url, siteName: getUrlHostLabel(url) }] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      setLongEmbedPreviewByUrl((prev) => {
+        const next = { ...prev };
+        entries.forEach(([url, preview]) => {
+          next[url] = preview;
+        });
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLongPost, longPostBlocks]);
+  const shortPostLinkPreview = React.useMemo(() => {
+    if (!activePost || isLongPost) return null;
+    const firstLink = Array.isArray(activePost.links) && activePost.links.length > 0 ? activePost.links[0] : null;
+    const fromApiUrl = (firstLink?.url || '').trim();
+    const fromTextUrl = extractFirstUrlFromText(activePost.text || '') || '';
+    const url = fromApiUrl || fromTextUrl;
+    if (!url) return null;
+    const title = (firstLink?.title || '').trim() || getUrlHostLabel(url) || url;
+    const description = ((firstLink as any)?.description || '').trim() || undefined;
+    const imageUrl = (firstLink?.image || '').trim() || undefined;
+    const siteName = ((firstLink as any)?.site_name || '').trim() || getUrlHostLabel(url);
+    const embedUrl = getSafeExternalVideoEmbedUrl(url) || undefined;
+    return { url, title, description, imageUrl, siteName, embedUrl, isVideo: !!embedUrl };
+  }, [activePost, isLongPost]);
+  const [resolvedShortLinkPreview, setResolvedShortLinkPreview] = React.useState<any>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!shortPostLinkPreview || shortPostLinkPreview.isVideo) {
+      setResolvedShortLinkPreview(shortPostLinkPreview);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const needsEnrichment =
+      !shortPostLinkPreview.imageUrl ||
+      !shortPostLinkPreview.description ||
+      !shortPostLinkPreview.title ||
+      shortPostLinkPreview.title.toLowerCase() === (shortPostLinkPreview.siteName || '').toLowerCase();
+    if (!needsEnrichment) {
+      setResolvedShortLinkPreview(shortPostLinkPreview);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void fetchShortPostLinkPreviewCached(shortPostLinkPreview.url)
+      .then((enriched) => {
+        if (cancelled) return;
+        setResolvedShortLinkPreview({
+          ...shortPostLinkPreview,
+          title: enriched.title || shortPostLinkPreview.title,
+          description: enriched.description || shortPostLinkPreview.description,
+          imageUrl: enriched.imageUrl || shortPostLinkPreview.imageUrl,
+          siteName: enriched.siteName || shortPostLinkPreview.siteName,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedShortLinkPreview(shortPostLinkPreview);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shortPostLinkPreview]);
   const [activeMediaIndex, setActiveMediaIndex] = React.useState(0);
-  const activeMediaUri = mediaGalleryUris[activeMediaIndex] || activePost?.media_thumbnail;
+  const activeMedia = mediaGalleryItems[activeMediaIndex];
+  const activeMediaUri = activeMedia?.previewUri || activePost?.media_thumbnail;
 
   function formatRelativeTime(value?: string) {
     if (!value) return t('home.justNow');
@@ -336,12 +528,12 @@ export default function PostDetailModal({
   }, [activePost?.id, visible]);
 
   React.useEffect(() => {
-    if (activeMediaIndex < mediaGalleryUris.length) return;
+    if (activeMediaIndex < mediaGalleryItems.length) return;
     setActiveMediaIndex(0);
-  }, [activeMediaIndex, mediaGalleryUris.length]);
+  }, [activeMediaIndex, mediaGalleryItems.length]);
 
   React.useEffect(() => {
-    if (!visible || mediaGalleryUris.length <= 1) return;
+    if (!visible || mediaGalleryItems.length <= 1) return;
     if (typeof document === 'undefined') return;
 
     function isTypingTarget(target: EventTarget | null) {
@@ -356,10 +548,10 @@ export default function PostDetailModal({
       if (isTypingTarget(event.target)) return;
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        setActiveMediaIndex((prev) => (prev <= 0 ? mediaGalleryUris.length - 1 : prev - 1));
+        setActiveMediaIndex((prev) => (prev <= 0 ? mediaGalleryItems.length - 1 : prev - 1));
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        setActiveMediaIndex((prev) => (prev >= mediaGalleryUris.length - 1 ? 0 : prev + 1));
+        setActiveMediaIndex((prev) => (prev >= mediaGalleryItems.length - 1 ? 0 : prev + 1));
       }
     }
 
@@ -367,7 +559,7 @@ export default function PostDetailModal({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [visible, mediaGalleryUris.length]);
+  }, [visible, mediaGalleryItems.length]);
 
   async function togglePostReactionPicker() {
     if (postReactionPickerOpen) {
@@ -474,9 +666,30 @@ export default function PostDetailModal({
             );
           }
           if (block.type === 'image' && block.url) {
+            const imageFit = block.imageFit === 'cover' ? 'cover' : 'contain';
+            const imageScale = typeof block.imageScale === 'number' && Number.isFinite(block.imageScale)
+              ? Math.max(0.8, Math.min(1.6, block.imageScale))
+              : 1;
+            const focal = getFocalOffset(block.objectPosition);
             return (
               <View key={`${postId}-lp-detail-image-${idx}`} style={styles.longPostImageWrap}>
-                <Image source={{ uri: block.url }} style={styles.longPostImage} resizeMode="cover" />
+                <Image
+                  source={{ uri: block.url }}
+                  style={[
+                    styles.longPostImage,
+                    {
+                      transform: [
+                        { scale: imageScale },
+                        { translateX: imageFit === 'cover' ? focal.x * 18 : 0 },
+                        { translateY: imageFit === 'cover' ? focal.y * 18 : 0 },
+                      ],
+                    },
+                    Platform.OS === 'web' && block.objectPosition
+                      ? ({ objectFit: imageFit, objectPosition: block.objectPosition } as any)
+                      : null,
+                  ]}
+                  resizeMode={imageFit}
+                />
                 {block.caption ? (
                   <Text style={[styles.longPostCaption, { color: c.textMuted }]}>{block.caption}</Text>
                 ) : null}
@@ -484,6 +697,63 @@ export default function PostDetailModal({
             );
           }
           if (block.type === 'embed' && block.url) {
+            const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+            if (Platform.OS === 'web' && embedUrl) {
+              const iframeProps: any = {
+                src: embedUrl,
+                title: 'Embedded video',
+                loading: 'lazy',
+                allow:
+                  'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+                allowFullScreen: true,
+                style: {
+                  width: '100%',
+                  height: '100%',
+                  border: '0',
+                  borderRadius: 10,
+                },
+              };
+              return (
+                <View key={`${postId}-lp-detail-embed-${idx}`} style={{ width: '100%', marginVertical: 8 } as any}>
+                  <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                    {React.createElement('iframe', iframeProps)}
+                  </View>
+                </View>
+              );
+            }
+            const preview = longEmbedPreviewByUrl[(block.url || '').trim()];
+            if (preview) {
+              return (
+                <TouchableOpacity
+                  key={`${postId}-lp-detail-embed-${idx}`}
+                  style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  activeOpacity={0.88}
+                  onPress={() => onOpenLink(preview.url)}
+                >
+                  {preview.imageUrl ? (
+                    <Image source={{ uri: preview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+                  ) : null}
+                  <View style={styles.shortPostLinkPreviewMeta}>
+                    {preview.siteName ? (
+                      <Text numberOfLines={1} style={[styles.shortPostLinkPreviewSite, { color: c.textMuted }]}>
+                        {preview.siteName}
+                      </Text>
+                    ) : null}
+                    <Text numberOfLines={2} style={[styles.shortPostLinkPreviewTitle, { color: c.textPrimary }]}>
+                      {preview.title}
+                    </Text>
+                    {preview.description ? (
+                      <Text numberOfLines={2} style={[styles.shortPostLinkPreviewDescription, { color: c.textSecondary }]}>
+                        {preview.description}
+                      </Text>
+                    ) : null}
+                    <Text numberOfLines={1} style={[styles.shortPostLinkPreviewUrl, { color: c.textLink }]}>
+                      {preview.url}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
             return (
               <TouchableOpacity
                 key={`${postId}-lp-detail-embed-${idx}`}
@@ -505,6 +775,58 @@ export default function PostDetailModal({
           );
         })}
       </View>
+    );
+  }
+
+  function renderShortPostLinkPreview() {
+    if (!resolvedShortLinkPreview) return null;
+    if (Platform.OS === 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl) {
+      return (
+        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+          {React.createElement('iframe', {
+            src: resolvedShortLinkPreview.embedUrl,
+            title: resolvedShortLinkPreview.title || 'Embedded video',
+            loading: 'lazy',
+            allow:
+              'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+            allowFullScreen: true,
+            style: {
+              width: '100%',
+              height: '100%',
+              border: '0',
+            },
+          } as any)}
+        </View>
+      );
+    }
+    return (
+      <TouchableOpacity
+        style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+        activeOpacity={0.88}
+        onPress={() => onOpenLink(resolvedShortLinkPreview.url)}
+      >
+        {resolvedShortLinkPreview.imageUrl ? (
+          <Image source={{ uri: resolvedShortLinkPreview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+        ) : null}
+        <View style={styles.shortPostLinkPreviewMeta}>
+          {resolvedShortLinkPreview.siteName ? (
+            <Text numberOfLines={1} style={[styles.shortPostLinkPreviewSite, { color: c.textMuted }]}>
+              {resolvedShortLinkPreview.siteName}
+            </Text>
+          ) : null}
+          <Text numberOfLines={2} style={[styles.shortPostLinkPreviewTitle, { color: c.textPrimary }]}>
+            {resolvedShortLinkPreview.title}
+          </Text>
+          {resolvedShortLinkPreview.description ? (
+            <Text numberOfLines={2} style={[styles.shortPostLinkPreviewDescription, { color: c.textSecondary }]}>
+              {resolvedShortLinkPreview.description}
+            </Text>
+          ) : null}
+          <Text numberOfLines={1} style={[styles.shortPostLinkPreviewUrl, { color: c.textLink }]}>
+            {resolvedShortLinkPreview.url}
+          </Text>
+        </View>
+      </TouchableOpacity>
     );
   }
 
@@ -573,6 +895,42 @@ export default function PostDetailModal({
             ) : (
               <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
             )}
+            {(() => {
+              const activeEntries = (comment.reactions_emoji_counts || []).filter((e) => (e?.count || 0) > 0);
+              if (activeEntries.length === 0) return null;
+              const total = activeEntries.reduce((sum, e) => sum + (e.count || 0), 0);
+              return (
+                <View style={styles.commentReactionBubbleRow}>
+                  <View style={styles.commentReactionChipGroup}>
+                    {activeEntries.map((entry, idx) => {
+                      const isMyReaction = !!entry.emoji?.id && comment.reaction?.emoji?.id === entry.emoji.id;
+                      return (
+                        <TouchableOpacity
+                          key={`detail-comment-reaction-${comment.id}-${entry.emoji?.id || idx}`}
+                          style={[
+                            styles.commentReactionChip,
+                            { borderColor: isMyReaction ? c.primary : c.border, backgroundColor: isMyReaction ? c.surface : c.inputBackground },
+                          ]}
+                          activeOpacity={0.75}
+                          disabled={reactionActionLoading}
+                          onPress={() => { void onReactToComment(postId, comment.id, entry.emoji?.id); }}
+                        >
+                          {entry.emoji?.image ? (
+                            <Image source={{ uri: entry.emoji.image }} style={styles.commentReactionEmojiImage} resizeMode="contain" />
+                          ) : (
+                            <MaterialCommunityIcons name="emoticon-outline" size={12} color={isMyReaction ? c.primary : c.textSecondary} />
+                          )}
+                          <Text style={[styles.commentReactionCount, { color: isMyReaction ? c.primary : c.textSecondary }]}>
+                            {entry.count || 0}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={[styles.commentReactionTotal, { color: c.textMuted }]}>{total}</Text>
+                </View>
+              );
+            })()}
           </View>
         </View>
         <View style={styles.detailCommentMetaRow}>
@@ -601,8 +959,8 @@ export default function PostDetailModal({
                               style={[styles.commentReactionPickerEmojiButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                               activeOpacity={0.85}
                               disabled={reactionActionLoading}
-                              onPress={async () => {
-                                await onReactToComment(postId, comment.id, emoji.id);
+                              onPress={() => {
+                                void onReactToComment(postId, comment.id, emoji.id);
                                 setCommentReactionPickerForId(null);
                               }}
                             >
@@ -992,21 +1350,65 @@ export default function PostDetailModal({
               </TouchableOpacity>
 
               <View style={styles.postDetailMediaWrap}>
-                {activeMediaUri ? (
+                {activeMedia?.isVideo && activeMedia.videoUri ? (
+                  Platform.OS === 'web' ? (
+                    <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                      {React.createElement('video', {
+                        src: activeMedia.videoUri,
+                        poster: activeMediaUri,
+                        ref: (node: HTMLVideoElement | null) => {
+                          detailVideoRef.current = node;
+                        },
+                        onLoadedMetadata: (event: any) => {
+                          const videoEl = (event?.currentTarget || detailVideoRef.current) as HTMLVideoElement | null;
+                          if (!videoEl) return;
+                          if (!Number.isFinite(initialMediaTimeSec || NaN) || (initialMediaTimeSec || 0) <= 0) return;
+                          const duration = Number.isFinite(videoEl.duration) ? videoEl.duration : 0;
+                          const target = duration > 0
+                            ? Math.max(0, Math.min((initialMediaTimeSec as number), Math.max(0, duration - 0.25)))
+                            : Math.max(0, initialMediaTimeSec as number);
+                          try {
+                            videoEl.currentTime = target;
+                          } catch {
+                            // Ignore seek errors from browser timing edge cases.
+                          }
+                          onConsumeInitialMediaTime?.();
+                        },
+                        controls: true,
+                        playsInline: true,
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          maxHeight: '72vh',
+                          backgroundColor: '#000',
+                        },
+                      })}
+                    </View>
+                  ) : (
+                    <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                      {activeMediaUri ? (
+                        <Image source={{ uri: activeMediaUri }} style={styles.postDetailMedia} resizeMode="contain" />
+                      ) : null}
+                      <View style={{ position: 'absolute' }}>
+                        <MaterialCommunityIcons name="play-circle-outline" size={44} color="#fff" />
+                      </View>
+                    </View>
+                  )
+                ) : activeMediaUri ? (
                   <Image source={{ uri: activeMediaUri }} style={styles.postDetailMedia} resizeMode="contain" />
                 ) : (
                   <View style={styles.postDetailMediaFallback}>
                     <Text style={styles.postDetailMediaFallbackText}>{t('home.postMediaUnavailable')}</Text>
                   </View>
                 )}
-                {mediaGalleryUris.length > 1 ? (
+                {mediaGalleryItems.length > 1 ? (
                   <>
                     <TouchableOpacity
                       style={[styles.postDetailMediaNavButton, styles.postDetailMediaNavButtonLeft]}
                       activeOpacity={0.85}
                       onPress={() =>
                         setActiveMediaIndex((prev) =>
-                          prev <= 0 ? mediaGalleryUris.length - 1 : prev - 1
+                          prev <= 0 ? mediaGalleryItems.length - 1 : prev - 1
                         )
                       }
                     >
@@ -1017,7 +1419,7 @@ export default function PostDetailModal({
                       activeOpacity={0.85}
                       onPress={() =>
                         setActiveMediaIndex((prev) =>
-                          prev >= mediaGalleryUris.length - 1 ? 0 : prev + 1
+                          prev >= mediaGalleryItems.length - 1 ? 0 : prev + 1
                         )
                       }
                     >
@@ -1025,7 +1427,7 @@ export default function PostDetailModal({
                     </TouchableOpacity>
                     <View style={styles.postDetailMediaCounter}>
                       <Text style={styles.postDetailMediaCounterText}>
-                        {activeMediaIndex + 1}/{mediaGalleryUris.length}
+                        {activeMediaIndex + 1}/{mediaGalleryItems.length}
                       </Text>
                     </View>
                     <ScrollView
@@ -1033,9 +1435,9 @@ export default function PostDetailModal({
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.postDetailMediaThumbStrip}
                     >
-                      {mediaGalleryUris.map((uri, idx) => (
+                      {mediaGalleryItems.map((mediaItem, idx) => (
                         <TouchableOpacity
-                          key={`post-detail-media-thumb-${activePost.id}-${idx}`}
+                          key={`post-detail-media-thumb-${activePost.id}-${mediaItem.key}`}
                           style={[
                             styles.postDetailMediaThumbButton,
                             idx === activeMediaIndex ? styles.postDetailMediaThumbButtonActive : null,
@@ -1043,7 +1445,22 @@ export default function PostDetailModal({
                           activeOpacity={0.85}
                           onPress={() => setActiveMediaIndex(idx)}
                         >
-                          <Image source={{ uri }} style={styles.postDetailMediaThumbImage} resizeMode="cover" />
+                          <Image source={{ uri: mediaItem.previewUri }} style={styles.postDetailMediaThumbImage} resizeMode="cover" />
+                          {mediaItem.isVideo ? (
+                            <View
+                              style={{
+                                position: 'absolute',
+                                right: 4,
+                                bottom: 4,
+                                backgroundColor: 'rgba(0,0,0,0.65)',
+                                borderRadius: 10,
+                                paddingHorizontal: 4,
+                                paddingVertical: 2,
+                              }}
+                            >
+                              <MaterialCommunityIcons name="play" size={10} color="#fff" />
+                            </View>
+                          ) : null}
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -1077,6 +1494,7 @@ export default function PostDetailModal({
                       [styles.postDetailText, { color: c.textSecondary }]
                     )
                     : null)}
+                {!isLongPost ? renderShortPostLinkPreview() : null}
 
                 <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>
@@ -1144,6 +1562,7 @@ export default function PostDetailModal({
                       [styles.postDetailText, { color: c.textSecondary }]
                     )
                     : null)}
+                {!isLongPost ? renderShortPostLinkPreview() : null}
 
                 <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>

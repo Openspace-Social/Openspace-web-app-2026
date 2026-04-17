@@ -36,6 +36,8 @@ type Props = {
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string) => void;
   onNavigateCommunity: (name: string) => void;
+  onAcceptConnection: (username: string) => Promise<void>;
+  onDeclineConnection: (username: string) => Promise<void>;
 };
 
 export default function NotificationDrawer({
@@ -56,6 +58,8 @@ export default function NotificationDrawer({
   onNavigateProfile,
   onNavigatePost,
   onNavigateCommunity,
+  onAcceptConnection,
+  onDeclineConnection,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(DRAWER_MAX_WIDTH, screenWidth * 0.88);
@@ -130,7 +134,7 @@ export default function NotificationDrawer({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <MaterialCommunityIcons name="bell-outline" size={22} color={c.textPrimary} />
             <Text style={{ fontSize: 18, fontWeight: '700', color: c.textPrimary }}>
-              Notifications
+              {t('home.notificationDrawerTitle')}
               {unreadCount > 0 ? (
                 <Text style={{ color: c.primary }}>{`  ${unreadCount}`}</Text>
               ) : null}
@@ -144,7 +148,7 @@ export default function NotificationDrawer({
                 style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.inputBackground }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '600', color: c.textSecondary }}>
-                  Mark all read
+                  {t('home.notificationMarkAllRead')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -167,10 +171,10 @@ export default function NotificationDrawer({
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 }}>
             <MaterialCommunityIcons name="bell-sleep-outline" size={48} color={c.textMuted} />
             <Text style={{ fontSize: 16, fontWeight: '600', color: c.textMuted, textAlign: 'center' }}>
-              No notifications yet
+              {t('home.notificationEmptyTitle')}
             </Text>
             <Text style={{ fontSize: 14, color: c.textMuted, textAlign: 'center', lineHeight: 20 }}>
-              When someone follows you, reacts to your posts, or mentions you, it will appear here.
+              {t('home.notificationEmptyBody')}
             </Text>
           </View>
         ) : (
@@ -185,11 +189,14 @@ export default function NotificationDrawer({
                 key={notif.id}
                 notif={notif}
                 c={c}
+                t={t}
                 onMarkRead={onMarkRead}
                 onDelete={onDeleteNotification}
                 onNavigateProfile={onNavigateProfile}
                 onNavigatePost={onNavigatePost}
                 onNavigateCommunity={onNavigateCommunity}
+                onAcceptConnection={onAcceptConnection}
+                onDeclineConnection={onDeclineConnection}
               />
             ))}
             {loadingMore && (
@@ -199,10 +206,10 @@ export default function NotificationDrawer({
             )}
             {!hasMore && notifications.length > 0 && (
               <View style={{ paddingVertical: 24, alignItems: 'center', gap: 12 }}>
-                <Text style={{ fontSize: 13, color: c.textMuted }}>You're all caught up</Text>
+                <Text style={{ fontSize: 13, color: c.textMuted }}>{t('home.notificationAllCaughtUp')}</Text>
                 {notifications.length > 3 && (
                   <TouchableOpacity onPress={onDeleteAll} activeOpacity={0.8}>
-                    <Text style={{ fontSize: 13, color: c.errorText }}>Clear all notifications</Text>
+                    <Text style={{ fontSize: 13, color: c.errorText }}>{t('home.notificationClearAll')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -219,23 +226,53 @@ export default function NotificationDrawer({
 type RowProps = {
   notif: AppNotification;
   c: any;
+  t: (key: string, options?: any) => string;
   onMarkRead: (id: number) => void;
   onDelete: (id: number) => void;
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string) => void;
   onNavigateCommunity: (name: string) => void;
+  onAcceptConnection: (username: string) => Promise<void>;
+  onDeclineConnection: (username: string) => Promise<void>;
 };
 
-function NotificationRow({ notif, c, onMarkRead, onDelete, onNavigateProfile, onNavigatePost, onNavigateCommunity }: RowProps) {
+function NotificationRow({ notif, c, t, onMarkRead, onDelete, onNavigateProfile, onNavigatePost, onNavigateCommunity, onAcceptConnection, onDeclineConnection }: RowProps) {
   const obj = notif.content_object as any;
   const { icon, iconColor, actor, actorAvatar, body, postThumbnail, onPress } =
-    resolveNotification(notif.notification_type, obj, c, onNavigateProfile, onNavigatePost, onNavigateCommunity);
+    resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity);
 
   const initial = (actor?.[0] || '?').toUpperCase();
+  const isCR = notif.notification_type === 'CR';
+  const requesterUsername = isCR ? (obj?.connection_requester?.username as string | undefined) : undefined;
+  const [connectionState, setConnectionState] = React.useState<'idle' | 'accepting' | 'declining' | 'accepted' | 'declined'>('idle');
 
   function handlePress() {
     if (!notif.read) onMarkRead(notif.id);
     onPress?.();
+  }
+
+  async function handleAccept() {
+    if (!requesterUsername || connectionState !== 'idle') return;
+    setConnectionState('accepting');
+    try {
+      await onAcceptConnection(requesterUsername);
+      setConnectionState('accepted');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setConnectionState('idle');
+    }
+  }
+
+  async function handleDecline() {
+    if (!requesterUsername || connectionState !== 'idle') return;
+    setConnectionState('declining');
+    try {
+      await onDeclineConnection(requesterUsername);
+      setConnectionState('declined');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setConnectionState('idle');
+    }
   }
 
   return (
@@ -310,8 +347,75 @@ function NotificationRow({ notif, c, onMarkRead, onDelete, onNavigateProfile, on
         </Text>
         {notif.created && (
           <Text style={{ fontSize: 12, color: c.textMuted }}>
-            {formatRelativeTime(notif.created)}
+            {formatRelativeTime(notif.created, t)}
           </Text>
+        )}
+        {isCR && requesterUsername && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {connectionState === 'accepted' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="account-check" size={14} color={c.textSecondary} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textSecondary }}>
+                  {t('home.profileAcceptConnectionAction', { defaultValue: 'Accepted' })}
+                </Text>
+              </View>
+            ) : connectionState === 'declined' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="account-remove-outline" size={14} color={c.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>
+                  {t('home.profileDeclineConnectionAction', { defaultValue: 'Declined' })}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Accept */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={connectionState !== 'idle'}
+                  onPress={() => void handleAccept()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.primary, opacity: connectionState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {connectionState === 'accepting'
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <>
+                        <MaterialCommunityIcons name="account-check" size={14} color="#fff" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>
+                          {t('home.profileAcceptConnectionAction', { defaultValue: 'Accept' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                {/* Decline */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={connectionState !== 'idle'}
+                  onPress={() => void handleDecline()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border, opacity: connectionState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {connectionState === 'declining'
+                    ? <ActivityIndicator size="small" color={c.textSecondary} />
+                    : <>
+                        <MaterialCommunityIcons name="account-remove-outline" size={14} color={c.textSecondary} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                          {t('home.profileDeclineConnectionAction', { defaultValue: 'Decline' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                {/* View Profile */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => { onNavigateProfile(requesterUsername); if (!notif.read) onMarkRead(notif.id); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}
+                >
+                  <MaterialCommunityIcons name="account" size={14} color={c.textSecondary} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                    {t('home.profileViewAction', { defaultValue: 'View Profile' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         )}
       </View>
 
@@ -343,39 +447,43 @@ function resolveNotification(
   type: NotificationType,
   obj: any,
   c: any,
+  t: (key: string, options?: any) => string,
   onNavigateProfile: (u: string) => void,
   onNavigatePost: (id: number, uuid?: string) => void,
   onNavigateCommunity: (name: string) => void,
 ) {
-  const bold = (text: string) => text; // plain text — bold handled via weight in body parts
+  const someone = t('home.notificationSomeone');
 
   switch (type) {
     case 'F': {
       const u = obj?.follower;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'account-plus', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} started following you.`,
+        body: t('home.notificationTypeFollow', { name }),
         postThumbnail: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
     case 'FR': {
       const u = obj?.follow_request?.creator;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'account-clock', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} requested to follow you.`,
+        body: t('home.notificationTypeFollowRequest', { name }),
         postThumbnail: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
     case 'FRA': {
       const u = obj?.follow?.user;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'account-check', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} approved your follow request.`,
+        body: t('home.notificationTypeFollowRequestApproved', { name }),
         postThumbnail: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
@@ -384,10 +492,11 @@ function resolveNotification(
       const r = obj?.post_reaction?.reactor;
       const emoji = obj?.post_reaction?.emoji?.keyword || '❤️';
       const post = obj?.post_reaction?.post;
+      const name = r?.profile?.name || r?.username || someone;
       return {
         icon: 'emoticon-happy-outline', iconColor: '#EC4899',
         actor: r?.username, actorAvatar: r?.profile?.avatar,
-        body: `${r?.profile?.name || r?.username || 'Someone'} reacted with ${emoji} to your post.`,
+        body: t('home.notificationTypePostReaction', { name, emoji }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -396,10 +505,11 @@ function resolveNotification(
       const cmt = obj?.post_comment;
       const cmtr = cmt?.commenter;
       const post = cmt?.post;
+      const name = cmtr?.profile?.name || cmtr?.username || someone;
       return {
         icon: 'comment-outline', iconColor: '#2563EB',
         actor: cmtr?.username, actorAvatar: cmtr?.profile?.avatar,
-        body: `${cmtr?.profile?.name || cmtr?.username || 'Someone'} commented: "${truncate(cmt?.text, 60)}"`,
+        body: t('home.notificationTypePostComment', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -408,10 +518,11 @@ function resolveNotification(
       const cmt = obj?.post_comment;
       const cmtr = cmt?.commenter;
       const post = cmt?.post;
+      const name = cmtr?.profile?.name || cmtr?.username || someone;
       return {
         icon: 'comment-text-outline', iconColor: '#2563EB',
         actor: cmtr?.username, actorAvatar: cmtr?.profile?.avatar,
-        body: `${cmtr?.profile?.name || cmtr?.username || 'Someone'} replied: "${truncate(cmt?.text, 60)}"`,
+        body: t('home.notificationTypePostCommentReply', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -420,30 +531,33 @@ function resolveNotification(
       const r = obj?.post_comment_reaction?.reactor;
       const emoji = obj?.post_comment_reaction?.emoji?.keyword || '❤️';
       const post = obj?.post_comment_reaction?.post_comment?.post;
+      const name = r?.profile?.name || r?.username || someone;
       return {
         icon: 'emoticon-happy-outline', iconColor: '#EC4899',
         actor: r?.username, actorAvatar: r?.profile?.avatar,
-        body: `${r?.profile?.name || r?.username || 'Someone'} reacted with ${emoji} to your comment.`,
+        body: t('home.notificationTypeCommentReaction', { name, emoji }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
     case 'CR': {
       const u = obj?.connection_requester;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'account-multiple-plus', iconColor: '#0891B2',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} sent you a connection request.`,
+        body: t('home.notificationTypeConnectionRequest', { name }),
         postThumbnail: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
     case 'CC': {
       const u = obj?.connection_confirmator;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'account-multiple-check', iconColor: '#0891B2',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} confirmed your connection.`,
+        body: t('home.notificationTypeConnectionConfirmed', { name }),
         postThumbnail: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
@@ -451,10 +565,11 @@ function resolveNotification(
     case 'PUM': {
       const u = obj?.post_user_mention?.user;
       const post = obj?.post_user_mention?.post;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'at', iconColor: '#D97706',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} mentioned you in a post.`,
+        body: t('home.notificationTypePostMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -463,10 +578,11 @@ function resolveNotification(
       const u = obj?.post_comment_user_mention?.user;
       const cmt = obj?.post_comment_user_mention?.post_comment;
       const post = cmt?.post;
+      const name = u?.profile?.name || u?.username || someone;
       return {
         icon: 'at', iconColor: '#D97706',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
-        body: `${u?.profile?.name || u?.username || 'Someone'} mentioned you in a comment.`,
+        body: t('home.notificationTypeCommentMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -474,10 +590,11 @@ function resolveNotification(
     case 'CI': {
       const creator = obj?.community_invite?.creator;
       const community = obj?.community_invite?.community;
+      const name = creator?.profile?.name || creator?.username || someone;
       return {
         icon: 'account-group', iconColor: '#059669',
         actor: creator?.username, actorAvatar: creator?.profile?.avatar,
-        body: `${creator?.profile?.name || creator?.username || 'Someone'} invited you to c/${community?.name || 'a community'}.`,
+        body: t('home.notificationTypeCommunityInvite', { name, community: community?.name || '' }),
         postThumbnail: null,
         onPress: () => community?.name && onNavigateCommunity(community.name),
       };
@@ -488,7 +605,7 @@ function resolveNotification(
       return {
         icon: 'newspaper-variant-outline', iconColor: '#059669',
         actor: community?.name, actorAvatar: community?.avatar,
-        body: `New post in c/${community?.name || 'a community'}.`,
+        body: t('home.notificationTypeCommunityNewPost', { community: community?.name || '' }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
@@ -496,16 +613,17 @@ function resolveNotification(
     case 'UNP': {
       const post = obj?.post;
       const creator = post?.creator;
+      const name = creator?.profile?.name || creator?.username || someone;
       return {
         icon: 'newspaper-variant-outline', iconColor: '#6366F1',
         actor: creator?.username, actorAvatar: creator?.profile?.avatar,
-        body: `${creator?.profile?.name || creator?.username || 'Someone'} published a new post.`,
+        body: t('home.notificationTypeUserNewPost', { name }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
     default:
-      return { icon: 'bell', iconColor: c.primary, actor: undefined, actorAvatar: undefined, body: 'New notification', postThumbnail: null, onPress: undefined };
+      return { icon: 'bell', iconColor: c.primary, actor: undefined, actorAvatar: undefined, body: t('home.notificationTypeGeneric'), postThumbnail: null, onPress: undefined };
   }
 }
 
@@ -516,14 +634,14 @@ function truncate(text?: string, max = 60) {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
-function formatRelativeTime(iso: string) {
+function formatRelativeTime(iso: string, t: (key: string, opts?: any) => string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('home.justNow');
+  if (mins < 60) return t('home.relativeMinutesAgo', { count: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return t('home.relativeHoursAgo', { count: hrs });
   const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return t('home.relativeDaysAgo', { count: days });
   return new Date(iso).toLocaleDateString();
 }

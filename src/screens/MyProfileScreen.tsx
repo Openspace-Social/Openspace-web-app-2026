@@ -57,6 +57,8 @@ type Props = {
   myFollowingsHasMore: boolean;
   onLoadMoreFollowings: () => void;
   onOpenProfile: (username: string) => void;
+  onOpenFollowersScreen?: () => void;
+  onOpenFollowingScreen?: () => void;
   onUpdateProfile: (payload: UpdateAuthenticatedUserPayload) => Promise<void>;
   onUpdateProfileMedia: (payload: UpdateAuthenticatedUserMediaPayload) => Promise<void>;
   onNotice: (message: string) => void;
@@ -78,6 +80,7 @@ type Props = {
   onConnect?: (circlesIds: number[]) => void;
   onUpdateConnection?: (circlesIds: number[]) => void;
   onConfirmConnection?: (circlesIds: number[]) => void;
+  onDeclineConnection?: () => void;
   onDisconnect?: () => void;
   onAddToList?: (listId: number, username: string) => Promise<void>;
   onCreateList?: (name: string, emojiId: number) => Promise<ListResult | null>;
@@ -113,6 +116,8 @@ export default function MyProfileScreen({
   myFollowingsHasMore,
   onLoadMoreFollowings,
   onOpenProfile,
+  onOpenFollowersScreen,
+  onOpenFollowingScreen,
   onUpdateProfile,
   onUpdateProfileMedia,
   onNotice,
@@ -133,6 +138,7 @@ export default function MyProfileScreen({
   onConnect,
   onUpdateConnection,
   onConfirmConnection,
+  onDeclineConnection,
   onDisconnect,
   onAddToList,
   onCreateList,
@@ -1249,19 +1255,31 @@ export default function MyProfileScreen({
               ) : null}
               <View style={styles.profileNameCountsRow}>
                 {shouldShowFollowersCount ? (
+                  <TouchableOpacity
+                    activeOpacity={onOpenFollowersScreen ? 0.8 : 1}
+                    disabled={!onOpenFollowersScreen}
+                    onPress={onOpenFollowersScreen}
+                  >
+                    <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
+                      {t('home.profileFollowersDisplay', {
+                        count: resolvedFollowersCount,
+                        defaultValue: `${resolvedFollowersCount} followers`,
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  activeOpacity={onOpenFollowingScreen ? 0.8 : 1}
+                  disabled={!onOpenFollowingScreen}
+                  onPress={onOpenFollowingScreen}
+                >
                   <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
-                    {t('home.profileFollowersDisplay', {
-                      count: resolvedFollowersCount,
-                      defaultValue: `${resolvedFollowersCount} followers`,
+                    {t('home.profileFollowingDisplay', {
+                      count: resolvedFollowingCount,
+                      defaultValue: `${resolvedFollowingCount} following`,
                     })}
                   </Text>
-                ) : null}
-                <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
-                  {t('home.profileFollowingDisplay', {
-                    count: resolvedFollowingCount,
-                    defaultValue: `${resolvedFollowingCount} following`,
-                  })}
-                </Text>
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.profileMetaInline}>
@@ -1322,6 +1340,100 @@ export default function MyProfileScreen({
                 </>
               )}
             </TouchableOpacity>
+
+            {/* Connect / Pending — shown when not yet connected */}
+            {!isFullyConnected && !isPendingConfirmation && (
+              <TouchableOpacity
+                style={[
+                  styles.profileSecondaryBtn,
+                  isConnected
+                    ? { backgroundColor: c.inputBackground, borderColor: c.border }
+                    : { backgroundColor: c.primary, borderColor: c.primary },
+                ]}
+                activeOpacity={0.85}
+                disabled={actionsLoading || isConnected}
+                onPress={() => !isConnected && onConnect?.([])}
+              >
+                {actionsLoading && !isConnected ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons
+                      name={isConnected ? 'account-clock-outline' : 'account-multiple-plus'}
+                      size={16}
+                      color={isConnected ? c.textSecondary : '#fff'}
+                    />
+                    <Text style={[styles.profileSecondaryBtnText, { color: isConnected ? c.textSecondary : '#fff' }]}>
+                      {isConnected
+                        ? t('home.profilePendingConnectionAction', { defaultValue: 'Pending' })
+                        : t('home.profileConnectAction', { defaultValue: 'Connect' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Accept + Decline — shown when they've requested to connect with us */}
+            {isPendingConfirmation && (
+              <>
+                <TouchableOpacity
+                  style={[styles.profileSecondaryBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
+                  activeOpacity={0.85}
+                  disabled={actionsLoading}
+                  onPress={() => onConfirmConnection?.([])}
+                >
+                  {actionsLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="account-check" size={16} color="#fff" />
+                      <Text style={[styles.profileSecondaryBtnText, { color: '#fff' }]}>
+                        {t('home.profileAcceptConnectionAction', { defaultValue: 'Accept' })}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                  activeOpacity={0.85}
+                  disabled={actionsLoading}
+                  onPress={() => onDeclineConnection?.()}
+                >
+                  {actionsLoading ? (
+                    <ActivityIndicator size="small" color={c.textSecondary} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="account-remove-outline" size={16} color={c.textSecondary} />
+                      <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>
+                        {t('home.profileDeclineConnectionAction', { defaultValue: 'Decline' })}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Disconnect — shown when already fully connected */}
+            {isFullyConnected && (
+              <TouchableOpacity
+                style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                activeOpacity={0.85}
+                disabled={actionsLoading}
+                onPress={() => onDisconnect?.()}
+              >
+                {actionsLoading ? (
+                  <ActivityIndicator size="small" color={c.textSecondary} />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="account-remove-outline" size={16} color={c.textSecondary} />
+                    <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>
+                      {t('home.profileDisconnectAction', { defaultValue: 'Disconnect' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border, paddingHorizontal: 10 }]}
               activeOpacity={0.85}

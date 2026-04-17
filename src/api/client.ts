@@ -205,6 +205,29 @@ export type AddPostMediaPayload = {
   order?: number;
 };
 
+export type PostMediaItem = {
+  id?: number;
+  type?: string;
+  order?: number;
+  content_object?: {
+    image?: string;
+    thumbnail?: string;
+    file?: string;
+    width?: number;
+    height?: number;
+    duration?: number;
+    format_set?: Array<{
+      id?: number;
+      file?: string;
+      format?: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+      progress?: number;
+    }>;
+  };
+};
+
 export type FeedPost = {
   id: number;
   uuid?: string;
@@ -262,7 +285,7 @@ export type FeedPost = {
     height?: number;
     duration?: number;
   }>;
-  links?: Array<{ url?: string; title?: string; image?: string }>;
+  links?: Array<{ url?: string; title?: string; image?: string; description?: string; site_name?: string }>;
 };
 
 export type PostComment = {
@@ -334,6 +357,17 @@ export type FollowingUserResult = {
   };
   is_following?: boolean;
   is_connected?: boolean;
+};
+
+export type DirectInviteEmailResponse = {
+  status?: 'sent' | 'already_registered';
+  message?: string;
+  invite?: {
+    id?: number;
+    email?: string;
+    code?: string;
+    created?: string;
+  };
 };
 
 export type UserProfile = {
@@ -493,11 +527,43 @@ export type CircleResult = {
   users_count?: number;
 };
 
+export type CircleDetailResult = {
+  id: number;
+  name?: string;
+  color?: string;
+  users_count?: number;
+  users?: Array<{
+    id?: number;
+    username?: string;
+    profile?: { avatar?: string; name?: string };
+  }>;
+};
+
+export type ConnectionResult = {
+  id: number;
+  circles?: CircleResult[];
+  target_user?: {
+    id?: number;
+    username?: string;
+    profile?: { name?: string; avatar?: string };
+    is_fully_connected?: boolean;
+    connected_circles?: CircleResult[];
+  };
+};
+
 export type ListResult = {
   id: number;
   name: string;
   emoji?: { id: number; keyword: string; image?: string };
   follows_count: number;
+};
+
+export type ListDetailResult = ListResult & {
+  users: Array<{
+    id: number;
+    username?: string;
+    profile?: { name?: string; avatar?: string };
+  }>;
 };
 
 export type EmojiGroup = {
@@ -585,6 +651,29 @@ function normalizeFeedResponse(feed: FeedType, payload: unknown): FeedPost[] {
     })
     .filter((post): post is FeedPost => !!post);
 }
+
+function normalizeFollowingUserPayload(user: FollowingUserResult): FollowingUserResult {
+  return {
+    ...user,
+    profile: user.profile
+      ? {
+        ...user.profile,
+        avatar: normalizeMediaUrl(user.profile.avatar),
+      }
+      : user.profile,
+  };
+}
+
+function normalizeFollowingUserList(payload: FollowingUserResult[]): FollowingUserResult[] {
+  return (Array.isArray(payload) ? payload : []).map((user) => normalizeFollowingUserPayload(user));
+}
+
+type RemoveFollowerStrategy = 'probe' | 'post' | 'delete' | 'put' | 'fallback';
+// Temporary: staging currently responds 405 for remove-follower endpoint.
+// Avoid noisy method-probe errors there by going directly to the working fallback path.
+let removeFollowerStrategy: RemoveFollowerStrategy = API_BASE_URL.includes('staging.openspace.social')
+  ? 'fallback'
+  : 'probe';
 
 export const api = {
   register: (payload: RegisterPayload) =>
@@ -885,7 +974,13 @@ export const api = {
   addPostMedia: (token: string, postUuid: string, payload: AddPostMediaPayload) => {
     const form = new FormData();
     const mediaFile = payload.file as Blob & { name?: string };
-    form.append('file', mediaFile, mediaFile.name || 'post-media');
+    const originalName = (mediaFile.name || 'post-media').trim();
+    const lastDot = originalName.lastIndexOf('.');
+    const ext = lastDot > 0 ? originalName.slice(lastDot) : '';
+    const stem = (lastDot > 0 ? originalName.slice(0, lastDot) : originalName).replace(/[^\w.-]+/g, '_');
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const uploadName = `${stem || 'post-media'}-${uniqueSuffix}${ext}`;
+    form.append('file', mediaFile, uploadName);
     if (typeof payload.order === 'number' && Number.isFinite(payload.order)) {
       form.append('order', String(payload.order));
     }
@@ -896,6 +991,35 @@ export const api = {
       body: form,
     });
   },
+
+  getPostMedia: (token: string, postUuid: string) =>
+    request<PostMediaItem[]>(`/api/posts/${postUuid}/media/`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((items) =>
+      (Array.isArray(items) ? items : []).map((item) => ({
+        ...item,
+        content_object: item?.content_object
+          ? {
+              ...item.content_object,
+              image: normalizeMediaUrl(item.content_object.image),
+              thumbnail: normalizeMediaUrl(item.content_object.thumbnail),
+              file: normalizeMediaUrl(item.content_object.file),
+              format_set: Array.isArray(item.content_object.format_set)
+                ? item.content_object.format_set.map((format) => ({
+                    ...format,
+                    file: normalizeMediaUrl(format.file),
+                  }))
+                : item.content_object.format_set,
+            }
+          : item?.content_object,
+      }))
+    ),
+
+  deletePostMedia: (token: string, postUuid: string, postMediaId: number) =>
+    request<{ message?: string }>(`/api/posts/${postUuid}/media/${postMediaId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
 
   publishPost: (token: string, postUuid: string) =>
     request<FeedPost>(`/api/posts/${postUuid}/publish/`, {
@@ -1030,6 +1154,12 @@ export const api = {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ emoji_id: emojiId }),
+    }),
+
+  removeReactionFromPostComment: (token: string, postUuid: string, postCommentId: number) =>
+    request<void>(`/api/posts/${postUuid}/comments/${postCommentId}/reactions/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
     }),
 
   getPostCommentReplies: (token: string, postUuid: string, postCommentId: number, countMax = 20) => {
@@ -1204,7 +1334,104 @@ export const api = {
       body: JSON.stringify({ username }),
     }),
 
-  searchUsers: (token: string, query: string, count = 10) => {
+  sendDirectInviteEmail: (token: string, email: string) =>
+    request<DirectInviteEmailResponse>('/api/invites/send-email/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ email }),
+    }),
+
+  removeFollower: async (token: string, username: string) => {
+    const payload = JSON.stringify({ username });
+    const authHeader = { Authorization: `Token ${token}` };
+    const removePath = '/api/follows/remove-follower/';
+    const runFallback = async () => {
+      // Compatibility fallback for environments where remove-follower isn't deployed:
+      // block+unblock severs follower relationship without leaving the user blocked.
+      await request<void>(`/api/auth/users/${encodeURIComponent(username)}/block/`, {
+        method: 'POST',
+        headers: authHeader,
+      });
+      await request<void>(`/api/auth/users/${encodeURIComponent(username)}/unblock/`, {
+        method: 'POST',
+        headers: authHeader,
+      });
+    };
+    const tryMethod = async (method: 'POST' | 'DELETE' | 'PUT') => {
+      await request<void>(removePath, {
+        method,
+        headers: authHeader,
+        body: payload,
+      });
+    };
+
+    if (removeFollowerStrategy === 'post') {
+      await tryMethod('POST');
+      return;
+    }
+    if (removeFollowerStrategy === 'delete') {
+      await tryMethod('DELETE');
+      return;
+    }
+    if (removeFollowerStrategy === 'put') {
+      await tryMethod('PUT');
+      return;
+    }
+    if (removeFollowerStrategy === 'fallback') {
+      await runFallback();
+      return;
+    }
+
+    // Probe once per app session; then cache the strategy to avoid repeated 405s in logs.
+    const candidates: Array<{ method: 'POST' | 'DELETE' | 'PUT'; strategy: RemoveFollowerStrategy }> = [
+      { method: 'POST', strategy: 'post' },
+      { method: 'DELETE', strategy: 'delete' },
+      { method: 'PUT', strategy: 'put' },
+    ];
+    for (const candidate of candidates) {
+      try {
+        await tryMethod(candidate.method);
+        removeFollowerStrategy = candidate.strategy;
+        return;
+      } catch (error) {
+        if (!(error instanceof ApiRequestError) || (error.status !== 405 && error.status !== 404)) {
+          throw error;
+        }
+      }
+    }
+
+    removeFollowerStrategy = 'fallback';
+    await runFallback();
+  },
+
+  getFollowers: (token: string, count = 20, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(count, 20)));
+    if (typeof maxId === 'number') params.set('max_id', String(maxId));
+    return request<FollowingUserResult[]>(`/api/auth/followers/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((users) => normalizeFollowingUserList(users));
+  },
+
+  searchFollowers: (token: string, query: string, count = 20) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(Math.min(count, 20)));
+    return request<FollowingUserResult[]>(`/api/auth/followers/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((users) => normalizeFollowingUserList(users));
+  },
+
+  searchFollowings: (token: string, query: string, count = 20) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(Math.min(count, 20)));
+    return request<FollowingUserResult[]>(`/api/auth/followings/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((users) => normalizeFollowingUserList(users));
+  },
+
+  searchUsers: (token: string, query: string, count = 10 /* max 10 per API */) => {
     const params = new URLSearchParams();
     params.set('query', query);
     params.set('count', String(count));
@@ -1224,7 +1451,7 @@ export const api = {
       : `/api/auth/followings/?${params.toString()}`;
     return request<FollowingUserResult[]>(path, {
       headers: { Authorization: `Token ${token}` },
-    });
+    }).then((users) => normalizeFollowingUserList(users));
   },
 
   searchCommunities: (token: string, query: string, count = 10) => {
@@ -1313,12 +1540,16 @@ export const api = {
   },
 
   markNotificationsRead: (token: string, maxId?: number) => {
-    const body: Record<string, unknown> = {};
-    if (maxId != null) body.max_id = maxId;
+    // Backend uses request.data.dict() which requires form-encoded, not JSON
+    const body = new URLSearchParams();
+    if (maxId != null) body.set('max_id', String(maxId));
     return request<void>('/api/notifications/read/', {
       method: 'POST',
-      headers: { Authorization: `Token ${token}` },
-      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Token ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
     });
   },
 
@@ -1348,7 +1579,7 @@ export const api = {
     }),
 
   getListDetail: (token: string, listId: number) =>
-    request<ListResult & { users: { id: number; username: string; profile?: { name?: string; avatar?: string } }[] }>(`/api/lists/${listId}/`, {
+    request<ListDetailResult>(`/api/lists/${listId}/`, {
       headers: { Authorization: `Token ${token}` },
     }),
 
@@ -1364,7 +1595,7 @@ export const api = {
       body: JSON.stringify({ name, emoji_id: emojiId }),
     }),
 
-  updateList: (token: string, listId: number, payload: { name?: string; usernames?: string[] }) =>
+  updateList: (token: string, listId: number, payload: { name?: string; emoji_id?: number; usernames?: string[] }) =>
     request<ListResult>(`/api/lists/${listId}/`, {
       method: 'PATCH',
       headers: { Authorization: `Token ${token}` },
@@ -1378,6 +1609,11 @@ export const api = {
     }),
 
   // ─── Connections ─────────────────────────────────────────────────────────────
+
+  getConnections: (token: string) =>
+    request<ConnectionResult[]>('/api/connections/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
 
   connectWithUser: (token: string, username: string, circlesIds: number[]) =>
     request<void>('/api/connections/connect/', {
@@ -1407,13 +1643,38 @@ export const api = {
       body: JSON.stringify({ username, circles_ids: circlesIds }),
     }),
 
-  // ─── Circles (create) ────────────────────────────────────────────────────────
+  // ─── Circles ─────────────────────────────────────────────────────────────────
 
   createCircle: (token: string, name: string, color: string) =>
     request<CircleResult>('/api/circles/', {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ name, color }),
+    }),
+
+  getCircleDetail: (token: string, circleId: number) =>
+    request<CircleDetailResult>(`/api/circles/${circleId}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  updateCircle: (token: string, circleId: number, updates: { name?: string; color?: string; usernames?: string[] }) =>
+    request<CircleResult>(`/api/circles/${circleId}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ circle_id: circleId, ...updates }),
+    }),
+
+  deleteCircle: (token: string, circleId: number) =>
+    request<void>(`/api/circles/${circleId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  checkCircleName: (token: string, name: string) =>
+    request<void>('/api/circles/name-check/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ name }),
     }),
 
   // ─── Blocks ──────────────────────────────────────────────────────────────────

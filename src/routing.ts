@@ -8,7 +8,11 @@ export type AppRoute =
   | { screen: 'profile'; username: string }
   | { screen: 'community'; name: string }
   | { screen: 'hashtag'; name: string }
-  | { screen: 'me' };
+  | { screen: 'me' }
+  | { screen: 'circles' }
+  | { screen: 'lists' }
+  | { screen: 'followers' }
+  | { screen: 'following' };
 
 export function defaultAuthedRoute(): AppRoute {
   return { screen: 'feed', feed: 'home' };
@@ -26,6 +30,10 @@ export function parsePathToRoute(pathname: string): AppRoute {
       return { screen: 'feed', feed: first };
     }
     if (first === 'me') return { screen: 'me' };
+    if (first === 'circles') return { screen: 'circles' };
+    if (first === 'lists') return { screen: 'lists' };
+    if (first === 'followers') return { screen: 'followers' };
+    if (first === 'following') return { screen: 'following' };
   }
 
   if (parts.length === 2 && parts[0] === 'posts') {
@@ -70,6 +78,14 @@ export function routeToPath(route: AppRoute): string {
       return `/h/${encodeURIComponent(route.name)}`;
     case 'me':
       return '/me';
+    case 'circles':
+      return '/circles';
+    case 'lists':
+      return '/lists';
+    case 'followers':
+      return '/followers';
+    case 'following':
+      return '/following';
     default:
       return '/';
   }

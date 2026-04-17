@@ -9,6 +9,7 @@ import LandingScreen from './src/screens/LandingScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import CookieConsentBanner from './src/components/CookieConsentBanner';
 import { AppRoute, defaultAuthedRoute, parsePathToRoute, routeToPath } from './src/routing';
+import { AppToastProvider } from './src/toast/AppToastContext';
 
 function Root() {
   const { isDark } = useTheme();
@@ -92,7 +93,9 @@ const styles = StyleSheet.create({
 export default function App() {
   return (
     <ThemeProvider>
-      <Root />
+      <AppToastProvider>
+        <Root />
+      </AppToastProvider>
     </ThemeProvider>
   );
 }

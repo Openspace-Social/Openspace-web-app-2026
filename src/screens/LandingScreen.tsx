@@ -22,6 +22,7 @@ import AboutUsDrawer from '../components/AboutUsDrawer';
 import PrivacyPolicyDrawer from '../components/PrivacyPolicyDrawer';
 import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
 import GuidelinesDrawer from '../components/GuidelinesDrawer';
+import { useAppToast } from '../toast/AppToastContext';
 
 interface LandingScreenProps {
   onLogin?: (token: string) => void;
@@ -31,6 +32,7 @@ type SocialProvider = 'google' | 'apple';
 
 export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { showToast } = useAppToast();
   const { t } = useTranslation();
   const c = theme.colors;
   const { width } = useWindowDimensions();
@@ -79,6 +81,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setError('');
     setNotice('');
   }, []);
+
+  useEffect(() => {
+    if (!error) return;
+    showToast(error, { type: 'error' });
+    setError('');
+  }, [error, showToast]);
 
   const handleHeaderLinkPress = (key: typeof headerLinks[number]) => {
     if (key === 'aboutUs') {

@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import * as Localization from 'expo-localization';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resolveLocale } from './languages';
 
 import da    from './locales/da.json';
@@ -16,7 +17,17 @@ import ptBR  from './locales/pt-BR.json';
 import svSE  from './locales/sv-SE.json';
 import tr    from './locales/tr.json';
 
+const LANGUAGE_KEY = '@openspace/language';
 const deviceLocale = Localization.getLocales()[0]?.languageTag ?? 'en';
+
+// On web, localStorage is synchronous — read the saved preference before
+// i18n initialises so the very first render uses the correct language.
+// On native, we fall back to the async restore below.
+let initialLng = resolveLocale(deviceLocale);
+if (typeof localStorage !== 'undefined') {
+  const saved = localStorage.getItem(LANGUAGE_KEY);
+  if (saved) initialLng = saved;
+}
 
 i18n
   .use(initReactI18next)
@@ -35,11 +46,21 @@ i18n
       'sv-SE': { translation: svSE },
       tr:    { translation: tr },
     },
-    lng: resolveLocale(deviceLocale),
+    lng: initialLng,
     fallbackLng: 'en',
     interpolation: {
-      escapeValue: false, // React already escapes values
+      escapeValue: false,
     },
   });
+
+// On native (iOS/Android), AsyncStorage is async — restore saved preference
+// after init so it overrides the device locale if the user has chosen one.
+if (typeof localStorage === 'undefined') {
+  AsyncStorage.getItem(LANGUAGE_KEY).then((saved) => {
+    if (saved && saved !== i18n.language) {
+      i18n.changeLanguage(saved);
+    }
+  });
+}
 
 export default i18n;
