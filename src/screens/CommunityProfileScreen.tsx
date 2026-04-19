@@ -24,13 +24,23 @@ type Props = {
   communityOwner: CommunityOwner | null;
   communityMembers: CommunityMember[];
   communityMembersLoading: boolean;
+  communityMembersLoadingMore?: boolean;
+  communityMembersHasMore?: boolean;
   posts: FeedPost[];
   postsLoading: boolean;
   postsError: string;
+  communityPostsFilterUsername?: string | null;
   isJoined: boolean;
   joinLoading: boolean;
+  notificationsEnabled?: boolean | null;
+  notificationsLoading?: boolean;
+  canManageCommunity?: boolean;
   onJoin: () => void;
   onLeave: () => void;
+  onToggleNotifications?: () => void;
+  onOpenManageCommunity?: () => void;
+  onLoadMoreMembers?: () => void;
+  onClearCommunityPostsFilter?: () => void;
   onOpenProfile: (username: string) => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
 };
@@ -44,13 +54,23 @@ export default function CommunityProfileScreen({
   communityOwner,
   communityMembers,
   communityMembersLoading,
+  communityMembersLoadingMore = false,
+  communityMembersHasMore = false,
   posts,
   postsLoading,
   postsError,
+  communityPostsFilterUsername = null,
   isJoined,
   joinLoading,
+  notificationsEnabled = null,
+  notificationsLoading = false,
+  canManageCommunity = false,
   onJoin,
   onLeave,
+  onToggleNotifications,
+  onOpenManageCommunity,
+  onLoadMoreMembers,
+  onClearCommunityPostsFilter,
   onOpenProfile,
   renderPostCard,
 }: Props) {
@@ -68,6 +88,12 @@ export default function CommunityProfileScreen({
   const isPublic = community?.type !== 'T';
   const description = community?.description || '';
   const categories = community?.categories || [];
+  const administrators = Array.isArray(community?.administrators)
+    ? community.administrators.filter((member) => !!member?.username)
+    : [];
+  const moderators = Array.isArray(community?.moderators)
+    ? community.moderators.filter((member) => !!member?.username)
+    : [];
 
   if (communityLoading && !community) {
     return (
@@ -122,8 +148,22 @@ export default function CommunityProfileScreen({
           </View>
         </View>
 
-        {/* Join / Leave button */}
-        <View style={{ paddingBottom: 14 }}>
+        {/* Manage + Join / Leave buttons */}
+        <View style={{ paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {canManageCommunity ? (
+            <TouchableOpacity
+              style={[
+                styles.profileFollowButton,
+                { borderColor: c.border, backgroundColor: c.inputBackground },
+              ]}
+              activeOpacity={0.85}
+              onPress={onOpenManageCommunity}
+            >
+              <Text style={[styles.profileFollowButtonText, { color: c.textSecondary }]}>
+                {t('community.manageAction', { defaultValue: 'Manage' })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={[
               styles.profileFollowButton,
@@ -145,6 +185,42 @@ export default function CommunityProfileScreen({
               </Text>
             )}
           </TouchableOpacity>
+
+          {/* Notification bell — only shown when joined */}
+          {isJoined && onToggleNotifications ? (
+            <TouchableOpacity
+              style={[
+                styles.profileFollowButton,
+                {
+                  borderColor: notificationsEnabled ? c.primary : c.border,
+                  backgroundColor: notificationsEnabled ? c.primary + '18' : c.inputBackground,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                },
+              ]}
+              activeOpacity={0.85}
+              disabled={notificationsLoading}
+              onPress={onToggleNotifications}
+            >
+              {notificationsLoading ? (
+                <ActivityIndicator size="small" color={c.textSecondary} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons
+                    name={notificationsEnabled ? 'bell' : 'bell-outline'}
+                    size={15}
+                    color={notificationsEnabled ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[styles.profileFollowButtonText, { color: notificationsEnabled ? c.primary : c.textSecondary }]}>
+                    {notificationsEnabled
+                      ? t('community.notificationsOnLabel', { defaultValue: 'Notifications On' })
+                      : t('community.notificationsOffLabel', { defaultValue: 'Notifications Off' })}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </>
@@ -208,12 +284,11 @@ export default function CommunityProfileScreen({
         </View>
       )}
 
-      {/* Owner */}
-      {communityOwner?.username ? (
-        <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
-          <Text style={[{ fontSize: 12, fontWeight: '600', marginBottom: 6 }, { color: c.textMuted }]}>
-            {t('home.communityOwnerLabel', { defaultValue: 'Owner' })}
-          </Text>
+      <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
+        <Text style={[{ fontSize: 12, fontWeight: '600', marginBottom: 6 }, { color: c.textMuted }]}>
+          {t('home.communityOwnerLabel', { defaultValue: 'Owner' })}
+        </Text>
+        {communityOwner?.username ? (
           <TouchableOpacity
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
             onPress={() => onOpenProfile(communityOwner.username!)}
@@ -243,8 +318,114 @@ export default function CommunityProfileScreen({
               </Text>
             </View>
           </TouchableOpacity>
-        </View>
-      ) : null}
+        ) : (
+          <Text style={[{ fontSize: 13 }, { color: c.textMuted }]}>
+            {t('community.roleActivelyRecruiting', { defaultValue: 'Actively recruiting' })}
+          </Text>
+        )}
+      </View>
+
+      <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
+        <Text style={[{ fontSize: 12, fontWeight: '600', marginBottom: 6 }, { color: c.textMuted }]}>
+          {t('community.administratorsLabel', { defaultValue: 'Administrators' })}
+        </Text>
+        {administrators.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            {administrators.map((adminMember) => {
+              const adminUsername = adminMember.username || '';
+              const adminName = adminMember.profile?.name || '';
+              const adminAvatar = adminMember.profile?.avatar || '';
+              return (
+                <TouchableOpacity
+                  key={`admin-${adminUsername}`}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  onPress={() => onOpenProfile(adminUsername)}
+                  activeOpacity={0.8}
+                >
+                  {adminAvatar ? (
+                    <Image
+                      source={{ uri: adminAvatar }}
+                      style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c.border }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                        {(adminName || adminUsername || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View>
+                    {adminName ? (
+                      <Text style={[{ fontSize: 13, fontWeight: '600' }, { color: c.textPrimary }]}>
+                        {adminName}
+                      </Text>
+                    ) : null}
+                    <Text style={[{ fontSize: 12 }, { color: c.textMuted }]}>
+                      {`@${adminUsername}`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={[{ fontSize: 13 }, { color: c.textMuted }]}>
+            {t('community.roleActivelyRecruiting', { defaultValue: 'Actively recruiting' })}
+          </Text>
+        )}
+      </View>
+
+      <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
+        <Text style={[{ fontSize: 12, fontWeight: '600', marginBottom: 6 }, { color: c.textMuted }]}>
+          {t('community.moderatorsLabel', { defaultValue: 'Moderators' })}
+        </Text>
+        {moderators.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            {moderators.map((moderatorMember) => {
+              const modUsername = moderatorMember.username || '';
+              const modName = moderatorMember.profile?.name || '';
+              const modAvatar = moderatorMember.profile?.avatar || '';
+              return (
+                <TouchableOpacity
+                  key={`mod-${modUsername}`}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  onPress={() => onOpenProfile(modUsername)}
+                  activeOpacity={0.8}
+                >
+                  {modAvatar ? (
+                    <Image
+                      source={{ uri: modAvatar }}
+                      style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c.border }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                        {(modName || modUsername || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View>
+                    {modName ? (
+                      <Text style={[{ fontSize: 13, fontWeight: '600' }, { color: c.textPrimary }]}>
+                        {modName}
+                      </Text>
+                    ) : null}
+                    <Text style={[{ fontSize: 12 }, { color: c.textMuted }]}>
+                      {`@${modUsername}`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={[{ fontSize: 13 }, { color: c.textMuted }]}>
+            {t('community.roleActivelyRecruiting', { defaultValue: 'Actively recruiting' })}
+          </Text>
+        )}
+      </View>
     </View>
   );
 
@@ -301,14 +482,20 @@ export default function CommunityProfileScreen({
         </View>
       )}
 
-      {membersCount > communityMembers.length && (
+      {(communityMembersHasMore || membersCount > communityMembers.length) && (
         <TouchableOpacity
           style={[{ marginTop: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center' }, { borderColor: c.border, backgroundColor: c.surface }]}
           activeOpacity={0.8}
+          onPress={onLoadMoreMembers}
+          disabled={communityMembersLoadingMore}
         >
-          <Text style={[{ fontSize: 14, fontWeight: '600' }, { color: c.textSecondary }]}>
-            {t('home.showMore', { defaultValue: 'Show more' })}
-          </Text>
+          {communityMembersLoadingMore ? (
+            <ActivityIndicator size="small" color={c.primary} />
+          ) : (
+            <Text style={[{ fontSize: 14, fontWeight: '600' }, { color: c.textSecondary }]}>
+              {t('home.showMore', { defaultValue: 'Show more' })}
+            </Text>
+          )}
         </TouchableOpacity>
       )}
     </View>
@@ -339,6 +526,57 @@ export default function CommunityProfileScreen({
           {postsCount != null ? ` (${postsCount.toLocaleString()})` : ''}
         </Text>
       </View>
+
+      {communityPostsFilterUsername ? (
+        <View
+          style={{
+            marginTop: 2,
+            marginBottom: 10,
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 8,
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: c.surface,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <MaterialCommunityIcons name="account-filter-outline" size={14} color={c.textSecondary} />
+            <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '700' }}>
+              {t('home.communityPostsFilteredByUserChip', {
+                username: communityPostsFilterUsername,
+                defaultValue: `Filtered by @${communityPostsFilterUsername}`,
+              })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={{
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: c.inputBackground,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+            activeOpacity={0.85}
+            onPress={onClearCommunityPostsFilter}
+          >
+            <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '700' }}>
+              {t('home.clearFilterAction', { defaultValue: 'Clear filter' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {postsLoading ? (
         <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />

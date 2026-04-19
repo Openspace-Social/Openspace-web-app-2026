@@ -73,6 +73,7 @@ type Props = {
   userCircles: CircleResult[];
   userLists: ListResult[];
   moderationCategories: ModerationCategory[];
+  isBlocked?: boolean;
   // Loading
   actionLoading: boolean;
   // Handlers
@@ -86,6 +87,7 @@ type Props = {
   onFetchEmojiGroups: () => Promise<EmojiGroup[]>;
   onCreateCircle: (name: string, color: string) => Promise<CircleResult | null>;
   onBlock: () => void;
+  onUnblock?: () => void;
   onReport: (categoryId: number, description?: string) => void;
 };
 
@@ -101,6 +103,7 @@ export default function ProfileActionsMenu({
   userCircles,
   userLists,
   moderationCategories,
+  isBlocked = false,
   actionLoading,
   onClose,
   onConnect,
@@ -112,6 +115,7 @@ export default function ProfileActionsMenu({
   onFetchEmojiGroups,
   onCreateCircle,
   onBlock,
+  onUnblock,
   onReport,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
@@ -417,13 +421,29 @@ export default function ProfileActionsMenu({
             borderBottomWidth: 1, borderBottomColor: c.border,
           }}>
             <Text style={{ flex: 1, fontSize: 14, color: c.textPrimary }}>
-              {t('home.profileActionsBlockConfirm', { username })}
+              {isBlocked
+                ? t('home.profileActionsUnblockConfirm', {
+                    username,
+                    defaultValue: 'Unblock @{{username}}?',
+                  })
+                : t('home.profileActionsBlockConfirm', { username })}
             </Text>
             <TouchableOpacity
-              onPress={() => { onBlock(); onClose(); }}
+              onPress={() => {
+                if (isBlocked) {
+                  onUnblock?.();
+                } else {
+                  onBlock();
+                }
+                onClose();
+              }}
               style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: c.errorText }}
             >
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>{t('home.profileActionsBlock')}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#fff' }}>
+                {isBlocked
+                  ? t('home.profileActionsUnblock', { defaultValue: 'Unblock' })
+                  : t('home.profileActionsBlock')}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setConfirmBlock(false)}
@@ -434,9 +454,13 @@ export default function ProfileActionsMenu({
           </View>
         ) : (
           <MenuItem
-            icon="block-helper"
-            label={t('home.profileActionsBlockUser')}
-            sublabel={t('home.profileActionsBlockUserSub')}
+            icon={isBlocked ? 'account-check-outline' : 'block-helper'}
+            label={isBlocked
+              ? t('home.profileActionsUnblockUser', { defaultValue: 'Unblock user' })
+              : t('home.profileActionsBlockUser')}
+            sublabel={isBlocked
+              ? t('home.profileActionsUnblockUserSub', { defaultValue: 'Allow this account to interact with you again.' })
+              : t('home.profileActionsBlockUserSub')}
             danger
             onPress={() => setConfirmBlock(true)}
             rightContent={<View />}

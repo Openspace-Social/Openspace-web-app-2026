@@ -19,6 +19,7 @@ import {
   FollowingUserResult,
   ListResult,
   ModerationCategory,
+  ProfileCommentActivity,
   SearchCommunityResult,
   UpdateAuthenticatedUserMediaPayload,
   UpdateAuthenticatedUserPayload
@@ -30,6 +31,7 @@ const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 
 type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
 type ProfileVisibility = 'P' | 'O' | 'T';
+type ActivityFilterKey = 'community' | 'public' | 'comments';
 
 type Props = {
   styles: any;
@@ -43,6 +45,8 @@ type Props = {
   onSetProfileActiveTab: (tab: TabKey) => void;
   myProfilePosts: FeedPost[];
   myProfilePostsLoading: boolean;
+  myProfileComments: ProfileCommentActivity[];
+  myProfileCommentsLoading: boolean;
   myPinnedPosts: FeedPost[];
   myPinnedPostsLoading: boolean;
   myJoinedCommunities: SearchCommunityResult[];
@@ -87,7 +91,11 @@ type Props = {
   onFetchEmojiGroups?: () => Promise<any[]>;
   onCreateCircle?: (name: string, color: string) => Promise<CircleResult | null>;
   onBlockUser?: (username: string) => void;
+  onUnblockUser?: (username: string) => void;
   onReportUser?: (username: string, categoryId: number, description?: string) => void;
+  isSubscribedToPosts?: boolean | null;
+  subscribeToPostsLoading?: boolean;
+  onToggleSubscribeToPosts?: () => void;
 };
 
 export default function MyProfileScreen({
@@ -102,6 +110,8 @@ export default function MyProfileScreen({
   onSetProfileActiveTab,
   myProfilePosts,
   myProfilePostsLoading,
+  myProfileComments,
+  myProfileCommentsLoading,
   myPinnedPosts,
   myPinnedPostsLoading,
   myJoinedCommunities,
@@ -145,7 +155,11 @@ export default function MyProfileScreen({
   onFetchEmojiGroups,
   onCreateCircle,
   onBlockUser,
+  onUnblockUser,
   onReportUser,
+  isSubscribedToPosts = null,
+  subscribeToPostsLoading = false,
+  onToggleSubscribeToPosts,
 }: Props) {
   const resolveImageUri = React.useCallback((value: unknown): string | undefined => {
     if (typeof value === 'string') {
@@ -200,6 +214,7 @@ export default function MyProfileScreen({
   const objectUrlRef = React.useRef<string[]>([]);
 
   const [actionsMenuOpen, setActionsMenuOpen] = React.useState(false);
+  const [activityFilter, setActivityFilter] = React.useState<ActivityFilterKey>('community');
   const [visibleJoinedCommunities, setVisibleJoinedCommunities] = React.useState(9);
   const [visibleFollowings, setVisibleFollowings] = React.useState(9);
   const safePinnedPosts = Array.isArray(myPinnedPosts) ? myPinnedPosts : [];
@@ -218,6 +233,13 @@ export default function MyProfileScreen({
     : false;
   const pinnedIds = new Set(filteredPinnedPosts.map((post) => post.id));
   const regularProfilePosts = filteredProfilePosts.filter((post) => !pinnedIds.has(post.id));
+  const safeProfileComments = Array.isArray(myProfileComments) ? myProfileComments : [];
+  const isCommunityActivityPost = React.useCallback((post: FeedPost) => {
+    const sharedNames = Array.isArray(post.shared_community_names) ? post.shared_community_names : [];
+    return !!post.community?.name || sharedNames.length > 0 || Number(post.shared_communities_count || 0) > 0;
+  }, []);
+  const communityActivityPosts = regularProfilePosts.filter((post) => isCommunityActivityPost(post));
+  const publicActivityPosts = regularProfilePosts.filter((post) => !isCommunityActivityPost(post));
   const shownJoinedCommunities = safeJoinedCommunities.slice(0, visibleJoinedCommunities);
   const shownFollowings = safeFollowings.slice(0, visibleFollowings);
   const hasHiddenJoinedCommunities = shownJoinedCommunities.length < safeJoinedCommunities.length;
@@ -265,6 +287,7 @@ export default function MyProfileScreen({
   React.useEffect(() => {
     setVisibleJoinedCommunities(9);
     setVisibleFollowings(9);
+    setActivityFilter('community');
   }, [profileRouteUsername]);
 
   React.useEffect(() => {
@@ -1253,34 +1276,58 @@ export default function MyProfileScreen({
                   style={styles.profileVerifiedBadge}
                 />
               ) : null}
-              <View style={styles.profileNameCountsRow}>
-                {shouldShowFollowersCount ? (
-                  <TouchableOpacity
-                    activeOpacity={onOpenFollowersScreen ? 0.8 : 1}
-                    disabled={!onOpenFollowersScreen}
-                    onPress={onOpenFollowersScreen}
+              {!isOwnProfile && !!user?.is_blocked ? (
+                <View
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: c.errorText,
+                    backgroundColor: `${c.errorText}1F`,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginLeft: 6,
+                    alignSelf: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: c.errorText,
+                    }}
                   >
-                    <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
-                      {t('home.profileFollowersDisplay', {
-                        count: resolvedFollowersCount,
-                        defaultValue: `${resolvedFollowersCount} followers`,
-                      })}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
+                    {t('home.blockedBadge', { defaultValue: 'Blocked' })}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.profileNameCountsRow}>
+              {shouldShowFollowersCount ? (
                 <TouchableOpacity
-                  activeOpacity={onOpenFollowingScreen ? 0.8 : 1}
-                  disabled={!onOpenFollowingScreen}
-                  onPress={onOpenFollowingScreen}
+                  activeOpacity={onOpenFollowersScreen ? 0.8 : 1}
+                  disabled={!onOpenFollowersScreen}
+                  onPress={onOpenFollowersScreen}
                 >
                   <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
-                    {t('home.profileFollowingDisplay', {
-                      count: resolvedFollowingCount,
-                      defaultValue: `${resolvedFollowingCount} following`,
+                    {t('home.profileFollowersDisplay', {
+                      count: resolvedFollowersCount,
+                      defaultValue: `${resolvedFollowersCount} followers`,
                     })}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              ) : null}
+              <TouchableOpacity
+                activeOpacity={onOpenFollowingScreen ? 0.8 : 1}
+                disabled={!onOpenFollowingScreen}
+                onPress={onOpenFollowingScreen}
+              >
+                <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
+                  {t('home.profileFollowingDisplay', {
+                    count: resolvedFollowingCount,
+                    defaultValue: `${resolvedFollowingCount} following`,
+                  })}
+                </Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.profileMetaInline}>
               {user?.profile?.location ? (
@@ -1340,6 +1387,39 @@ export default function MyProfileScreen({
                 </>
               )}
             </TouchableOpacity>
+
+            {/* Subscribe to posts bell */}
+            {onToggleSubscribeToPosts ? (
+              <TouchableOpacity
+                style={[
+                  styles.profileSecondaryBtn,
+                  {
+                    borderColor: isSubscribedToPosts ? c.primary : c.border,
+                    backgroundColor: isSubscribedToPosts ? c.primary + '18' : c.inputBackground,
+                  },
+                ]}
+                activeOpacity={0.85}
+                disabled={subscribeToPostsLoading}
+                onPress={onToggleSubscribeToPosts}
+              >
+                {subscribeToPostsLoading ? (
+                  <ActivityIndicator size="small" color={c.textSecondary} />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons
+                      name={isSubscribedToPosts ? 'bell' : 'bell-outline'}
+                      size={16}
+                      color={isSubscribedToPosts ? c.primary : c.textSecondary}
+                    />
+                    <Text style={[styles.profileSecondaryBtnText, { color: isSubscribedToPosts ? c.primary : c.textSecondary }]}>
+                      {isSubscribedToPosts
+                        ? t('profile.subscribedToPosts', { defaultValue: 'Subscribed' })
+                        : t('profile.subscribeToPosts', { defaultValue: 'Subscribe to posts' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
 
             {/* Connect / Pending — shown when not yet connected */}
             {!isFullyConnected && !isPendingConfirmation && (
@@ -1456,6 +1536,7 @@ export default function MyProfileScreen({
           userCircles={userCircles}
           userLists={userLists}
           moderationCategories={moderationCategories}
+          isBlocked={!!user?.is_blocked}
           actionLoading={actionsLoading}
           onClose={() => setActionsMenuOpen(false)}
           onConnect={(circlesIds) => onConnect?.(circlesIds)}
@@ -1467,6 +1548,7 @@ export default function MyProfileScreen({
           onFetchEmojiGroups={onFetchEmojiGroups || (() => Promise.resolve([]))}
           onCreateCircle={onCreateCircle || (() => Promise.resolve(null))}
           onBlock={() => onBlockUser?.(user?.username || profileRouteUsername)}
+          onUnblock={() => onUnblockUser?.(user?.username || profileRouteUsername)}
           onReport={(catId, desc) => onReportUser?.(user?.username || profileRouteUsername, catId, desc)}
         />
       </View>
@@ -1529,6 +1611,9 @@ export default function MyProfileScreen({
                   {t('home.profileJoinedCommunitiesTitle', { defaultValue: "Communities I've joined" })}
                 </Text>
               </View>
+              <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 4, marginBottom: 8 }}>
+                {t('home.profileJoinedCommunitiesSortedByActivity', { defaultValue: 'Sorted by most active' })}
+              </Text>
 
               {myJoinedCommunitiesLoading ? (
                 <ActivityIndicator color={c.primary} size="small" />
@@ -1709,16 +1794,106 @@ export default function MyProfileScreen({
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="post-outline" size={22} color={c.textPrimary} />
                 <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
-                  {t('home.profilePostsTitle')}
+                  {t('home.profilePostsTitle', { defaultValue: 'Posts' })}
                 </Text>
               </View>
-              {myProfilePostsLoading ? (
+
+              <View style={styles.profileActivityFilters}>
+                <TouchableOpacity
+                  style={[
+                    styles.profileActivityFilterChip,
+                    {
+                      borderColor: activityFilter === 'community' ? c.primary : c.border,
+                      backgroundColor: activityFilter === 'community' ? `${c.primary}20` : c.surface,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => setActivityFilter('community')}
+                >
+                  <Text style={[
+                    styles.profileActivityFilterChipText,
+                    { color: activityFilter === 'community' ? c.primary : c.textSecondary },
+                  ]}>
+                    {t('home.profileActivityCommunityPosts', { defaultValue: 'Community Posts' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.profileActivityFilterChip,
+                    {
+                      borderColor: activityFilter === 'public' ? c.primary : c.border,
+                      backgroundColor: activityFilter === 'public' ? `${c.primary}20` : c.surface,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => setActivityFilter('public')}
+                >
+                  <Text style={[
+                    styles.profileActivityFilterChipText,
+                    { color: activityFilter === 'public' ? c.primary : c.textSecondary },
+                  ]}>
+                    {t('home.profileActivityPublicPosts', { defaultValue: 'Public Posts' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.profileActivityFilterChip,
+                    {
+                      borderColor: activityFilter === 'comments' ? c.primary : c.border,
+                      backgroundColor: activityFilter === 'comments' ? `${c.primary}20` : c.surface,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => setActivityFilter('comments')}
+                >
+                  <Text style={[
+                    styles.profileActivityFilterChipText,
+                    { color: activityFilter === 'comments' ? c.primary : c.textSecondary },
+                  ]}>
+                    {t('home.profileActivityComments', { defaultValue: 'Comments' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {activityFilter === 'comments' ? (
+                myProfileCommentsLoading ? (
+                  <ActivityIndicator color={c.primary} size="small" />
+                ) : safeProfileComments.length === 0 ? (
+                  <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
+                    {t('home.profileActivityNoComments', { defaultValue: 'No recent comments yet.' })}
+                  </Text>
+                ) : (
+                  <View style={styles.profileCommentList}>
+                    {safeProfileComments.map((comment) => (
+                      <View
+                        key={`profile-comment-${comment.id}`}
+                        style={[styles.profileCommentCard, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        <Text style={[styles.profileCommentText, { color: c.textPrimary }]}>
+                          {comment.text || t('home.profileActivityEmptyComment', { defaultValue: 'Comment with media' })}
+                        </Text>
+                        <Text style={[styles.profileCommentMeta, { color: c.textMuted }]}>
+                          {comment.post?.community?.name
+                            ? `c/${comment.post.community.name}`
+                            : t('home.profileActivityPublicPostLabel', { defaultValue: 'Public post' })}
+                          {' • '}
+                          {comment.created ? new Date(comment.created).toLocaleString() : '-'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )
+              ) : myProfilePostsLoading ? (
                 <ActivityIndicator color={c.primary} size="small" />
-              ) : regularProfilePosts.length === 0 ? (
-                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.profileNoPosts')}</Text>
+              ) : (activityFilter === 'community' ? communityActivityPosts : publicActivityPosts).length === 0 ? (
+                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
+                  {activityFilter === 'community'
+                    ? t('home.profileActivityNoCommunityPosts', { defaultValue: 'No recent community posts yet.' })
+                    : t('home.profileActivityNoPublicPosts', { defaultValue: 'No recent public posts yet.' })}
+                </Text>
               ) : (
                 <View style={styles.feedList}>
-                  {regularProfilePosts.map((post) => (
+                  {(activityFilter === 'community' ? communityActivityPosts : publicActivityPosts).map((post) => (
                     <React.Fragment key={`profile-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
                   ))}
                 </View>

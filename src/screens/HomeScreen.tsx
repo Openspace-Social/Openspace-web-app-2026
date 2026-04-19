@@ -31,6 +31,7 @@ import {
   ListResult,
   ModerationCategory,
   PostComment,
+  ProfileCommentActivity,
   SearchCommunityResult,
   SearchHashtagResult,
   SearchUserResult,
@@ -40,7 +41,6 @@ import {
   UpdateAuthenticatedUserPayload,
 } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
-import LanguagePicker from '../components/LanguagePicker';
 import { AppRoute } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
@@ -55,7 +55,11 @@ import NotificationDrawer from '../components/NotificationDrawer';
 import CirclesScreen from './CirclesScreen';
 import ListsScreen from './ListsScreen';
 import FollowPeopleScreen from './FollowPeopleScreen';
+import CommunitiesScreen from './CommunitiesScreen';
+import ManageCommunitiesScreen from './ManageCommunitiesScreen';
+import SettingsScreen from './SettingsScreen';
 import InviteDrawer from '../components/InviteDrawer';
+import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
 import { useAppToast } from '../toast/AppToastContext';
 import {
   ShortPostLinkPreview,
@@ -66,6 +70,7 @@ import {
 interface HomeScreenProps {
   token: string;
   onLogout: () => void;
+  onTokenRefresh?: (token: string) => void | Promise<void>;
   route: AppRoute;
   onNavigate: (route: AppRoute, replace?: boolean) => void;
 }
@@ -78,6 +83,14 @@ const PROFILE_COMMUNITIES_PAGE_SIZE = 20;
 const PROFILE_FOLLOWINGS_PAGE_SIZE = 20;
 const SHORT_POST_MAX_LENGTH = 5000;
 const LONG_POST_MAX_IMAGES = 5;
+const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
+
+type CommentDraftMedia = {
+  kind: 'image' | 'gif';
+  file?: Blob;
+  uri: string;
+  name?: string;
+};
 
 function extractPlainTextFromBlocks(blocks: LongPostBlock[]) {
   return blocks
@@ -559,16 +572,18 @@ function matchesReportCategory(category: ModerationCategory, categoryName: Repor
   }
 }
 
-export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeScreenProps) {
+export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onNavigate }: HomeScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { showToast } = useAppToast();
   const { t } = useTranslation();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const c = theme.colors;
+  const sideDrawerWidth = Math.min(420, viewportWidth * 0.88);
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [linkedIdentities, setLinkedIdentities] = useState<SocialIdentity[]>([]);
+  const [passwordInitializedOverride, setPasswordInitializedOverride] = useState(false);
   const [identitiesLoading, setIdentitiesLoading] = useState(true);
   const [providerLoading, setProviderLoading] = useState<SocialProvider | null>(null);
   const [activeFeed, setActiveFeed] = useState<FeedType>('home');
@@ -582,14 +597,27 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
   const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
   const [communityRouteError, setCommunityRouteError] = useState('');
+  const [communityRoutePosterFilterUsername, setCommunityRoutePosterFilterUsername] = useState<string | null>(null);
   const [communityInfo, setCommunityInfo] = useState<SearchCommunityResult | null>(null);
   const [communityInfoLoading, setCommunityInfoLoading] = useState(false);
   const [communityJoinLoading, setCommunityJoinLoading] = useState(false);
+  const [communityLeaveConfirmOpen, setCommunityLeaveConfirmOpen] = useState(false);
+  const [communityNotifEnabled, setCommunityNotifEnabled] = useState<boolean | null>(null);
+  const [communityNotifLoading, setCommunityNotifLoading] = useState(false);
   const [communityOwner, setCommunityOwner] = useState<CommunityOwner | null>(null);
   const [communityMembers, setCommunityMembers] = useState<CommunityMember[]>([]);
   const [communityMembersLoading, setCommunityMembersLoading] = useState(false);
+  const [communityMembersLoadingMore, setCommunityMembersLoadingMore] = useState(false);
+  const [communityMembersHasMore, setCommunityMembersHasMore] = useState(false);
+  const [communityMembersNextMaxId, setCommunityMembersNextMaxId] = useState<number | undefined>(undefined);
+  const [communityManageDrawerOpen, setCommunityManageDrawerOpen] = useState(false);
+  const [communityManageTarget, setCommunityManageTarget] = useState<SearchCommunityResult | null>(null);
+  const [communityRouteRefreshKey, setCommunityRouteRefreshKey] = useState(0);
+  const [manageCommunitiesRefreshKey, setManageCommunitiesRefreshKey] = useState(0);
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
   const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
+  const [myProfileComments, setMyProfileComments] = useState<ProfileCommentActivity[]>([]);
+  const [myProfileCommentsLoading, setMyProfileCommentsLoading] = useState(false);
   const [myPinnedPosts, setMyPinnedPosts] = useState<FeedPost[]>([]);
   const [myPinnedPostsLoading, setMyPinnedPostsLoading] = useState(false);
   const [myJoinedCommunities, setMyJoinedCommunities] = useState<SearchCommunityResult[]>([]);
@@ -606,6 +634,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [profileUserLoading, setProfileUserLoading] = useState(false);
   const [profilePosts, setProfilePosts] = useState<FeedPost[]>([]);
   const [profilePostsLoading, setProfilePostsLoading] = useState(false);
+  const [profileComments, setProfileComments] = useState<ProfileCommentActivity[]>([]);
+  const [profileCommentsLoading, setProfileCommentsLoading] = useState(false);
   const [profilePinnedPosts, setProfilePinnedPosts] = useState<FeedPost[]>([]);
   const [profilePinnedPostsLoading, setProfilePinnedPostsLoading] = useState(false);
   const [profileJoinedCommunities, setProfileJoinedCommunities] = useState<SearchCommunityResult[]>([]);
@@ -620,6 +650,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [profileFollowingsHasMore, setProfileFollowingsHasMore] = useState(true);
   const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
+  const [userPostSubByUsername, setUserPostSubByUsername] = useState<Record<string, boolean | null>>({});
+  const [userPostSubLoadingByUsername, setUserPostSubLoadingByUsername] = useState<Record<string, boolean>>({});
   // Profile actions menu
   const [userCircles, setUserCircles] = useState<CircleResult[]>([]);
   const [userLists, setUserLists] = useState<ListResult[]>([]);
@@ -631,6 +663,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
   const [draftComments, setDraftComments] = useState<Record<number, string>>({});
   const [draftReplies, setDraftReplies] = useState<Record<number, string>>({});
+  const [draftCommentMediaByPostId, setDraftCommentMediaByPostId] = useState<Record<number, CommentDraftMedia | null>>({});
+  const [draftReplyMediaByCommentId, setDraftReplyMediaByCommentId] = useState<Record<number, CommentDraftMedia | null>>({});
   const [commentEditDrafts, setCommentEditDrafts] = useState<Record<number, string>>({});
   const [replyEditDrafts, setReplyEditDrafts] = useState<Record<number, string>>({});
   const [editingCommentById, setEditingCommentById] = useState<Record<number, boolean>>({});
@@ -709,9 +743,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const [searchResultsQuery, setSearchResultsQuery] = useState('');
   const [profileActiveTab, setProfileActiveTab] = useState<ProfileTabKey>('all');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuDrawerMounted, setMenuDrawerMounted] = useState(false);
   const [autoPlayMedia, setAutoPlayMedia] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
+  const [blockedUsersDrawerOpen, setBlockedUsersDrawerOpen] = useState(false);
+  const [linkedAccountsDrawerMounted, setLinkedAccountsDrawerMounted] = useState(false);
+  const [blockedUsersDrawerMounted, setBlockedUsersDrawerMounted] = useState(false);
   const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
   const [externalLinkModalOpen, setExternalLinkModalOpen] = useState(false);
   const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
@@ -735,6 +772,74 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   const longPostAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPostInlineMediaOrderRef = useRef(1000);
   const longPostMediaSyncInFlightRef = useRef(false);
+  const longPostHydratedIdsRef = useRef<Set<number>>(new Set());
+  const longPostHydrationInFlightRef = useRef<Set<number>>(new Set());
+  const fullPostHydratedIdsRef = useRef<Set<number>>(new Set());
+  const fullPostHydrationInFlightRef = useRef<Set<number>>(new Set());
+  const authFailureHandledRef = useRef(false);
+  const processedChangeEmailTokenRef = useRef<string | null>(null);
+  const linkedAccountsDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const linkedAccountsDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const blockedUsersDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const blockedUsersDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const menuDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const menuDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const resolvedHasUsablePassword = React.useMemo(() => {
+    const requiresRaw = user?.requires_current_password;
+    if (typeof requiresRaw === 'boolean') return requiresRaw;
+    if (typeof requiresRaw === 'number') return requiresRaw !== 0;
+    if (typeof requiresRaw === 'string') {
+      const normalizedRequires = requiresRaw.trim().toLowerCase();
+      if (normalizedRequires === 'false' || normalizedRequires === '0' || normalizedRequires === 'no') return false;
+      if (normalizedRequires === 'true' || normalizedRequires === '1' || normalizedRequires === 'yes') return true;
+    }
+
+    const usableRaw = user?.has_usable_password;
+    if (typeof usableRaw === 'boolean') {
+      return linkedIdentities.length > 0 ? false : usableRaw;
+    }
+    if (typeof usableRaw === 'number') {
+      return linkedIdentities.length > 0 ? false : usableRaw !== 0;
+    }
+    if (typeof usableRaw === 'string') {
+      const normalizedUsable = usableRaw.trim().toLowerCase();
+      if (normalizedUsable === 'false' || normalizedUsable === '0' || normalizedUsable === 'no') return false;
+      if (normalizedUsable === 'true' || normalizedUsable === '1' || normalizedUsable === 'yes') {
+        return linkedIdentities.length > 0 ? false : true;
+      }
+    }
+
+    // Safe fallback: prefer set-password flow if unknown.
+    return false;
+  }, [linkedIdentities.length, user?.has_usable_password, user?.requires_current_password]);
+
+  const effectiveRequiresCurrentPassword = React.useMemo(() => {
+    if (resolvedHasUsablePassword) return true;
+    if (passwordInitializedOverride) return true;
+    return false;
+  }, [passwordInitializedOverride, resolvedHasUsablePassword]);
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) {
+      setPasswordInitializedOverride(false);
+      return;
+    }
+    let active = true;
+    const storageKey = `@openspace/password-initialized/${userId}`;
+    AsyncStorage.getItem(storageKey)
+      .then((value) => {
+        if (!active) return;
+        setPasswordInitializedOverride(value === '1');
+      })
+      .catch(() => {
+        if (!active) return;
+        setPasswordInitializedOverride(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!notice) return;
@@ -753,6 +858,18 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     showToast(longPostEditError, { type: 'error' });
     setLongPostEditError('');
   }, [longPostEditError, showToast]);
+
+  useEffect(() => {
+    authFailureHandledRef.current = false;
+  }, [token]);
+
+  function handleUnauthorized(errorValue: unknown) {
+    if (!(errorValue instanceof ApiRequestError) || errorValue.status !== 401) return false;
+    if (authFailureHandledRef.current) return true;
+    authFailureHandledRef.current = true;
+    onLogout();
+    return true;
+  }
 
   const longPostPreviewExpandState = React.useMemo(() => {
     if (!longPostPreviewPost) {
@@ -825,7 +942,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
   function handleOpenSettingsFromMenu() {
     setMenuOpen(false);
-    setSettingsOpen(true);
+    onNavigate({ screen: 'settings' });
   }
 
   async function handleToggleAutoPlayMedia() {
@@ -836,6 +953,57 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     } catch {
       // Keep in-memory preference if persistence fails.
     }
+  }
+
+  async function handleChangePassword(currentPassword: string | null, newPassword: string) {
+    const payload: { current_password?: string; new_password: string } = {
+      new_password: newPassword,
+    };
+    if (currentPassword && currentPassword.trim()) {
+      payload.current_password = currentPassword;
+    }
+    const response: any = await api.updateAuthenticatedUserSettings(token, payload);
+    const nextToken =
+      response && typeof response === 'object' && typeof response.token === 'string' && response.token.trim()
+        ? response.token.trim()
+        : null;
+    const activeToken = nextToken || token;
+    if (nextToken) {
+      await onTokenRefresh?.(nextToken);
+    }
+    if (!currentPassword || !currentPassword.trim()) {
+      const userId = user?.id;
+      if (userId) {
+        const storageKey = `@openspace/password-initialized/${userId}`;
+        try {
+          await AsyncStorage.setItem(storageKey, '1');
+        } catch {
+          // non-fatal local storage error
+        }
+      }
+      setPasswordInitializedOverride(true);
+    }
+    const refreshedUser = await api.getAuthenticatedUser(activeToken);
+    setUser(refreshedUser);
+  }
+
+  async function handleRequestEmailChange(newEmail: string, currentPassword: string) {
+    await api.updateAuthenticatedUserSettings(token, {
+      email: newEmail,
+      current_password: currentPassword,
+    });
+  }
+
+  async function handleConfirmEmailChange(tokenOrCode: string) {
+    const message = await api.verifyEmailChangeToken(token, tokenOrCode);
+    try {
+      await AsyncStorage.removeItem(EMAIL_CHANGE_PENDING_KEY);
+    } catch {
+      // ignore storage cleanup errors
+    }
+    const refreshedUser = await api.getAuthenticatedUser(token);
+    setUser(refreshedUser);
+    return message;
   }
 
   // ── Notifications ────────────────────────────────────────────────────────────
@@ -884,8 +1052,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         setUser(authenticatedUser);
         setLinkedIdentities(identities);
       })
-      .catch(() => {
+      .catch((errorValue) => {
         if (!active) return;
+        if (handleUnauthorized(errorValue)) return;
         setFeedError(t('home.feedLoadError'));
       })
       .finally(() => {
@@ -911,7 +1080,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     function fetchUnreadCount() {
       api.getUnreadNotificationsCount(token).then((count) => {
         setUnreadCount(count);
-      }).catch(() => {});
+      }).catch((errorValue) => {
+        handleUnauthorized(errorValue);
+      });
     }
 
     fetchUnreadCount();
@@ -936,24 +1107,185 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }, [token]);
 
   useEffect(() => {
+    if (menuOpen) {
+      setMenuDrawerMounted(true);
+      menuDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(menuDrawerTranslateX, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(menuDrawerBackdropOpacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(menuDrawerTranslateX, {
+          toValue: sideDrawerWidth,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(menuDrawerBackdropOpacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setMenuDrawerMounted(false));
+    }
+  }, [menuOpen, menuDrawerBackdropOpacity, menuDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (linkedAccountsOpen) {
+      setLinkedAccountsDrawerMounted(true);
+      linkedAccountsDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(linkedAccountsDrawerTranslateX, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(linkedAccountsDrawerBackdropOpacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(linkedAccountsDrawerTranslateX, {
+          toValue: sideDrawerWidth,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(linkedAccountsDrawerBackdropOpacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setLinkedAccountsDrawerMounted(false));
+    }
+  }, [linkedAccountsOpen, linkedAccountsDrawerBackdropOpacity, linkedAccountsDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (blockedUsersDrawerOpen) {
+      setBlockedUsersDrawerMounted(true);
+      blockedUsersDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(blockedUsersDrawerTranslateX, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blockedUsersDrawerBackdropOpacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(blockedUsersDrawerTranslateX, {
+          toValue: sideDrawerWidth,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blockedUsersDrawerBackdropOpacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setBlockedUsersDrawerMounted(false));
+    }
+  }, [blockedUsersDrawerOpen, blockedUsersDrawerBackdropOpacity, blockedUsersDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search || '');
+    const changeEmailToken = (params.get('change_email_token') || '').trim();
+    if (!changeEmailToken) return;
+    if (processedChangeEmailTokenRef.current === changeEmailToken) return;
+    processedChangeEmailTokenRef.current = changeEmailToken;
+    let shouldClearTokenFromUrl = true;
+
+    const clearTokenFromUrl = () => {
+      try {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete('change_email_token');
+        window.history.replaceState({}, '', nextUrl.toString());
+      } catch {
+        // ignore URL mutation errors
+      }
+    };
+
+    api.verifyEmailChangeToken(token, changeEmailToken)
+      .then(async (message) => {
+        try {
+          await AsyncStorage.removeItem(EMAIL_CHANGE_PENDING_KEY);
+        } catch {
+          // ignore storage cleanup errors
+        }
+        setNotice(message || t('settings.emailChangeConfirmed', { defaultValue: 'Email changed successfully.' }));
+        try {
+          const refreshedUser = await api.getAuthenticatedUser(token);
+          setUser(refreshedUser);
+        } catch {
+          // best effort refresh
+        }
+      })
+      .catch((errorValue: any) => {
+        if (handleUnauthorized(errorValue)) {
+          shouldClearTokenFromUrl = false;
+          processedChangeEmailTokenRef.current = null;
+          return;
+        }
+        setError(errorValue?.message || t('settings.emailChangeConfirmError', { defaultValue: 'Could not confirm email change.' }));
+      })
+      .finally(() => {
+        if (shouldClearTokenFromUrl) {
+          clearTokenFromUrl();
+        }
+      });
+  }, [token, t]);
+
+  useEffect(() => {
     if (!user?.username) return;
     let active = true;
     setMyProfilePostsLoading(true);
+    setMyProfileCommentsLoading(true);
     setMyPinnedPostsLoading(true);
     Promise.allSettled([
       api.getUserPosts(token, user.username, 10),
+      api.getUserComments(token, user.username, 10),
       api.getPinnedPosts(token, user.username, 10),
     ])
-      .then(([postsResult, pinnedResult]) => {
+      .then(([postsResult, commentsResult, pinnedResult]) => {
         if (!active) return;
         const posts = postsResult.status === 'fulfilled' ? postsResult.value : [];
+        const comments = commentsResult.status === 'fulfilled' ? commentsResult.value : [];
         const pinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
-        setMyProfilePosts(Array.isArray(posts) ? posts : []);
-        setMyPinnedPosts(Array.isArray(pinned) ? pinned : []);
+        const safePosts = Array.isArray(posts) ? posts : [];
+        const safeComments = Array.isArray(comments) ? comments : [];
+        const safePinned = Array.isArray(pinned) ? pinned : [];
+        setMyProfilePosts(safePosts);
+        setMyProfileComments(safeComments);
+        setMyPinnedPosts(safePinned);
+        void hydrateLongPostsForRichRendering(safePosts).then((hydrated) => {
+          if (!active) return;
+          setMyProfilePosts(hydrated);
+        });
+        void hydrateLongPostsForRichRendering(safePinned).then((hydrated) => {
+          if (!active) return;
+          setMyPinnedPosts(hydrated);
+        });
       })
       .finally(() => {
         if (!active) return;
         setMyProfilePostsLoading(false);
+        setMyProfileCommentsLoading(false);
         setMyPinnedPostsLoading(false);
       });
 
@@ -1084,7 +1416,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function loadProfileJoinedCommunitiesPage(username: string, offset = 0) {
-    const communities = await api.getUserCommunities(token, username);
+    const communities = await api.getUserCommunities(token, username, 'most_active');
     const safeCommunities = Array.isArray(communities) ? communities : [];
     const hasMore = false;
     return { communities: safeCommunities, hasMore };
@@ -1096,6 +1428,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     const username = route.username;
     setProfileUserLoading(true);
     setProfilePostsLoading(true);
+    setProfileCommentsLoading(true);
     setProfilePinnedPostsLoading(true);
     setProfileJoinedCommunitiesLoading(true);
     setProfileFollowingsLoading(true);
@@ -1107,16 +1440,27 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     Promise.allSettled([
       api.getUserByUsername(token, username),
       api.getUserPosts(token, username, 10),
+      api.getUserComments(token, username, 10),
       api.getPinnedPosts(token, username, 10),
       loadProfileJoinedCommunitiesPage(username, 0),
       loadProfileFollowingsPage(username),
       api.getCircles(token),
       api.getLists(token),
     ])
-      .then(([userResult, postsResult, pinnedResult, communitiesResult, followingsResult, circlesResult, listsResult]) => {
+      .then(([
+        userResult,
+        postsResult,
+        commentsResult,
+        pinnedResult,
+        communitiesResult,
+        followingsResult,
+        circlesResult,
+        listsResult,
+      ]) => {
         if (!active) return;
-        const nextUser = userResult.status === 'fulfilled' ? userResult.value : null;
+        const nextUser: any = userResult.status === 'fulfilled' ? userResult.value : null;
         const nextPosts = postsResult.status === 'fulfilled' ? postsResult.value : [];
+        const nextComments = commentsResult.status === 'fulfilled' ? commentsResult.value : [];
         const nextPinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
         const nextCommunities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : { communities: [], hasMore: false };
         const nextFollowings = followingsResult.status === 'fulfilled' ? followingsResult.value : { followings: [], hasMore: false };
@@ -1132,8 +1476,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         if (nextUser?.username && typeof nextUser?.is_following === 'boolean') {
           setFollowStateByUsername((prev) => ({ ...prev, [nextUser.username]: nextUser.is_following }));
         }
-        setProfilePosts(Array.isArray(nextPosts) ? nextPosts : []);
-        setProfilePinnedPosts(Array.isArray(nextPinned) ? nextPinned : []);
+        const safeProfilePosts = Array.isArray(nextPosts) ? nextPosts : [];
+        const safeProfileComments = Array.isArray(nextComments) ? nextComments : [];
+        const safeProfilePinned = Array.isArray(nextPinned) ? nextPinned : [];
+        setProfilePosts(safeProfilePosts);
+        setProfileComments(safeProfileComments);
+        setProfilePinnedPosts(safeProfilePinned);
+        void hydrateLongPostsForRichRendering(safeProfilePosts).then((hydrated) => {
+          if (!active) return;
+          setProfilePosts(hydrated);
+        });
+        void hydrateLongPostsForRichRendering(safeProfilePinned).then((hydrated) => {
+          if (!active) return;
+          setProfilePinnedPosts(hydrated);
+        });
         setProfileJoinedCommunities(Array.isArray(nextCommunities.communities) ? nextCommunities.communities : []);
         setProfileJoinedCommunitiesOffset(Array.isArray(nextCommunities.communities) ? nextCommunities.communities.length : 0);
         setProfileJoinedCommunitiesHasMore(!!nextCommunities.hasMore);
@@ -1148,6 +1504,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         if (!active) return;
         setProfileUser(null);
         setProfilePosts([]);
+        setProfileComments([]);
         setProfilePinnedPosts([]);
         setProfileJoinedCommunities([]);
         setProfileFollowings([]);
@@ -1158,6 +1515,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         if (!active) return;
         setProfileUserLoading(false);
         setProfilePostsLoading(false);
+        setProfileCommentsLoading(false);
         setProfilePinnedPostsLoading(false);
         setProfileJoinedCommunitiesLoading(false);
         setProfileFollowingsLoading(false);
@@ -1248,8 +1606,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         if (!active) return;
         setModerationCategories(categories || []);
       })
-      .catch(() => {
+      .catch((errorValue) => {
         if (!active) return;
+        if (handleUnauthorized(errorValue)) return;
         setModerationCategories([]);
       });
 
@@ -1447,6 +1806,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         setFeedNextMaxId(typeof lastId === 'number' ? lastId : undefined);
       }
     } catch (e: any) {
+      if (handleUnauthorized(e)) return;
       setFeedPosts([]);
       setFeedPostsFeed(feed);
       setFeedError(e.message || t('home.feedLoadError'));
@@ -1473,7 +1833,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         setFeedHasMore(false);
         setFeedNextMaxId(undefined);
       }
-    } catch {
+    } catch (errorValue) {
+      if (handleUnauthorized(errorValue)) return;
       // silently fail — user can keep scrolling to retry
     } finally {
       setFeedLoadingMore(false);
@@ -1524,9 +1885,14 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       setCommunityRoutePosts([]);
       setCommunityRouteError('');
       setCommunityRouteLoading(false);
+      setCommunityRoutePosterFilterUsername(null);
       setCommunityInfo(null);
+      setCommunityNotifEnabled(null);
       setCommunityOwner(null);
       setCommunityMembers([]);
+      setCommunityMembersHasMore(false);
+      setCommunityMembersNextMaxId(undefined);
+      setCommunityMembersLoadingMore(false);
       return;
     }
 
@@ -1545,10 +1911,20 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           api.getCommunityMembers(token, routeCommunityName, 9).catch(() => []),
         ]);
         if (!cancelled) {
-          setCommunityRoutePosts(posts);
+          const safePosts = Array.isArray(posts) ? posts : [];
+          const safeMembers = Array.isArray(members) ? (members as CommunityMember[]) : [];
+          setCommunityRoutePosts(safePosts);
           setCommunityInfo(info);
+          setCommunityNotifEnabled(typeof info?.are_new_post_notifications_enabled === 'boolean' ? info.are_new_post_notifications_enabled : null);
           setCommunityOwner(owner);
-          setCommunityMembers(members as CommunityMember[]);
+          setCommunityMembers(safeMembers);
+          setCommunityMembersHasMore(safeMembers.length === 9);
+          const lastMemberId = safeMembers.length ? safeMembers[safeMembers.length - 1]?.id : undefined;
+          setCommunityMembersNextMaxId(typeof lastMemberId === 'number' ? lastMemberId : undefined);
+          void hydratePostsByIdForConsistentRendering(safePosts).then((hydrated) => {
+            if (cancelled) return;
+            setCommunityRoutePosts(hydrated);
+          });
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -1565,13 +1941,59 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
 
     setCommunityInfo(null);
+    setCommunityNotifEnabled(null);
     setCommunityOwner(null);
     setCommunityMembers([]);
+    setCommunityRoutePosterFilterUsername(null);
+    setCommunityMembersHasMore(false);
+    setCommunityMembersNextMaxId(undefined);
+    setCommunityMembersLoadingMore(false);
     void loadCommunityRoute();
     return () => {
       cancelled = true;
     };
-  }, [route, token, t]);
+  }, [route, token, t, communityRouteRefreshKey]);
+
+  function refreshCommunityRouteData() {
+    setCommunityRouteRefreshKey((prev) => prev + 1);
+  }
+
+  function filterCommunityPostsByUser(username: string, communityName: string) {
+    const normalizedUsername = (username || '').trim();
+    const activeCommunityName = route.screen === 'community' ? route.name : '';
+    if (!normalizedUsername || !activeCommunityName) return;
+    if (communityName && communityName !== activeCommunityName) return;
+    setCommunityRoutePosterFilterUsername(normalizedUsername);
+    setNotice(
+      t('home.communityPostsFilteredByUserNotice', {
+        username: normalizedUsername,
+        community: activeCommunityName,
+        defaultValue: `Showing posts in c/${activeCommunityName} by @${normalizedUsername}.`,
+      })
+    );
+  }
+
+  const filteredCommunityRoutePosts = React.useMemo(() => {
+    if (!communityRoutePosterFilterUsername) return communityRoutePosts;
+    const target = communityRoutePosterFilterUsername.toLowerCase();
+    return communityRoutePosts.filter((post) => (post.creator?.username || '').toLowerCase() === target);
+  }, [communityRoutePosts, communityRoutePosterFilterUsername]);
+
+  function refreshManageCommunitiesRouteData() {
+    setManageCommunitiesRefreshKey((prev) => prev + 1);
+  }
+
+  async function openCommunityManagerByName(name: string) {
+    const normalized = (name || '').trim();
+    if (!normalized) return;
+    try {
+      const fullCommunity = await api.getCommunity(token, normalized);
+      setCommunityManageTarget(fullCommunity);
+      setCommunityManageDrawerOpen(true);
+    } catch (e: any) {
+      setError(e?.message || t('community.manageListLoadError', { defaultValue: 'Unable to load manageable communities right now.' }));
+    }
+  }
 
   async function handleJoinCommunity() {
     const name = route.screen === 'community' ? route.name : '';
@@ -1596,16 +2018,96 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     if (!name || communityJoinLoading) return;
     setCommunityJoinLoading(true);
     try {
-      await api.leaveCommunity(token, name);
+      const response = await api.leaveCommunity(token, name);
       setCommunityInfo((prev) => prev ? {
         ...prev,
         members_count: Math.max(0, (prev.members_count ?? 1) - 1),
         memberships: [],
       } : prev);
+      const removedPostsCount = Number(response?.removed_posts_count || 0);
+      if (removedPostsCount > 0) {
+        setNotice(
+          t('community.leaveDeletedContributionsNotice', {
+            defaultValue:
+              'You left c/{{name}}. {{count}} of your post contribution(s) were permanently removed from this community.',
+            name,
+            count: removedPostsCount,
+          })
+        );
+      } else {
+        setNotice(
+          t('community.leaveSuccessNotice', {
+            defaultValue: 'You left c/{{name}}.',
+            name,
+          })
+        );
+      }
     } catch (e: any) {
       setError(e?.message || t('home.feedLoadError'));
     } finally {
       setCommunityJoinLoading(false);
+      setCommunityLeaveConfirmOpen(false);
+    }
+  }
+
+  function requestLeaveCommunity() {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityJoinLoading) return;
+    setCommunityLeaveConfirmOpen(true);
+  }
+
+  async function handleToggleCommunityNotifications() {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityNotifLoading) return;
+    setCommunityNotifLoading(true);
+    try {
+      const wasEnabled = communityNotifEnabled === true;
+      const result = wasEnabled
+        ? await api.unsubscribeFromCommunityNotifications(token, name)
+        : await api.subscribeToCommunityNotifications(token, name);
+      setCommunityNotifEnabled(result.are_new_post_notifications_enabled);
+      if (!wasEnabled) {
+        setNotice(t('community.notificationsEnabledNotice', {
+          defaultValue: 'You will start to receive Notifications of new posts from this Community',
+        }));
+      }
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setCommunityNotifLoading(false);
+    }
+  }
+
+  async function loadMoreCommunityMembers() {
+    const communityName = displayRoute.screen === 'community' ? (displayRoute.name || '').trim() : '';
+    if (!communityName || communityMembersLoading || communityMembersLoadingMore || !communityMembersHasMore) return;
+
+    setCommunityMembersLoadingMore(true);
+    try {
+      const rows = await api.getCommunityMembers(token, communityName, 9, communityMembersNextMaxId);
+      const safeRows = Array.isArray(rows) ? rows : [];
+      setCommunityMembers((prev) => {
+        const seen = new Set(
+          prev
+            .map((member) => (typeof member.id === 'number' ? `id:${member.id}` : member.username ? `u:${member.username}` : ''))
+            .filter(Boolean)
+        );
+        const deduped = safeRows.filter((member) => {
+          const key = typeof member.id === 'number' ? `id:${member.id}` : member.username ? `u:${member.username}` : '';
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        return [...prev, ...deduped];
+      });
+      setCommunityMembersHasMore(safeRows.length === 9);
+      const lastId = safeRows.length ? safeRows[safeRows.length - 1]?.id : undefined;
+      setCommunityMembersNextMaxId((prev) => (typeof lastId === 'number' ? lastId : prev));
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+      setCommunityMembersHasMore(false);
+    } finally {
+      setCommunityMembersLoadingMore(false);
     }
   }
 
@@ -1663,6 +2165,34 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       setError(e?.message || t('home.feedLoadError'));
     } finally {
       setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: false }));
+    }
+  }
+
+  async function handleToggleUserPostSubscription(username: string) {
+    if (!username || userPostSubLoadingByUsername[username]) return;
+    setUserPostSubLoadingByUsername((prev) => ({ ...prev, [username]: true }));
+    const currentlySubscribed = userPostSubByUsername[username] === true;
+    try {
+      if (currentlySubscribed) {
+        await api.unsubscribeFromUserNewPostNotifications(token, username);
+        setUserPostSubByUsername((prev) => ({ ...prev, [username]: false }));
+      } else {
+        await api.subscribeToUserNewPostNotifications(token, username);
+        setUserPostSubByUsername((prev) => ({ ...prev, [username]: true }));
+        setNotice(t('profile.subscribedToPostsNotice', {
+          defaultValue: 'You will be notified when this person publishes a new post.',
+        }));
+      }
+    } catch (e: any) {
+      // If subscribe failed because already subscribed, resolve state to true
+      const msg: string = e?.message || '';
+      if (!currentlySubscribed && msg) {
+        setUserPostSubByUsername((prev) => ({ ...prev, [username]: true }));
+      } else {
+        setError(msg || t('home.feedLoadError'));
+      }
+    } finally {
+      setUserPostSubLoadingByUsername((prev) => ({ ...prev, [username]: false }));
     }
   }
 
@@ -1747,6 +2277,92 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return getPostText(post).length > 280 ? 'long' : 'short';
   }
 
+  function shouldHydrateLongPost(post: FeedPost) {
+    const type = (post.type || '').toUpperCase();
+    if (type !== 'LP' || typeof post.id !== 'number') return false;
+    const hasBlocks = Array.isArray(post.long_text_blocks) && post.long_text_blocks.length > 0;
+    const hasRenderedHtml = typeof post.long_text_rendered_html === 'string' && !!post.long_text_rendered_html.trim();
+    return !hasBlocks && !hasRenderedHtml;
+  }
+
+  async function hydrateLongPostsForRichRendering(posts: FeedPost[]) {
+    if (!Array.isArray(posts) || posts.length === 0) return posts;
+    const candidates = posts.filter((post) => {
+      if (!shouldHydrateLongPost(post)) return false;
+      if (longPostHydratedIdsRef.current.has(post.id)) return false;
+      if (longPostHydrationInFlightRef.current.has(post.id)) return false;
+      return true;
+    });
+    if (candidates.length === 0) return posts;
+
+    const limitedCandidates = candidates.slice(0, 8);
+    limitedCandidates.forEach((post) => longPostHydrationInFlightRef.current.add(post.id));
+
+    const hydratedPairs = await Promise.all(
+      limitedCandidates.map(async (post) => {
+        try {
+          const full = await api.getPostById(token, post.id);
+          const hasBlocks = Array.isArray(full.long_text_blocks) && full.long_text_blocks.length > 0;
+          const hasRenderedHtml = typeof full.long_text_rendered_html === 'string' && !!full.long_text_rendered_html.trim();
+          if (hasBlocks || hasRenderedHtml) {
+            longPostHydratedIdsRef.current.add(post.id);
+            return [post.id, full] as const;
+          }
+          return [post.id, null] as const;
+        } catch {
+          return [post.id, null] as const;
+        } finally {
+          longPostHydrationInFlightRef.current.delete(post.id);
+        }
+      })
+    );
+
+    const hydratedById = new Map<number, FeedPost>();
+    hydratedPairs.forEach(([id, full]) => {
+      if (full) hydratedById.set(id, full);
+    });
+    if (hydratedById.size === 0) return posts;
+
+    return posts.map((post) => hydratedById.get(post.id) || post);
+  }
+
+  async function hydratePostsByIdForConsistentRendering(posts: FeedPost[]) {
+    if (!Array.isArray(posts) || posts.length === 0) return posts;
+
+    const candidates = posts.filter((post) => {
+      if (typeof post.id !== 'number') return false;
+      if (fullPostHydratedIdsRef.current.has(post.id)) return false;
+      if (fullPostHydrationInFlightRef.current.has(post.id)) return false;
+      return true;
+    });
+    if (candidates.length === 0) return posts;
+
+    const limitedCandidates = candidates.slice(0, 20);
+    limitedCandidates.forEach((post) => fullPostHydrationInFlightRef.current.add(post.id));
+
+    const hydratedPairs = await Promise.all(
+      limitedCandidates.map(async (post) => {
+        try {
+          const full = await api.getPostById(token, post.id);
+          fullPostHydratedIdsRef.current.add(post.id);
+          return [post.id, full] as const;
+        } catch {
+          return [post.id, null] as const;
+        } finally {
+          fullPostHydrationInFlightRef.current.delete(post.id);
+        }
+      })
+    );
+
+    const hydratedById = new Map<number, FeedPost>();
+    hydratedPairs.forEach(([id, full]) => {
+      if (full) hydratedById.set(id, full);
+    });
+    if (hydratedById.size === 0) return posts;
+
+    return posts.map((post) => hydratedById.get(post.id) || post);
+  }
+
   function getPostReactionCount(post: FeedPost) {
     return (post.reactions_emoji_counts || []).reduce((sum, item) => sum + (item?.count || 0), 0);
   }
@@ -1796,8 +2412,105 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     setDraftComments((prev) => ({ ...prev, [postId]: value }));
   }
 
+  function clearDraftCommentMedia(postId: number) {
+    setDraftCommentMediaByPostId((prev) => ({ ...prev, [postId]: null }));
+  }
+
+  function clearDraftReplyMedia(commentId: number) {
+    setDraftReplyMediaByCommentId((prev) => ({ ...prev, [commentId]: null }));
+  }
+
+  function setDraftCommentGif(postId: number) {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
+      return;
+    }
+    const value = window.prompt(t('home.commentGifPrompt', { defaultValue: 'Paste a GIF URL' }), 'https://');
+    if (!value) return;
+    const next = value.trim();
+    if (!/^https?:\/\//i.test(next)) {
+      setError(t('home.commentGifUrlInvalid', { defaultValue: 'Please enter a valid URL.' }));
+      return;
+    }
+    setDraftCommentMediaByPostId((prev) => ({
+      ...prev,
+      [postId]: { kind: 'gif', uri: next },
+    }));
+  }
+
+  function setDraftReplyGif(commentId: number) {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
+      return;
+    }
+    const value = window.prompt(t('home.commentGifPrompt', { defaultValue: 'Paste a GIF URL' }), 'https://');
+    if (!value) return;
+    const next = value.trim();
+    if (!/^https?:\/\//i.test(next)) {
+      setError(t('home.commentGifUrlInvalid', { defaultValue: 'Please enter a valid URL.' }));
+      return;
+    }
+    setDraftReplyMediaByCommentId((prev) => ({
+      ...prev,
+      [commentId]: { kind: 'gif', uri: next },
+    }));
+  }
+
+  function pickDraftCommentImage(postId: number) {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const preview = URL.createObjectURL(file);
+      setDraftCommentMediaByPostId((prev) => ({
+        ...prev,
+        [postId]: {
+          kind: 'image',
+          file,
+          uri: preview,
+          name: file.name || 'comment-image.jpg',
+        },
+      }));
+    };
+    input.click();
+  }
+
+  function pickDraftReplyImage(commentId: number) {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const preview = URL.createObjectURL(file);
+      setDraftReplyMediaByCommentId((prev) => ({
+        ...prev,
+        [commentId]: {
+          kind: 'image',
+          file,
+          uri: preview,
+          name: file.name || 'reply-image.jpg',
+        },
+      }));
+    };
+    input.click();
+  }
+
   async function submitComment(postId: number) {
     const nextValue = (draftComments[postId] || '').trim();
+    const media = draftCommentMediaByPostId[postId] || null;
     if (!nextValue) return;
     const sourcePost = getSourcePost(postId);
     if (!sourcePost?.uuid) {
@@ -1806,12 +2519,17 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
 
     try {
-      const createdComment = await api.createPostComment(token, sourcePost.uuid, nextValue);
+      const createdComment = await api.createPostComment(token, sourcePost.uuid, {
+        text: nextValue,
+        image: media?.kind === 'image' ? (media.file || null) : null,
+        gif_url: media?.kind === 'gif' ? media.uri : undefined,
+      });
       setLocalComments((prev) => ({
         ...prev,
         [postId]: [createdComment, ...(prev[postId] || [])],
       }));
       setDraftComments((prev) => ({ ...prev, [postId]: '' }));
+      clearDraftCommentMedia(postId);
       applyPostPatch(postId, (post) => ({
         ...post,
         comments_count: (post.comments_count || 0) + 1,
@@ -1851,16 +2569,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   async function submitReply(postId: number, commentId: number) {
     const sourcePost = getSourcePost(postId);
     const nextValue = (draftReplies[commentId] || '').trim();
+    const media = draftReplyMediaByCommentId[commentId] || null;
     if (!sourcePost?.uuid || !nextValue) return;
 
     try {
-      const createdReply = await api.createPostCommentReply(token, sourcePost.uuid, commentId, nextValue);
+      const createdReply = await api.createPostCommentReply(token, sourcePost.uuid, commentId, {
+        text: nextValue,
+        image: media?.kind === 'image' ? (media.file || null) : null,
+        gif_url: media?.kind === 'gif' ? media.uri : undefined,
+      });
       setCommentRepliesById((prev) => ({
         ...prev,
         [commentId]: [createdReply, ...(prev[commentId] || [])],
       }));
       setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: true }));
       setDraftReplies((prev) => ({ ...prev, [commentId]: '' }));
+      clearDraftReplyMedia(commentId);
       setLocalComments((prev) => ({
         ...prev,
         [postId]: (prev[postId] || []).map((comment) =>
@@ -2561,8 +3285,13 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   }
 
   async function reloadLinkedIdentities() {
-    const identities = await api.getLinkedSocialIdentities(token);
-    setLinkedIdentities(identities);
+    try {
+      const identities = await api.getLinkedSocialIdentities(token);
+      setLinkedIdentities(identities);
+    } catch (errorValue) {
+      if (handleUnauthorized(errorValue)) return;
+      throw errorValue;
+    }
   }
 
   function openSocialPopup(provider: SocialProvider): Promise<string> {
@@ -2628,10 +3357,11 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
       const maxWaitMs = 120000;
       const startedAt = Date.now();
+      let redirectHandled = false;
       const interval = window.setInterval(() => {
         if (popup.closed) {
           window.clearInterval(interval);
-          reject(new Error(t('home.linkCancelled')));
+          reject(new Error(redirectHandled ? t('home.linkFailed') : t('home.linkCancelled')));
           return;
         }
 
@@ -2651,29 +3381,53 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
         if (!href || !href.startsWith(redirectUri)) return;
 
-        const hash = popup.location.hash || '';
-        const paramsFromHash = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-        const tokenFromHash = paramsFromHash.get('id_token');
-        const errorFromHash = paramsFromHash.get('error');
-        const returnedState = paramsFromHash.get('state');
+        redirectHandled = true;
 
-        if (errorFromHash) {
+        const hash = popup.location.hash || '';
+        const search = popup.location.search || '';
+        const paramsFromHash = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+        const paramsFromQuery = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+        const tokenFromProvider =
+          paramsFromHash.get('id_token') ||
+          paramsFromQuery.get('id_token');
+        const errorFromProvider =
+          paramsFromHash.get('error') ||
+          paramsFromQuery.get('error');
+        const errorDescription =
+          paramsFromHash.get('error_description') ||
+          paramsFromQuery.get('error_description');
+        const returnedState =
+          paramsFromHash.get('state') ||
+          paramsFromQuery.get('state');
+
+        if (errorFromProvider) {
           popup.close();
           window.clearInterval(interval);
-          reject(new Error(errorFromHash));
+          reject(new Error(errorDescription || errorFromProvider));
           return;
         }
-        if (!tokenFromHash) return;
         if (returnedState && returnedState !== state) {
           popup.close();
           window.clearInterval(interval);
           reject(new Error(t('home.linkStateMismatch')));
           return;
         }
+        if (!tokenFromProvider) {
+          popup.close();
+          window.clearInterval(interval);
+          reject(
+            new Error(
+              t('home.linkFailed', {
+                defaultValue: 'Could not complete account linking. Please try again.',
+              })
+            )
+          );
+          return;
+        }
 
         popup.close();
         window.clearInterval(interval);
-        resolve(tokenFromHash);
+        resolve(tokenFromProvider);
       }, 500);
     });
   }
@@ -2688,7 +3442,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       await reloadLinkedIdentities();
       setNotice(message || t('home.linkSuccess', { provider: getProviderName(provider) }));
     } catch (e: any) {
-      setError(e.message || t('home.linkFailed'));
+      const rawMessage = String(e?.message || '').toLowerCase();
+      if (
+        rawMessage.includes('invalid token') ||
+        rawMessage.includes('already linked') ||
+        rawMessage.includes('another user') ||
+        rawMessage.includes('email already') ||
+        rawMessage.includes('already exists')
+      ) {
+        setError(
+          t('home.linkEmailAlreadyLinked', {
+            defaultValue: 'Email already linked to an Openspace account.',
+          })
+        );
+      } else {
+        setError(e.message || t('home.linkFailed'));
+      }
     } finally {
       setProviderLoading(null);
     }
@@ -2958,6 +3727,21 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     }
   }
 
+  async function handleDeleteFilteredNotifications(ids: number[]) {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const removedUnread = notifications.reduce((acc, n) => (
+      idSet.has(n.id) && !n.read ? acc + 1 : acc
+    ), 0);
+    setNotifications((prev) => prev.filter((n) => !idSet.has(n.id)));
+    if (removedUnread > 0) setUnreadCount((prev) => Math.max(0, prev - removedUnread));
+    try {
+      await Promise.allSettled(ids.map((id) => api.deleteNotification(token, id)));
+    } catch {
+      // silently ignore: UI already updated optimistically
+    }
+  }
+
   function handleNotificationNavigatePost(postId: number) {
     setNotifDrawerOpen(false);
     onNavigate({ screen: 'post', postId });
@@ -3082,9 +3866,23 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     try {
       await api.blockUser(token, username);
       setNotice(`@${username} has been blocked.`);
-      onNavigate({ screen: 'feed', feed: 'home' });
+      setProfileUser((prev: any) =>
+        prev?.username === username ? { ...prev, is_blocked: true } : prev
+      );
     } catch {
       setError('Could not block user.');
+    }
+  }
+
+  async function handleUnblockUser(username: string) {
+    try {
+      await api.unblockUser(token, username);
+      setNotice(`@${username} has been unblocked.`);
+      setProfileUser((prev: any) =>
+        prev?.username === username ? { ...prev, is_blocked: false } : prev
+      );
+    } catch {
+      setError('Could not unblock user.');
     }
   }
 
@@ -3559,6 +4357,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       } else {
         await api.updatePostContent(token, composerDraftUuid, {
           ...longPayload,
+          is_draft: true,
         });
         await refreshComposerDraftMediaCount(composerDraftUuid);
       }
@@ -3861,6 +4660,9 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     setNotice('');
 
     try {
+      let finalizedPost: FeedPost | null = null;
+      let finalizedUuid: string | null = composerDraftUuid || null;
+
       const postPayload = {
         text: composerPostType === 'LP' ? undefined : (trimmedText || undefined),
         long_text: composerPostType === 'LP' ? longPayload?.long_text : undefined,
@@ -3888,6 +4690,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           long_text_blocks: longPayload?.long_text_blocks,
           long_text_rendered_html: longPayload?.long_text_rendered_html,
           long_text_version: longPayload?.long_text_version,
+          is_draft: true,
           draft_expiry_days: longPayload?.draft_expiry_days,
           type: 'LP',
         });
@@ -3895,13 +4698,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           circle_id: targetCircleId ? [targetCircleId] : [],
           community_names: targetCommunityNames,
         });
-        await api.publishPost(token, composerDraftUuid);
+        finalizedPost = await api.publishPost(token, composerDraftUuid);
+        finalizedUuid = composerDraftUuid;
       } else if (hasImages && composerImages.length > 1) {
         const draftPost = await createPrimaryPost(composerImages[0]?.file, true);
 
         if (!draftPost.uuid) {
           throw new Error(t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
         }
+        finalizedUuid = draftPost.uuid;
 
         for (let index = 1; index < composerImages.length; index += 1) {
           const image = composerImages[index];
@@ -3911,13 +4716,75 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           });
         }
         if (!saveAsDraft) {
-          await api.publishPost(token, draftPost.uuid);
+          finalizedPost = await api.publishPost(token, draftPost.uuid);
         }
       } else {
         const createdPost = await createPrimaryPost(composerImages[0]?.file, saveAsDraft);
+        finalizedPost = createdPost;
+        finalizedUuid = createdPost.uuid || finalizedUuid;
         if (saveAsDraft && composerPostType === 'LP') {
           setComposerDraftUuid(createdPost.uuid || null);
           setComposerDraftSavedAt(new Date().toISOString());
+        }
+      }
+
+      // Guardrail: don't show false success if backend returned an OK without
+      // a verifiable published post payload.
+      if (!saveAsDraft) {
+        const hasPublishIdentity = !!finalizedPost?.id || !!finalizedUuid;
+        if (!hasPublishIdentity) {
+          console.error('[ComposerPublish] Missing post identity in publish response', {
+            composerPostType,
+            finalizedPost,
+            finalizedUuid,
+            hasImages,
+            hasVideo,
+            longTextLength: trimmedLongText?.length || 0,
+          });
+          throw new Error(
+            t('home.postComposerPublishVerifyFailed', {
+              defaultValue: 'Post publish could not be verified. Please reopen drafts and retry.',
+            })
+          );
+        }
+
+        let verified = false;
+        if (typeof finalizedPost?.id === 'number' && Number.isFinite(finalizedPost.id)) {
+          try {
+            await api.getPostById(token, finalizedPost.id);
+            verified = true;
+          } catch {
+            verified = false;
+          }
+        }
+        if (!verified && finalizedUuid && user?.username) {
+          try {
+            // API caps this endpoint at count <= 20.
+            const recentMine = await api.getUserPosts(token, user.username, 20);
+            verified = recentMine.some(
+              (post) =>
+                (typeof finalizedPost?.id === 'number' && post.id === finalizedPost.id)
+                || (post.uuid && post.uuid === finalizedUuid)
+            );
+          } catch {
+            verified = false;
+          }
+        }
+        if (!verified) {
+          console.error('[ComposerPublish] Publish verification failed', {
+            composerPostType,
+            finalizedPost,
+            finalizedUuid,
+            user: user?.username,
+            hasImages,
+            hasVideo,
+            longTextLength: trimmedLongText?.length || 0,
+          });
+          throw new Error(
+            t('home.postComposerPublishVerifyFailed', {
+              defaultValue: 'Post publish could not be verified. Please reopen drafts and retry.',
+            })
+          );
         }
       }
 
@@ -4015,13 +4882,27 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
   // Keep the last non-post route as the background context while a post modal is open.
   const displayRoute = route.screen === 'post' ? lastNonPostRouteRef.current : route;
   const viewingProfileRoute = displayRoute.screen === 'profile' || displayRoute.screen === 'me';
+  const viewingCommunitiesRoute = displayRoute.screen === 'communities';
   const viewingCommunityRoute = displayRoute.screen === 'community';
   const viewingHashtagRoute = displayRoute.screen === 'hashtag';
-  const viewingFollowPeopleRoute = displayRoute.screen === 'followers' || displayRoute.screen === 'following';
+  const viewingBlockedRoute = displayRoute.screen === 'blocked';
+  const viewingManageCommunitiesRoute = displayRoute.screen === 'manage-communities';
+  const viewingSettingsRoute = displayRoute.screen === 'settings';
+  const viewingFollowPeopleRoute =
+    displayRoute.screen === 'followers' ||
+    displayRoute.screen === 'following' ||
+    viewingBlockedRoute;
   const profileRouteUsername = displayRoute.screen === 'profile'
     ? displayRoute.username
     : user?.username || '';
   const communityRouteName = displayRoute.screen === 'community' ? displayRoute.name : '';
+  const canManageCurrentCommunity = React.useMemo(() => {
+    if (!communityInfo || typeof user?.id !== 'number') return false;
+    if (communityInfo.is_creator) return true;
+    const memberships = Array.isArray(communityInfo.memberships) ? communityInfo.memberships : [];
+    const mine = memberships.find((row: any) => row?.user_id === user.id);
+    return !!mine?.is_administrator || !!mine?.is_moderator;
+  }, [communityInfo, user?.id]);
   const hashtagRouteName = displayRoute.screen === 'hashtag' ? displayRoute.name : '';
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
@@ -4045,6 +4926,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     return undefined;
   }
   const showingMainSearchResults = !viewingProfileRoute &&
+    !viewingCommunitiesRoute &&
+    !viewingManageCommunitiesRoute &&
     !viewingCommunityRoute &&
     !viewingHashtagRoute &&
     searchResultsActive &&
@@ -4059,7 +4942,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
     { key: 'reels', label: t('home.profileTabReels') },
     { key: 'more', label: t('home.profileTabMore') },
   ];
-  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
+  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
   const composerDrawerWidth =
     Platform.OS === 'web'
@@ -4108,6 +4991,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         commentRepliesLoadingById={commentRepliesLoadingById}
         draftComments={draftComments}
         draftReplies={draftReplies}
+        draftCommentMediaByPostId={draftCommentMediaByPostId}
+        draftReplyMediaByCommentId={draftReplyMediaByCommentId}
         commentEditDrafts={commentEditDrafts}
         replyEditDrafts={replyEditDrafts}
         editingCommentById={editingCommentById}
@@ -4133,6 +5018,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}
         onUpdateDraftReply={updateDraftReply}
+        onPickDraftCommentImage={pickDraftCommentImage}
+        onPickDraftReplyImage={pickDraftReplyImage}
+        onSetDraftCommentGif={setDraftCommentGif}
+        onSetDraftReplyGif={setDraftReplyGif}
+        onClearDraftCommentMedia={clearDraftCommentMedia}
+        onClearDraftReplyMedia={clearDraftReplyMedia}
         onStartEditingComment={startEditingComment}
         onCancelEditingComment={cancelEditingComment}
         onUpdateEditCommentDraft={updateEditCommentDraft}
@@ -4151,6 +5042,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         pinnedDisplayLimit={PIN_LIMIT}
         onNavigateProfile={handleNavigateProfile}
         onNavigateCommunity={handleNavigateCommunity}
+        onFilterCommunityPostsByUser={route.screen === 'community' ? filterCommunityPostsByUser : undefined}
         token={token}
         onFetchUserProfile={api.getUserProfile}
         getPostText={getPostText}
@@ -4419,6 +5311,23 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
             ) : null}
           </TouchableOpacity>
           <TouchableOpacity
+            style={[
+              styles.topNavUtility,
+              viewingCommunitiesRoute
+                ? { backgroundColor: `${c.primary}20`, borderWidth: 1, borderColor: c.primary }
+                : { backgroundColor: c.inputBackground },
+            ]}
+            activeOpacity={0.85}
+            onPress={() => onNavigate({ screen: 'communities' })}
+            accessibilityLabel={t('home.sideMenuCommunities', { defaultValue: 'Communities' })}
+          >
+            <MaterialCommunityIcons
+              name="account-group-outline"
+              size={18}
+              color={viewingCommunitiesRoute ? c.primary : c.textSecondary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.topNavProfile, { backgroundColor: user ? c.primary : 'transparent' }]}
             activeOpacity={0.85}
             onPress={() => setMenuOpen(true)}
@@ -4435,18 +5344,31 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
       </View>
 
       <Modal
-        visible={menuOpen}
+        visible={menuDrawerMounted}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setMenuOpen(false)}
       >
-        <TouchableOpacity
-          style={styles.profileMenuBackdrop}
-          activeOpacity={1}
-          onPress={() => setMenuOpen(false)}
+        <Animated.View
+          style={[
+            styles.drawerBackdrop,
+            { opacity: menuDrawerBackdropOpacity },
+          ]}
+          pointerEvents="auto"
         >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.sideMenuCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setMenuOpen(false)} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.drawerPanel,
+            {
+              width: sideDrawerWidth,
+              backgroundColor: c.surface,
+              transform: [{ translateX: menuDrawerTranslateX }],
+            },
+          ]}
+        >
+            <View style={[styles.sideMenuCard, { backgroundColor: c.surface, borderColor: c.border, width: '100%' }]}>
 
               {/* ── Header ────────────────────────────────── */}
               <View style={[styles.sideMenuHeader, { borderBottomColor: c.border }]}>
@@ -4464,13 +5386,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                     @{user?.username || ''}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setMenuOpen(false)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.7}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textMuted} />
-                </TouchableOpacity>
+                <View style={styles.sideMenuHeaderActions}>
+                  <TouchableOpacity
+                    style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                    onPress={() => {
+                      toggleTheme();
+                    }}
+                    activeOpacity={0.85}
+                    accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+                    >
+                      <MaterialCommunityIcons
+                        name={isDark ? 'weather-sunny' : 'weather-night'}
+                        size={18}
+                        color={c.textSecondary}
+                      />
+                    </TouchableOpacity>
+                </View>
               </View>
 
               {/* ── MY OPENSPACE ──────────────────────────── */}
@@ -4480,13 +5411,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
               {[
                 { icon: 'account-outline', label: t('home.sideMenuProfile', { defaultValue: 'Profile' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'me' }); } },
+                { icon: 'account-group-outline', label: t('home.sideMenuCommunities', { defaultValue: 'Communities' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'communities' }); } },
+                { icon: 'shield-crown-outline', label: t('home.sideMenuManageCommunities', { defaultValue: 'Manage Communities' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'manage-communities' }); } },
                 { icon: 'circle-outline', label: t('home.sideMenuCircles', { defaultValue: 'Circles' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'circles' }); } },
                 { icon: 'format-list-bulleted', label: t('home.sideMenuLists', { defaultValue: 'Lists' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'lists' }); } },
                 { icon: 'account-arrow-down-outline', label: t('home.sideMenuFollowers', { defaultValue: 'Followers' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'followers' }); } },
                 { icon: 'account-arrow-up-outline', label: t('home.sideMenuFollowing', { defaultValue: 'Following' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'following' }); } },
                 { icon: 'email-plus-outline', label: t('home.sideMenuInvites', { defaultValue: 'Invites' }), onPress: handleOpenInviteDrawerFromMenu },
-                { icon: 'shield-check-outline', label: t('home.sideMenuModerationTasks', { defaultValue: 'Moderation tasks' }), onPress: () => { setMenuOpen(false); setNotice('Moderation tasks — coming soon'); } },
-                { icon: 'gavel', label: t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation penalties' }), onPress: () => { setMenuOpen(false); setNotice('Moderation penalties — coming soon'); } },
+                { icon: 'shield-check-outline', label: t('home.sideMenuModerationTasks', { defaultValue: 'Moderation tasks' }), onPress: () => { setMenuOpen(false); setNotice(t('home.sideMenuModerationTasksComingSoon', { defaultValue: 'Moderation tasks — coming soon' })); } },
+                { icon: 'gavel', label: t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation penalties' }), onPress: () => { setMenuOpen(false); setNotice(t('home.sideMenuModerationPenaltiesComingSoon', { defaultValue: 'Moderation penalties — coming soon' })); } },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.label}
@@ -4506,10 +5439,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
 
               {[
                 { icon: 'cog-outline', label: t('home.sideMenuSettings', { defaultValue: 'Settings' }), onPress: handleOpenSettingsFromMenu },
-                { icon: isDark ? 'weather-sunny' : 'weather-night', label: isDark ? t('theme.switchToLight') : t('theme.switchToDark'), onPress: () => { toggleTheme(); } },
                 { icon: 'account-cog-outline', label: t('home.linkedAccountsTitle'), onPress: () => { setMenuOpen(false); setLinkedAccountsOpen(true); } },
-                { icon: 'help-circle-outline', label: t('home.sideMenuSupport', { defaultValue: 'Support & Feedback' }), onPress: () => { setMenuOpen(false); setNotice('Support & Feedback — coming soon'); } },
-                { icon: 'link-variant', label: t('home.sideMenuUsefulLinks', { defaultValue: 'Useful links' }), onPress: () => { setMenuOpen(false); setNotice('Useful links — coming soon'); } },
+                { icon: 'help-circle-outline', label: t('home.sideMenuSupport', { defaultValue: 'Support & Feedback' }), onPress: () => { setMenuOpen(false); setNotice(t('home.sideMenuSupportComingSoon', { defaultValue: 'Support & Feedback — coming soon' })); } },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.label}
@@ -4521,12 +5452,6 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                   <Text style={[styles.sideMenuItemText, { color: c.textPrimary }]}>{item.label}</Text>
                 </TouchableOpacity>
               ))}
-
-              {/* Language picker */}
-              <View style={[styles.sideMenuLanguageWrap, { borderTopColor: c.border }]}>
-                <Text style={[styles.sideMenuLabel, { color: c.textMuted }]}>{t('language.select')}</Text>
-                <LanguagePicker />
-              </View>
 
               {/* Logout */}
               <TouchableOpacity
@@ -4541,170 +5466,146 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               </TouchableOpacity>
 
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+        </Animated.View>
       </Modal>
 
       <Modal
-        visible={settingsOpen}
+        visible={linkedAccountsDrawerMounted}
         transparent
-        animationType="fade"
-        onRequestClose={() => setSettingsOpen(false)}
-      >
-        <TouchableOpacity
-          style={styles.menuBackdrop}
-          activeOpacity={1}
-          onPress={() => setSettingsOpen(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={[styles.settingsModalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <View style={styles.linkedModalHeader}>
-                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
-                  {t('home.sideMenuSettings', { defaultValue: 'Settings' })}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                  onPress={() => setSettingsOpen(false)}
-                  activeOpacity={0.85}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => void handleToggleAutoPlayMedia()}
-                style={[styles.settingsToggleRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-              >
-                <View style={styles.settingsToggleMeta}>
-                  <Text style={[styles.settingsToggleTitle, { color: c.textPrimary }]}>
-                    {t('home.settingsAutoplayMediaTitle', { defaultValue: 'Auto-play audio/video' })}
-                  </Text>
-                  <Text style={[styles.settingsToggleSubtitle, { color: c.textMuted }]}>
-                    {t('home.settingsAutoplayMediaSubtitle', {
-                      defaultValue: 'Automatically play videos in your feed.',
-                    })}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.settingsTogglePill,
-                    {
-                      backgroundColor: autoPlayMedia ? c.primary : (isDark ? '#2A3342' : '#D6DEEA'),
-                      borderColor: autoPlayMedia ? c.primary : (isDark ? '#4A5A73' : '#B4C1D3'),
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.settingsToggleKnob,
-                      {
-                        backgroundColor: autoPlayMedia ? '#ffffff' : (isDark ? '#9FB0C8' : '#5F708B'),
-                      },
-                      autoPlayMedia ? styles.settingsToggleKnobOn : styles.settingsToggleKnobOff,
-                    ]}
-                  />
-                </View>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
-        visible={linkedAccountsOpen}
-        transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setLinkedAccountsOpen(false)}
       >
-        <TouchableOpacity
-          style={styles.menuBackdrop}
-          activeOpacity={1}
-          onPress={() => setLinkedAccountsOpen(false)}
+        <Animated.View
+          style={[
+            styles.drawerBackdrop,
+            { opacity: linkedAccountsDrawerBackdropOpacity },
+          ]}
+          pointerEvents="auto"
         >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View
-              style={[
-                styles.linkedModalCard,
-                { backgroundColor: c.surface, borderColor: c.border },
-              ]}
-            >
-              <View style={styles.linkedModalHeader}>
-                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
-                  {t('home.linkedAccountsTitle')}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-                  onPress={() => setLinkedAccountsOpen(false)}
-                  activeOpacity={0.85}
-                >
-                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
-                </TouchableOpacity>
-              </View>
+          <Pressable style={{ flex: 1 }} onPress={() => setLinkedAccountsOpen(false)} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.drawerPanel,
+            {
+              width: sideDrawerWidth,
+              backgroundColor: c.surface,
+              transform: [{ translateX: linkedAccountsDrawerTranslateX }],
+            },
+          ]}
+        >
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('home.linkedAccountsTitle')}
+            </Text>
+          </View>
 
-              <Text style={[styles.linkedSubtitle, { color: c.textMuted }]}>
-                {t('home.linkedAccountsDescription')}
-              </Text>
+          <Text style={[styles.linkedSubtitle, { color: c.textMuted }]}>
+            {t('home.linkedAccountsDescription')}
+          </Text>
 
-              {identitiesLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
-              ) : (
-                <View style={styles.providerList}>
-                  {providerOrder.map((provider) => {
-                    const identity = getLinkedIdentity(provider);
-                    const isLoadingProvider = providerLoading === provider;
-                    const isLinked = !!identity;
+          {identitiesLoading ? (
+            <ActivityIndicator color={c.primary} size="small" />
+          ) : (
+            <View style={styles.providerList}>
+              {providerOrder.map((provider) => {
+                const identity = getLinkedIdentity(provider);
+                const isLoadingProvider = providerLoading === provider;
+                const isLinked = !!identity;
 
-                    return (
-                      <View
-                        key={provider}
-                        style={[styles.providerRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      >
-                        <View style={styles.providerMeta}>
-                          <MaterialCommunityIcons
-                            name={getProviderIcon(provider)}
-                            size={18}
-                            color={provider === 'google' ? '#DB4437' : c.textPrimary}
-                          />
-                          <View style={styles.providerTextWrap}>
-                            <Text style={[styles.providerName, { color: c.textPrimary }]}>
-                              {getProviderName(provider)}
-                            </Text>
-                            <Text style={[styles.providerStatus, { color: c.textMuted }]}>
-                              {isLinked
-                                ? t('home.linkedStatusWithEmail', { email: identity?.email || t('home.linkedStatusConnected') })
-                                : t('home.linkedStatusNotConnected')}
-                            </Text>
-                          </View>
-                        </View>
-                        <TouchableOpacity
-                          style={[
-                            styles.providerButton,
-                            {
-                              borderColor: c.border,
-                              backgroundColor: isLinked ? c.background : c.primary,
-                            },
-                          ]}
-                          onPress={() => (isLinked ? handleUnlinkProvider(provider) : handleLinkProvider(provider))}
-                          disabled={providerLoading !== null}
-                          activeOpacity={0.85}
-                        >
-                          {isLoadingProvider ? (
-                            <ActivityIndicator color={isLinked ? c.textPrimary : '#fff'} size="small" />
-                          ) : (
-                            <Text style={[styles.providerButtonText, { color: isLinked ? c.textPrimary : '#fff' }]}>
-                              {isLinked ? t('home.unlinkAction') : t('home.linkAction')}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
+                return (
+                  <View
+                    key={provider}
+                    style={[styles.providerRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  >
+                    <View style={styles.providerMeta}>
+                      <MaterialCommunityIcons
+                        name={getProviderIcon(provider)}
+                        size={18}
+                        color={provider === 'google' ? '#DB4437' : c.textPrimary}
+                      />
+                      <View style={styles.providerTextWrap}>
+                        <Text style={[styles.providerName, { color: c.textPrimary }]}>
+                          {getProviderName(provider)}
+                        </Text>
+                        <Text style={[styles.providerStatus, { color: c.textMuted }]}>
+                          {isLinked
+                            ? t('home.linkedStatusWithEmail', { email: identity?.email || t('home.linkedStatusConnected') })
+                            : t('home.linkedStatusNotConnected')}
+                        </Text>
                       </View>
-                    );
-                  })}
-                </View>
-              )}
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.providerButton,
+                        {
+                          borderColor: c.border,
+                          backgroundColor: isLinked ? c.background : c.primary,
+                        },
+                      ]}
+                      onPress={() => (isLinked ? handleUnlinkProvider(provider) : handleLinkProvider(provider))}
+                      disabled={providerLoading !== null}
+                      activeOpacity={0.85}
+                    >
+                      {isLoadingProvider ? (
+                        <ActivityIndicator color={isLinked ? c.textPrimary : '#fff'} size="small" />
+                      ) : (
+                        <Text style={[styles.providerButtonText, { color: isLinked ? c.textPrimary : '#fff' }]}>
+                          {isLinked ? t('home.unlinkAction') : t('home.linkAction')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          )}
+        </Animated.View>
+      </Modal>
+
+      <Modal
+        visible={blockedUsersDrawerMounted}
+        transparent
+        animationType="none"
+        onRequestClose={() => setBlockedUsersDrawerOpen(false)}
+      >
+        <Animated.View
+          style={[
+            styles.drawerBackdrop,
+            { opacity: blockedUsersDrawerBackdropOpacity },
+          ]}
+          pointerEvents="auto"
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setBlockedUsersDrawerOpen(false)} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.drawerPanel,
+            {
+              width: sideDrawerWidth,
+              backgroundColor: c.surface,
+              transform: [{ translateX: blockedUsersDrawerTranslateX }],
+            },
+          ]}
+        >
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('blocked.title', { defaultValue: 'Blocked Accounts' })}
+            </Text>
+          </View>
+          <FollowPeopleScreen
+            mode="blocked"
+            token={token}
+            c={c}
+            t={t}
+            onNotice={setNotice}
+            hideHeader
+            onOpenProfile={(username: string) => {
+              setBlockedUsersDrawerOpen(false);
+              onNavigate({ screen: 'profile', username });
+            }}
+          />
+        </Animated.View>
       </Modal>
 
       <InviteDrawer
@@ -4712,6 +5613,51 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         token={token}
         inviterName={user?.profile?.name || user?.username}
         onClose={() => setInviteDrawerOpen(false)}
+      />
+
+      <CommunityManagementDrawer
+        visible={communityManageDrawerOpen && !!communityManageTarget}
+        token={token}
+        c={c}
+        t={t}
+        community={communityManageTarget}
+        currentUserId={user?.id}
+        onClose={() => {
+          setCommunityManageDrawerOpen(false);
+          setCommunityManageTarget(null);
+        }}
+        onUpdated={(nextCommunity) => {
+          const previousName = (communityManageTarget?.name || '').trim();
+          const nextName = (nextCommunity?.name || '').trim();
+
+          setCommunityInfo(nextCommunity);
+          setCommunityManageTarget(nextCommunity);
+
+          if (
+            displayRoute.screen === 'community' &&
+            nextName &&
+            previousName &&
+            nextName !== previousName &&
+            displayRoute.name === previousName
+          ) {
+            onNavigate({ screen: 'community', name: nextName });
+          }
+
+          refreshCommunityRouteData();
+          refreshManageCommunitiesRouteData();
+        }}
+        onDeleted={() => {
+          setCommunityManageDrawerOpen(false);
+          setCommunityManageTarget(null);
+          setNotice(t('community.deleted', { defaultValue: 'Community deleted.' }));
+          if (displayRoute.screen === 'community') {
+            onNavigate({ screen: 'communities' });
+          } else {
+            refreshManageCommunitiesRouteData();
+          }
+        }}
+        onNotice={setNotice}
+        onError={setError}
       />
 
 
@@ -5296,6 +6242,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         commentRepliesLoadingById={commentRepliesLoadingById}
         draftComments={draftComments}
         draftReplies={draftReplies}
+        draftCommentMediaByPostId={draftCommentMediaByPostId}
+        draftReplyMediaByCommentId={draftReplyMediaByCommentId}
         commentEditDrafts={commentEditDrafts}
         replyEditDrafts={replyEditDrafts}
         editingCommentById={editingCommentById}
@@ -5319,6 +6267,12 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}
         onUpdateDraftReply={updateDraftReply}
+        onPickDraftCommentImage={pickDraftCommentImage}
+        onPickDraftReplyImage={pickDraftReplyImage}
+        onSetDraftCommentGif={setDraftCommentGif}
+        onSetDraftReplyGif={setDraftReplyGif}
+        onClearDraftCommentMedia={clearDraftCommentMedia}
+        onClearDraftReplyMedia={clearDraftReplyMedia}
         onStartEditingComment={startEditingComment}
         onCancelEditingComment={cancelEditingComment}
         onUpdateEditCommentDraft={updateEditCommentDraft}
@@ -5959,6 +6913,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onSetProfileActiveTab={setProfileActiveTab}
                 myProfilePosts={myProfilePosts}
                 myProfilePostsLoading={myProfilePostsLoading}
+                myProfileComments={myProfileComments}
+                myProfileCommentsLoading={myProfileCommentsLoading}
                 myPinnedPosts={myPinnedPosts}
                 myPinnedPostsLoading={myPinnedPostsLoading}
                 myJoinedCommunities={myJoinedCommunities}
@@ -5997,6 +6953,8 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onSetProfileActiveTab={setProfileActiveTab}
                 myProfilePosts={profilePosts}
                 myProfilePostsLoading={profilePostsLoading}
+                myProfileComments={profileComments}
+                myProfileCommentsLoading={profileCommentsLoading}
                 myPinnedPosts={profilePinnedPosts}
                 myPinnedPostsLoading={profilePinnedPostsLoading}
                 myJoinedCommunities={profileJoinedCommunities}
@@ -6037,7 +6995,15 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 onFetchEmojiGroups={() => api.getEmojiGroups(token)}
                 onCreateCircle={handleCreateCircle}
                 onBlockUser={handleBlockUser}
+                onUnblockUser={handleUnblockUser}
                 onReportUser={handleReportUser}
+                isSubscribedToPosts={userPostSubByUsername[profileRouteUsername] ?? null}
+                subscribeToPostsLoading={!!userPostSubLoadingByUsername[profileRouteUsername]}
+                onToggleSubscribeToPosts={
+                  profileRouteUsername && profileRouteUsername !== user?.username
+                    ? () => void handleToggleUserPostSubscription(profileRouteUsername)
+                    : undefined
+                }
               />
             ) : null}
 
@@ -6051,13 +7017,26 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 communityOwner={communityOwner}
                 communityMembers={communityMembers}
                 communityMembersLoading={communityMembersLoading}
-                posts={communityRoutePosts}
+                communityMembersLoadingMore={communityMembersLoadingMore}
+                communityMembersHasMore={communityMembersHasMore}
+                posts={filteredCommunityRoutePosts}
                 postsLoading={communityRouteLoading}
                 postsError={communityRouteError}
+                communityPostsFilterUsername={communityRoutePosterFilterUsername}
+                onClearCommunityPostsFilter={() => setCommunityRoutePosterFilterUsername(null)}
                 isJoined={!!(communityInfo?.memberships?.length)}
                 joinLoading={communityJoinLoading}
+                notificationsEnabled={communityNotifEnabled}
+                notificationsLoading={communityNotifLoading}
+                canManageCommunity={canManageCurrentCommunity}
                 onJoin={() => void handleJoinCommunity()}
-                onLeave={() => void handleLeaveCommunity()}
+                onLeave={() => requestLeaveCommunity()}
+                onToggleNotifications={() => void handleToggleCommunityNotifications()}
+                onLoadMoreMembers={() => void loadMoreCommunityMembers()}
+                onOpenManageCommunity={() => {
+                  setCommunityManageTarget(communityInfo);
+                  setCommunityManageDrawerOpen(true);
+                }}
                 onOpenProfile={(username) => onNavigate({ screen: 'profile', username })}
                 renderPostCard={renderPostCard}
               />
@@ -6078,6 +7057,30 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
                 c={c}
                 t={t}
                 onNotice={setNotice}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'communities' ? (
+              <CommunitiesScreen
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'manage-communities' ? (
+              <ManageCommunitiesScreen
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                refreshKey={manageCommunitiesRefreshKey}
+                onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
+                onOpenManageCommunity={(name: string) => {
+                  void openCommunityManagerByName(name);
+                }}
               />
             ) : null}
 
@@ -6112,6 +7115,38 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               />
             ) : null}
 
+            {displayRoute.screen === 'blocked' ? (
+              <FollowPeopleScreen
+                mode="blocked"
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'settings' ? (
+              <SettingsScreen
+                c={c}
+                t={t}
+                currentEmail={user?.email || ''}
+                hasUsablePassword={effectiveRequiresCurrentPassword}
+                autoPlayMedia={autoPlayMedia}
+                onToggleAutoPlayMedia={() => {
+                  void handleToggleAutoPlayMedia();
+                }}
+                onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
+                onOpenBlockedUsers={() => setBlockedUsersDrawerOpen(true)}
+                onNotice={setNotice}
+                onChangePassword={handleChangePassword}
+                onRequestEmailChange={handleRequestEmailChange}
+                onConfirmEmailChange={handleConfirmEmailChange}
+                onGetNotificationSettings={() => api.getNotificationSettings(token)}
+                onUpdateNotificationSettings={(patch) => api.updateNotificationSettings(token, patch)}
+              />
+            ) : null}
+
             {showingMainSearchResults ? (
               <SearchResultsScreen
                 styles={styles}
@@ -6132,7 +7167,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
               />
             ) : null}
 
-            {!viewingProfileRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
+            {!viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
               <FeedScreen
                 styles={styles}
                 c={c}
@@ -6167,6 +7202,73 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         )}
       </ScrollView>
 
+      <Modal
+        transparent
+        visible={communityLeaveConfirmOpen}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!communityJoinLoading) setCommunityLeaveConfirmOpen(false);
+        }}
+      >
+        <Pressable
+          style={[styles.leaveConfirmBackdrop, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+          onPress={() => {
+            if (!communityJoinLoading) setCommunityLeaveConfirmOpen(false);
+          }}
+        >
+          <Pressable
+            style={[styles.leaveConfirmCard, { backgroundColor: c.surface, borderColor: c.border }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.leaveConfirmTitle, { color: c.textPrimary }]}>
+              {t('community.leaveConfirmTitle', { defaultValue: 'Leave this community?' })}
+            </Text>
+            <Text style={[styles.leaveConfirmText, { color: c.textSecondary }]}>
+              {t('community.leaveConfirmMessage', {
+                defaultValue:
+                  'If you leave c/{{name}}, all of your content contributions in this community will be permanently deleted.',
+                name: route.screen === 'community' ? route.name : '',
+              })}
+            </Text>
+            <Text style={[styles.leaveConfirmWarning, { color: c.errorText || '#dc2626' }]}>
+              {t('community.leaveConfirmWarning', {
+                defaultValue:
+                  'This cannot be undone. Deleted contributions will not come back if you join again later.',
+              })}
+            </Text>
+            <View style={styles.leaveConfirmActions}>
+              <TouchableOpacity
+                style={[styles.leaveConfirmBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                activeOpacity={0.85}
+                disabled={communityJoinLoading}
+                onPress={() => setCommunityLeaveConfirmOpen(false)}
+              >
+                <Text style={[styles.leaveConfirmBtnText, { color: c.textPrimary }]}>
+                  {t('home.cancelAction', { defaultValue: 'Cancel' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.leaveConfirmBtn,
+                  { borderColor: c.errorText || '#dc2626', backgroundColor: `${c.errorText || '#dc2626'}22` },
+                ]}
+                activeOpacity={0.85}
+                disabled={communityJoinLoading}
+                onPress={() => void handleLeaveCommunity()}
+              >
+                {communityJoinLoading ? (
+                  <ActivityIndicator size="small" color={c.errorText || '#dc2626'} />
+                ) : (
+                  <Text style={[styles.leaveConfirmBtnText, { color: c.errorText || '#dc2626' }]}>
+                    {t('community.leaveConfirmAction', { defaultValue: 'Leave and delete contributions' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <NotificationDrawer
         visible={notifDrawerOpen}
         c={c}
@@ -6182,6 +7284,7 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
         onMarkRead={(id) => void handleMarkRead(id)}
         onDeleteNotification={(id) => void handleDeleteNotification(id)}
         onDeleteAll={() => void handleDeleteAllNotifications()}
+        onDeleteFiltered={(ids) => handleDeleteFilteredNotifications(ids)}
         onNavigateProfile={handleNotificationNavigateProfile}
         onNavigatePost={handleNotificationNavigatePost}
         onNavigateCommunity={handleNotificationNavigateCommunity}
@@ -6196,6 +7299,22 @@ export default function HomeScreen({ token, onLogout, route, onNavigate }: HomeS
           if (profileUser?.username === username) {
             setProfileUser((prev: any) => prev ? { ...prev, is_connected: false, is_fully_connected: false, is_pending_connection_confirmation: false, connected_circles: [] } : prev);
           }
+        }}
+        onAcceptCommunityAdminInvite={async (inviteId, communityName) => {
+          await api.respondCommunityAdministratorInvite(token, communityName, inviteId, 'accept');
+          setNotice(t('community.administratorInviteAcceptedNotice', { defaultValue: `You are now an administrator of c/${communityName}.` }));
+        }}
+        onDeclineCommunityAdminInvite={async (inviteId, communityName) => {
+          await api.respondCommunityAdministratorInvite(token, communityName, inviteId, 'decline');
+          setNotice(t('community.administratorInviteDeclinedNotice', { defaultValue: `Administrator invite to c/${communityName} declined.` }));
+        }}
+        onAcceptCommunityOwnershipTransfer={async (inviteId, communityName) => {
+          await api.respondCommunityOwnershipTransferInvite(token, communityName, inviteId, 'accept');
+          setNotice(t('community.ownershipTransferAcceptedNotice', { defaultValue: `You are now the owner of c/${communityName}.` }));
+        }}
+        onDeclineCommunityOwnershipTransfer={async (inviteId, communityName) => {
+          await api.respondCommunityOwnershipTransferInvite(token, communityName, inviteId, 'decline');
+          setNotice(t('community.ownershipTransferDeclinedNotice', { defaultValue: `Ownership transfer for c/${communityName} declined.` }));
         }}
       />
     </View>
@@ -6512,6 +7631,84 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingTop: 70,
     paddingRight: 16,
+  },
+  linkedAccountsBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  leaveConfirmBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  leaveConfirmCard: {
+    width: '100%',
+    maxWidth: 560,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 10,
+  },
+  leaveConfirmTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  leaveConfirmText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  leaveConfirmWarning: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  leaveConfirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  leaveConfirmBtn: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaveConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  drawerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  drawerPanel: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 20,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: -4, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 24,
   },
   menuCard: {
     width: 280,
@@ -7056,6 +8253,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  settingsDrawerHeader: {
+    marginBottom: 8,
+  },
   profileMenuBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.3)',
@@ -7066,9 +8266,8 @@ const styles = StyleSheet.create({
   sideMenuCard: {
     width: 300,
     minHeight: '100%',
-    borderLeftWidth: 1,
     paddingHorizontal: 16,
-    paddingTop: 56,
+    paddingTop: 28,
     paddingBottom: 32,
     gap: 2,
   },
@@ -7079,6 +8278,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     marginBottom: 8,
     borderBottomWidth: 1,
+  },
+  sideMenuHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sideMenuAvatar: {
     width: 44,
@@ -7126,16 +8330,6 @@ const styles = StyleSheet.create({
   },
   sideMenuItemText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  sideMenuLanguageWrap: {
-    borderTopWidth: 1,
-    paddingTop: 12,
-    marginTop: 8,
-    gap: 8,
-  },
-  sideMenuLabel: {
-    fontSize: 12,
     fontWeight: '600',
   },
   sideMenuLogout: {
@@ -7552,7 +8746,7 @@ const styles = StyleSheet.create({
     lineHeight: 58,
   },
   profileIdentityMeta: {
-    gap: 6,
+    gap: 10,
     paddingBottom: 14,
   },
   profileDisplayNameRow: {
@@ -7564,8 +8758,9 @@ const styles = StyleSheet.create({
   profileNameCountsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginLeft: 4,
+    gap: 14,
+    marginLeft: 0,
+    flexWrap: 'wrap',
   },
   profileDisplayName: {
     fontSize: 48,
@@ -7599,6 +8794,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingBottom: 22,
+    marginTop: 8,
+    flexWrap: 'wrap',
   },
   profileIdentityActionsCompact: {
     width: '100%',
@@ -8113,6 +9310,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
+  },
+  profileActivityFilters: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  profileActivityFilterChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  profileActivityFilterChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  profileCommentList: {
+    gap: 10,
+  },
+  profileCommentCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  profileCommentText: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  profileCommentMeta: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   profileCommunitiesGrid: {
     flexDirection: 'row',
@@ -8996,6 +10228,10 @@ const styles = StyleSheet.create({
   linkedTitle: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  settingsDrawerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
   },
   linkedSubtitle: {
     fontSize: 13,

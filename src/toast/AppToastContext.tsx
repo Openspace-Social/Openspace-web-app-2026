@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Modal, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 type ToastType = 'error' | 'success' | 'info';
@@ -120,41 +120,40 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
         ? 'Notice'
         : 'Error';
   const progress = durationMs > 0 ? Math.max(0, Math.min(1, remainingMs / durationMs)) : 0;
+  const toastLayer = (
+    <View pointerEvents="box-none" style={styles.modalRoot}>
+      <View pointerEvents="none" style={styles.overlay}>
+        <Animated.View
+          style={[
+            styles.toast,
+            {
+              width: Math.min(560, Math.max(250, width - 36)),
+              marginTop: Platform.OS === 'web' ? 72 : 88,
+              backgroundColor: bg,
+              borderColor: border,
+              transform: [{ translateY }],
+              opacity,
+            },
+          ]}
+        >
+          <Text style={[styles.title, { color: fg }]}>
+            {title}
+          </Text>
+          <Text style={[styles.message, { color: fg }]} numberOfLines={4}>
+            {message}
+          </Text>
+          <View style={[styles.progressTrack, { borderColor: border }]}>
+            <View style={[styles.progressFill, { backgroundColor: fg, width: `${progress * 100}%` }]} />
+          </View>
+        </Animated.View>
+      </View>
+    </View>
+  );
 
   return (
     <AppToastContext.Provider value={ctx}>
       {children}
-      {visible ? (
-        <Modal transparent visible animationType="none" onRequestClose={hideToast}>
-          <View pointerEvents="box-none" style={styles.modalRoot}>
-            <View pointerEvents="none" style={styles.overlay}>
-              <Animated.View
-                style={[
-                  styles.toast,
-                  {
-                    width: Math.min(560, Math.max(250, width - 36)),
-                    marginTop: Platform.OS === 'web' ? 72 : 88,
-                    backgroundColor: bg,
-                    borderColor: border,
-                    transform: [{ translateY }],
-                    opacity,
-                  },
-                ]}
-              >
-                <Text style={[styles.title, { color: fg }]}>
-                  {title}
-                </Text>
-                <Text style={[styles.message, { color: fg }]} numberOfLines={4}>
-                  {message}
-                </Text>
-                <View style={[styles.progressTrack, { borderColor: border }]}>
-                  <View style={[styles.progressFill, { backgroundColor: fg, width: `${progress * 100}%` }]} />
-                </View>
-              </Animated.View>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
+      {visible ? toastLayer : null}
     </AppToastContext.Provider>
   );
 }

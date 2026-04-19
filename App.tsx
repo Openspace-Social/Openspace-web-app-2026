@@ -65,6 +65,11 @@ function Root() {
     navigate(defaultAuthedRoute(), true);
   };
 
+  const handleTokenRefresh = async (newToken: string) => {
+    setToken(newToken);
+    await AsyncStorage.setItem('@openspace/auth_token', newToken);
+  };
+
   const handleLogout = async () => {
     setToken(null);
     await AsyncStorage.removeItem('@openspace/auth_token');
@@ -76,7 +81,13 @@ function Root() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       {authReady ? (
         token ? (
-          <HomeScreen token={token} onLogout={handleLogout} route={route} onNavigate={navigate} />
+          <HomeScreen
+            token={token}
+            onLogout={handleLogout}
+            onTokenRefresh={handleTokenRefresh}
+            route={route}
+            onNavigate={navigate}
+          />
         ) : (
           <LandingScreen onLogin={handleLogin} />
         )

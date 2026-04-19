@@ -17,22 +17,25 @@ import { useAppToast } from '../toast/AppToastContext';
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  mode: 'followers' | 'following';
+  mode: 'followers' | 'following' | 'blocked';
   token: string;
   c: any;
   t: (key: string, options?: any) => string;
   onNotice: (msg: string) => void;
   onOpenProfile: (username: string) => void;
+  hideHeader?: boolean;
 };
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpenProfile }: Props) {
+export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpenProfile, hideHeader = false }: Props) {
   const s = useStyles(c);
   const { showToast } = useAppToast();
   const { width } = useWindowDimensions();
   const GRID_GAP = 10;
   const GRID_PADDING = 10;
+  const isBlocked = mode === 'blocked';
+  const pageSize = isBlocked ? 10 : 20;
   const [gridWidth, setGridWidth] = useState(0);
 
   // Responsive column count: 2 on narrow, 3 on medium, 4 on wide, 5 on extra wide
@@ -73,17 +76,19 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
     maxIdRef.current = undefined;
     try {
       const data = mode === 'followers'
-        ? await api.getFollowers(token, 20)
-        : await api.getFollowings(token, 20);
+        ? await api.getFollowers(token, pageSize)
+        : mode === 'following'
+          ? await api.getFollowings(token, pageSize)
+          : await api.getBlockedUsers(token, pageSize);
       setPeople(data);
-      setHasMore(data.length === 20);
+      setHasMore(data.length === pageSize);
       maxIdRef.current = data.length > 0 ? data[data.length - 1].id : undefined;
     } catch (err: any) {
       setError(err?.message || t('followers.loadError', { defaultValue: 'Failed to load accounts.' }));
     } finally {
       setLoading(false);
     }
-  }, [token, mode, t]);
+  }, [token, mode, pageSize, t]);
 
   useEffect(() => { void loadInitial(); }, [loadInitial]);
 
@@ -93,10 +98,12 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
     setLoadingMore(true);
     try {
       const data = mode === 'followers'
-        ? await api.getFollowers(token, 20, maxIdRef.current)
-        : await api.getFollowings(token, 20, maxIdRef.current);
+        ? await api.getFollowers(token, pageSize, maxIdRef.current)
+        : mode === 'following'
+          ? await api.getFollowings(token, pageSize, maxIdRef.current)
+          : await api.getBlockedUsers(token, pageSize, maxIdRef.current);
       setPeople((prev) => [...prev, ...data]);
-      setHasMore(data.length === 20);
+      setHasMore(data.length === pageSize);
       if (data.length > 0) maxIdRef.current = data[data.length - 1].id;
     } catch {
       // non-fatal
@@ -114,8 +121,10 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
       setSearchLoading(true);
       try {
         const data = mode === 'followers'
-          ? await api.searchFollowers(token, q, 20)
-          : await api.searchFollowings(token, q, 20);
+          ? await api.searchFollowers(token, q, pageSize)
+          : mode === 'following'
+            ? await api.searchFollowings(token, q, pageSize)
+            : await api.searchBlockedUsers(token, q, pageSize);
         if (searchSeqRef.current === seq) setSearchResults(data);
       } catch {
         if (searchSeqRef.current === seq) setSearchResults([]);
@@ -124,7 +133,7 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, token, mode]);
+  }, [query, token, mode, pageSize]);
 
   // ── Remove follower ───────────────────────────────────────────────────────
   async function handleRemoveFollower(username: string) {
@@ -149,6 +158,24 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
       if (searchResults) setSearchResults((prev) => prev!.filter((p) => p.username !== username));
     } catch (err: any) {
       setError(err?.message || t('following.unfollowError', { defaultValue: 'Could not unfollow.' }));
+    } finally {
+      setActionLoadingUsername(null);
+    }
+  }
+
+  // ── Unblock ──────────────────────────────────────────────────────────────
+  async function handleUnblock(username: string) {
+    setActionLoadingUsername(username);
+    try {
+      await api.unblockUser(token, username);
+      setPeople((prev) => prev.filter((p) => p.username !== username));
+      if (searchResults) setSearchResults((prev) => prev!.filter((p) => p.username !== username));
+      showToast(
+        t('blocked.unblockSuccess', { defaultValue: '@{{username}} has been unblocked.', username }),
+        { type: 'success' }
+      );
+    } catch (err: any) {
+      setError(err?.message || t('blocked.unblockError', { defaultValue: 'Could not unblock account.' }));
     } finally {
       setActionLoadingUsername(null);
     }
@@ -214,7 +241,13 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
           disabled={isActing}
           onPress={(e) => {
             e.stopPropagation?.();
-            void (isFollowers ? handleRemoveFollower(username) : handleUnfollow(username));
+            void (
+              isFollowers
+                ? handleRemoveFollower(username)
+                : isBlocked
+                  ? handleUnblock(username)
+                  : handleUnfollow(username)
+            );
           }}
         >
           {isActing ? (
@@ -229,7 +262,9 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
               <Text style={[s.actionBtnText, { color: c.textSecondary }]}>
                 {isFollowers
                   ? t('followers.remove', { defaultValue: 'Remove' })
-                  : t('following.unfollow', { defaultValue: 'Unfollow' })}
+                  : isBlocked
+                    ? t('blocked.unblock', { defaultValue: 'Unblock' })
+                    : t('following.unfollow', { defaultValue: 'Unfollow' })}
               </Text>
             </>
           )}
@@ -243,21 +278,25 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View style={[s.container, hideHeader ? s.containerEmbedded : null, { backgroundColor: c.surface, borderColor: c.border }]}>
 
       {/* Header */}
-      <View style={[s.header, { borderBottomColor: c.border }]}>
-        <Text style={[s.headerTitle, { color: c.textPrimary }]}>
-          {isFollowers
-            ? t('followers.title', { defaultValue: 'Followers' })
-            : t('following.title', { defaultValue: 'Following' })}
-        </Text>
-        {!loading && (
-          <Text style={[s.headerCount, { color: c.textMuted }]}>
-            {people.length}{hasMore ? '+' : ''}
+      {!hideHeader ? (
+        <View style={[s.header, { borderBottomColor: c.border }]}>
+          <Text style={[s.headerTitle, { color: c.textPrimary }]}>
+            {isFollowers
+              ? t('followers.title', { defaultValue: 'Followers' })
+              : isBlocked
+                ? t('blocked.title', { defaultValue: 'Blocked Accounts' })
+                : t('following.title', { defaultValue: 'Following' })}
           </Text>
-        )}
-      </View>
+          {!loading && (
+            <Text style={[s.headerCount, { color: c.textMuted }]}>
+              {people.length}{hasMore ? '+' : ''}
+            </Text>
+          )}
+        </View>
+      ) : null}
 
       {/* Search bar */}
       <View style={[s.searchBar, { backgroundColor: c.inputBackground, borderColor: c.inputBorder }]}>
@@ -266,7 +305,9 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
           style={[s.searchInput, { color: c.textPrimary }]}
           placeholder={isFollowers
             ? t('followers.searchPlaceholder', { defaultValue: 'Search followers…' })
-            : t('following.searchPlaceholder', { defaultValue: 'Search following…' })}
+            : isBlocked
+              ? t('blocked.searchPlaceholder', { defaultValue: 'Search blocked accounts…' })
+              : t('following.searchPlaceholder', { defaultValue: 'Search following…' })}
           placeholderTextColor={c.placeholder}
           value={query}
           onChangeText={setQuery}
@@ -296,7 +337,7 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
       ) : displayList.length === 0 ? (
         <View style={s.centreBox}>
           <MaterialCommunityIcons
-            name={isFollowers ? 'account-group-outline' : 'account-heart-outline'}
+            name={isFollowers ? 'account-group-outline' : isBlocked ? 'account-cancel-outline' : 'account-heart-outline'}
             size={44}
             color={c.textMuted}
           />
@@ -305,7 +346,9 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
               ? t('followers.noResults', { defaultValue: 'No results found.' })
               : isFollowers
                 ? t('followers.empty', { defaultValue: 'Nobody is following you yet.' })
-                : t('following.empty', { defaultValue: "You're not following anyone yet." })}
+                : isBlocked
+                  ? t('blocked.empty', { defaultValue: 'No blocked accounts.' })
+                  : t('following.empty', { defaultValue: "You're not following anyone yet." })}
           </Text>
         </View>
       ) : (
@@ -369,6 +412,11 @@ function useStyles(c: any) {
       borderRadius: 12,
       overflow: 'hidden',
       marginTop: 12,
+    },
+    containerEmbedded: {
+      marginTop: 0,
+      borderWidth: 0,
+      borderRadius: 0,
     },
     header: {
       flexDirection: 'row',

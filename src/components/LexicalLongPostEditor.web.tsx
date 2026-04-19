@@ -26,6 +26,7 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $isRootOrShadowRoot,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   REDO_COMMAND,
@@ -172,7 +173,19 @@ function ToolbarPlugin({
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
         const anchorNode = selection.anchor.getNode();
-        const blockNode = anchorNode.getTopLevelElementOrThrow();
+        const blockNode = anchorNode.getTopLevelElement();
+        if (!blockNode || $isRootOrShadowRoot(blockNode)) {
+          setActiveFormats({
+            bold: selection.hasFormat('bold'),
+            italic: selection.hasFormat('italic'),
+            underline: selection.hasFormat('underline'),
+            h2: false,
+            h3: false,
+            paragraph: true,
+            quote: false,
+          });
+          return;
+        }
         const isHeading = $isHeadingNode(blockNode);
         const headingTag = isHeading ? blockNode.getTag() : null;
         const blockType = blockNode.getType();
@@ -762,7 +775,18 @@ function SelectionToolbarPlugin({
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
         const anchorNode = selection.anchor.getNode();
-        const blockNode = anchorNode.getTopLevelElementOrThrow();
+        const blockNode = anchorNode.getTopLevelElement();
+        if (!blockNode || $isRootOrShadowRoot(blockNode)) {
+          setActiveFormats({
+            bold: selection.hasFormat('bold'),
+            italic: selection.hasFormat('italic'),
+            underline: selection.hasFormat('underline'),
+            h2: false,
+            h3: false,
+            paragraph: true,
+          });
+          return;
+        }
         const isHeading = $isHeadingNode(blockNode);
         const headingTag = isHeading ? blockNode.getTag() : null;
         const blockType = blockNode.getType();

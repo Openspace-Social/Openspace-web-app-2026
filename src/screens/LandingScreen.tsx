@@ -23,6 +23,7 @@ import PrivacyPolicyDrawer from '../components/PrivacyPolicyDrawer';
 import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
 import GuidelinesDrawer from '../components/GuidelinesDrawer';
 import { useAppToast } from '../toast/AppToastContext';
+import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 
 interface LandingScreenProps {
   onLogin?: (token: string) => void;
@@ -131,6 +132,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
 
     if (signupPassword !== signupConfirmPassword) {
       setError(t('auth.errorPasswordsDontMatch'));
+      return;
+    }
+
+    const passwordValidationError = validatePasswordAgainstBackendPolicy(signupPassword, t);
+    if (passwordValidationError) {
+      setError(passwordValidationError);
       return;
     }
 
@@ -252,6 +259,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     }
     if (newPassword !== confirmNewPassword) {
       setError(t('auth.errorResetPasswordMismatch'));
+      return;
+    }
+    const passwordValidationError = validatePasswordAgainstBackendPolicy(newPassword, t);
+    if (passwordValidationError) {
+      setError(passwordValidationError);
       return;
     }
 
@@ -988,6 +1000,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 secureTextEntry
                 returnKeyType="next"
               />
+              <Text style={[styles.authHelperText, { color: c.textMuted }]}>
+                {passwordPolicyHint(t)}
+              </Text>
 
               <Text style={[styles.label, { color: c.textSecondary }]}>
                 {t('auth.confirmPassword')}
@@ -1414,6 +1429,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     secureTextEntry
                     returnKeyType="next"
                   />
+                  <Text style={[styles.authHelperText, { color: c.textMuted }]}>
+                    {passwordPolicyHint(t)}
+                  </Text>
 
                   <Text style={[styles.label, { color: c.textSecondary }]}>
                     {t('auth.confirmNewPasswordLabel')}
@@ -1864,6 +1882,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     outlineStyle: 'none',
   } as any,
+  authHelperText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: -8,
+    marginBottom: 12,
+    lineHeight: 17,
+  },
   button: {
     borderRadius: 12,
     paddingVertical: 16,

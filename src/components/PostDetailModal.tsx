@@ -62,6 +62,11 @@ type MediaGalleryItem = {
   isVideo: boolean;
 };
 
+type CommentDraftMedia = {
+  kind: 'image' | 'gif';
+  uri: string;
+};
+
 function looksLikeVideoUrl(value?: string) {
   if (!value) return false;
   const clean = value.split('?')[0].toLowerCase();
@@ -228,6 +233,8 @@ type Props = {
   commentRepliesLoadingById: Record<number, boolean>;
   draftComments: Record<number, string>;
   draftReplies: Record<number, string>;
+  draftCommentMediaByPostId: Record<number, CommentDraftMedia | null>;
+  draftReplyMediaByCommentId: Record<number, CommentDraftMedia | null>;
   commentEditDrafts: Record<number, string>;
   replyEditDrafts: Record<number, string>;
   editingCommentById: Record<number, boolean>;
@@ -251,6 +258,12 @@ type Props = {
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
   onUpdateDraftReply: (commentId: number, value: string) => void;
+  onPickDraftCommentImage: (postId: number) => void;
+  onPickDraftReplyImage: (commentId: number) => void;
+  onSetDraftCommentGif: (postId: number) => void;
+  onSetDraftReplyGif: (commentId: number) => void;
+  onClearDraftCommentMedia: (postId: number) => void;
+  onClearDraftReplyMedia: (commentId: number) => void;
   onStartEditingComment: (commentId: number, currentText: string, isReply: boolean) => void;
   onCancelEditingComment: (commentId: number, isReply: boolean) => void;
   onUpdateEditCommentDraft: (commentId: number, value: string, isReply: boolean) => void;
@@ -282,6 +295,8 @@ export default function PostDetailModal({
   commentRepliesLoadingById,
   draftComments,
   draftReplies,
+  draftCommentMediaByPostId,
+  draftReplyMediaByCommentId,
   commentEditDrafts,
   replyEditDrafts,
   editingCommentById,
@@ -305,6 +320,12 @@ export default function PostDetailModal({
   onOpenLink,
   onUpdateDraftComment,
   onUpdateDraftReply,
+  onPickDraftCommentImage,
+  onPickDraftReplyImage,
+  onSetDraftCommentGif,
+  onSetDraftReplyGif,
+  onClearDraftCommentMedia,
+  onClearDraftReplyMedia,
   onStartEditingComment,
   onCancelEditingComment,
   onUpdateEditCommentDraft,
@@ -477,6 +498,54 @@ export default function PostDetailModal({
     if (diffHours < 24) return t('home.relativeHoursAgo', { count: diffHours });
     const diffDays = Math.floor(diffHours / 24);
     return t('home.relativeDaysAgo', { count: diffDays });
+  }
+
+  function renderCommentMedia(items?: PostComment['media']) {
+    const first = Array.isArray(items) ? items[0] : undefined;
+    if (!first?.url) return null;
+    const isGif = (first.type || '').toUpperCase() === 'G';
+    return (
+      <View style={{ marginTop: 8 }}>
+        <Image
+          source={{ uri: first.url }}
+          style={{ width: 180, height: 180, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+          resizeMode="cover"
+        />
+        {isGif ? (
+          <View style={{ position: 'absolute', right: 8, bottom: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.primary }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }}>GIF</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderDraftMediaPreview(
+    media: CommentDraftMedia | null | undefined,
+    onClear: () => void
+  ) {
+    if (!media?.uri) return null;
+    return (
+      <View style={{ marginTop: 8, marginBottom: 8 }}>
+        <View style={{ width: 120, height: 120, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}>
+          <Image source={{ uri: media.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          {media.kind === 'gif' ? (
+            <View style={{ position: 'absolute', left: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: c.primary }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>GIF</Text>
+            </View>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onClear}
+          style={{ marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+        >
+          <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '700' }}>
+            {t('home.removeAction', { defaultValue: 'Remove' })}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   React.useEffect(() => {
@@ -893,7 +962,10 @@ export default function PostDetailModal({
                 </View>
               </View>
             ) : (
-              <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+              <>
+                <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+                {renderCommentMedia(comment.media)}
+              </>
             )}
             {(() => {
               const activeEntries = (comment.reactions_emoji_counts || []).filter((e) => (e?.count || 0) > 0);
@@ -1077,7 +1149,10 @@ export default function PostDetailModal({
                         </View>
                       </View>
                     ) : (
-                      <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                      <>
+                        <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                        {renderCommentMedia(reply.media)}
+                      </>
                     )}
                   </View>
                 </View>
@@ -1101,6 +1176,10 @@ export default function PostDetailModal({
               );
             })}
             <View style={styles.commentReplyComposer}>
+              {renderDraftMediaPreview(
+                draftReplyMediaByCommentId[comment.id],
+                () => onClearDraftReplyMedia(comment.id)
+              )}
               <TextInput
                 style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                 value={draftReplies[comment.id] || ''}
@@ -1108,6 +1187,26 @@ export default function PostDetailModal({
                 placeholder={t('home.replyPlaceholder')}
                 placeholderTextColor={c.placeholder}
               />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  onPress={() => onPickDraftReplyImage(comment.id)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                    {t('home.photoAction', { defaultValue: 'Photo' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  onPress={() => onSetDraftReplyGif(comment.id)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                 onPress={() => onSubmitReply(postId, comment.id)}
@@ -1510,6 +1609,10 @@ export default function PostDetailModal({
                   <View style={[styles.commentsBox, { borderTopColor: c.border }]}> 
                     {renderCommentThread(activePost.id)}
                     <View style={styles.commentComposer}>
+                      {renderDraftMediaPreview(
+                        draftCommentMediaByPostId[activePost.id],
+                        () => onClearDraftCommentMedia(activePost.id)
+                      )}
                       <TextInput
                         style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                         value={draftComments[activePost.id] || ''}
@@ -1517,6 +1620,26 @@ export default function PostDetailModal({
                         placeholder={t('home.commentPlaceholder')}
                         placeholderTextColor={c.placeholder}
                       />
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+                        <TouchableOpacity
+                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                          onPress={() => onPickDraftCommentImage(activePost.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                            {t('home.photoAction', { defaultValue: 'Photo' })}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                          onPress={() => onSetDraftCommentGif(activePost.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                        </TouchableOpacity>
+                      </View>
                       <TouchableOpacity
                         style={[styles.commentSendButton, { backgroundColor: c.primary }]}
                         onPress={() => onSubmitComment(activePost.id)}
@@ -1586,6 +1709,10 @@ export default function PostDetailModal({
               {detailPanel === 'comments' ? (
                 <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}> 
                   <View style={styles.commentComposer}>
+                    {renderDraftMediaPreview(
+                      draftCommentMediaByPostId[activePost.id],
+                      () => onClearDraftCommentMedia(activePost.id)
+                    )}
                     <TextInput
                       style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                       value={draftComments[activePost.id] || ''}
@@ -1593,6 +1720,26 @@ export default function PostDetailModal({
                       placeholder={t('home.commentPlaceholder')}
                       placeholderTextColor={c.placeholder}
                     />
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                        onPress={() => onPickDraftCommentImage(activePost.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                          {t('home.photoAction', { defaultValue: 'Photo' })}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                        onPress={() => onSetDraftCommentGif(activePost.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TouchableOpacity
                       style={[styles.commentSendButton, { backgroundColor: c.primary }]}
                       onPress={() => onSubmitComment(activePost.id)}

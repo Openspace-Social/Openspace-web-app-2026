@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -33,11 +33,16 @@ type Props = {
   onMarkRead: (id: number) => void;
   onDeleteNotification: (id: number) => void;
   onDeleteAll: () => void;
+  onDeleteFiltered: (ids: number[]) => Promise<void>;
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string) => void;
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
+  onAcceptCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
+  onDeclineCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
+  onAcceptCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
+  onDeclineCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
 };
 
 export default function NotificationDrawer({
@@ -55,11 +60,16 @@ export default function NotificationDrawer({
   onMarkRead,
   onDeleteNotification,
   onDeleteAll,
+  onDeleteFiltered,
   onNavigateProfile,
   onNavigatePost,
   onNavigateCommunity,
   onAcceptConnection,
   onDeclineConnection,
+  onAcceptCommunityAdminInvite,
+  onDeclineCommunityAdminInvite,
+  onAcceptCommunityOwnershipTransfer,
+  onDeclineCommunityOwnershipTransfer,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(DRAWER_MAX_WIDTH, screenWidth * 0.88);
@@ -69,6 +79,34 @@ export default function NotificationDrawer({
 
   // Keep modal mounted during the close animation so it can slide out
   const [mounted, setMounted] = useState(visible);
+  const [activeFilter, setActiveFilter] = useState<NotificationFilterKey>('all');
+  const [deletingFiltered, setDeletingFiltered] = useState(false);
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+
+  const filterOptions = useMemo(
+    () => [
+      { key: 'all' as const, label: t('home.notificationFilterAll', { defaultValue: 'All' }) },
+      { key: 'unread' as const, label: t('home.notificationFilterUnread', { defaultValue: 'Unread' }) },
+      { key: 'comments' as const, label: t('home.notificationFilterComments', { defaultValue: 'Comments' }) },
+      { key: 'replies' as const, label: t('home.notificationFilterReplies', { defaultValue: 'Replies' }) },
+      { key: 'connections' as const, label: t('home.notificationFilterConnections', { defaultValue: 'Connections' }) },
+      { key: 'follows' as const, label: t('home.notificationFilterFollows', { defaultValue: 'Follows' }) },
+      { key: 'communities' as const, label: t('home.notificationFilterCommunities', { defaultValue: 'Communities' }) },
+      { key: 'mentions' as const, label: t('home.notificationFilterMentions', { defaultValue: 'Mentions' }) },
+      { key: 'reactions' as const, label: t('home.notificationFilterReactions', { defaultValue: 'Reactions' }) },
+      { key: 'moderation' as const, label: t('home.notificationFilterModeration', { defaultValue: 'Moderation' }) },
+    ],
+    [t]
+  );
+
+  const filteredNotifications = useMemo(
+    () => notifications.filter((n) => matchesNotificationFilter(n, activeFilter)),
+    [activeFilter, notifications]
+  );
+  const activeFilterLabel = useMemo(
+    () => filterOptions.find((option) => option.key === activeFilter)?.label || t('home.notificationFilterAll', { defaultValue: 'All' }),
+    [activeFilter, filterOptions, t]
+  );
 
   useEffect(() => {
     if (visible) {
@@ -92,6 +130,21 @@ export default function NotificationDrawer({
       if (!loadingMore && hasMore) onLoadMore();
     }
   }, [loadingMore, hasMore, onLoadMore]);
+
+  useEffect(() => {
+    if (!visible) setFilterMenuOpen(false);
+  }, [visible]);
+
+  async function handleClearShown() {
+    const ids = filteredNotifications.map((n) => n.id);
+    if (!ids.length || deletingFiltered) return;
+    setDeletingFiltered(true);
+    try {
+      await onDeleteFiltered(ids);
+    } finally {
+      setDeletingFiltered(false);
+    }
+  }
 
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
@@ -152,6 +205,22 @@ export default function NotificationDrawer({
                 </Text>
               </TouchableOpacity>
             )}
+            {filteredNotifications.length > 0 && (
+              <TouchableOpacity
+                onPress={() => void handleClearShown()}
+                disabled={deletingFiltered}
+                activeOpacity={0.8}
+                style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.inputBackground }}
+              >
+                {deletingFiltered ? (
+                  <ActivityIndicator color={c.textSecondary} size="small" />
+                ) : (
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.errorText }}>
+                    {t('home.notificationClearShown', { defaultValue: 'Clear shown' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={onClose}
               activeOpacity={0.8}
@@ -161,13 +230,81 @@ export default function NotificationDrawer({
             </TouchableOpacity>
           </View>
         </View>
+        <View
+          style={{
+            borderBottomWidth: 1,
+            borderBottomColor: c.border,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setFilterMenuOpen((prev) => !prev)}
+            activeOpacity={0.85}
+            style={{
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: c.inputBackground,
+              borderRadius: 10,
+              minHeight: 36,
+              paddingHorizontal: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialCommunityIcons name="filter-variant" size={15} color={c.textSecondary} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>
+                {t('home.notificationFilterLabel', { defaultValue: 'Filter' })}: {activeFilterLabel}
+              </Text>
+            </View>
+            <MaterialCommunityIcons
+              name={filterMenuOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={c.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {filterMenuOpen ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10 }}>
+              {filterOptions.map((opt) => {
+                const selected = activeFilter === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => {
+                      setActiveFilter(opt.key);
+                      setFilterMenuOpen(false);
+                    }}
+                    activeOpacity={0.85}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: selected ? c.primary : c.border,
+                      backgroundColor: selected ? `${c.primary}20` : c.surface,
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      height: 34,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? c.primary : c.textSecondary }}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
 
         {/* Notification list */}
-        {loading && notifications.length === 0 ? (
+        {loading && filteredNotifications.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={c.primary} size="large" />
           </View>
-        ) : notifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 }}>
             <MaterialCommunityIcons name="bell-sleep-outline" size={48} color={c.textMuted} />
             <Text style={{ fontSize: 16, fontWeight: '600', color: c.textMuted, textAlign: 'center' }}>
@@ -184,7 +321,7 @@ export default function NotificationDrawer({
             scrollEventThrottle={200}
             showsVerticalScrollIndicator={false}
           >
-            {notifications.map((notif) => (
+            {filteredNotifications.map((notif) => (
               <NotificationRow
                 key={notif.id}
                 notif={notif}
@@ -197,6 +334,10 @@ export default function NotificationDrawer({
                 onNavigateCommunity={onNavigateCommunity}
                 onAcceptConnection={onAcceptConnection}
                 onDeclineConnection={onDeclineConnection}
+                onAcceptCommunityAdminInvite={onAcceptCommunityAdminInvite}
+                onDeclineCommunityAdminInvite={onDeclineCommunityAdminInvite}
+                onAcceptCommunityOwnershipTransfer={onAcceptCommunityOwnershipTransfer}
+                onDeclineCommunityOwnershipTransfer={onDeclineCommunityOwnershipTransfer}
               />
             ))}
             {loadingMore && (
@@ -204,7 +345,7 @@ export default function NotificationDrawer({
                 <ActivityIndicator color={c.primary} size="small" />
               </View>
             )}
-            {!hasMore && notifications.length > 0 && (
+            {!hasMore && filteredNotifications.length > 0 && (
               <View style={{ paddingVertical: 24, alignItems: 'center', gap: 12 }}>
                 <Text style={{ fontSize: 13, color: c.textMuted }}>{t('home.notificationAllCaughtUp')}</Text>
                 {notifications.length > 3 && (
@@ -221,6 +362,33 @@ export default function NotificationDrawer({
   );
 }
 
+type NotificationFilterKey =
+  | 'all'
+  | 'unread'
+  | 'comments'
+  | 'replies'
+  | 'connections'
+  | 'follows'
+  | 'communities'
+  | 'mentions'
+  | 'reactions'
+  | 'moderation';
+
+function matchesNotificationFilter(notif: AppNotification, filter: NotificationFilterKey) {
+  if (filter === 'all') return true;
+  if (filter === 'unread') return !notif.read;
+  const type = notif.notification_type;
+  if (filter === 'comments') return type === 'PC';
+  if (filter === 'replies') return type === 'PCR';
+  if (filter === 'connections') return type === 'CR' || type === 'CC';
+  if (filter === 'follows') return type === 'F' || type === 'FR' || type === 'FRA';
+  if (filter === 'communities') return type === 'CI' || type === 'CNP' || type === 'CB';
+  if (filter === 'mentions') return type === 'PUM' || type === 'PCUM';
+  if (filter === 'reactions') return type === 'PR' || type === 'PCRA';
+  if (filter === 'moderation') return type.startsWith('M') || type === 'CB';
+  return true;
+}
+
 // ─── Individual notification row ──────────────────────────────────────────────
 
 type RowProps = {
@@ -234,9 +402,28 @@ type RowProps = {
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
+  onAcceptCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
+  onDeclineCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
+  onAcceptCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
+  onDeclineCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
 };
 
-function NotificationRow({ notif, c, t, onMarkRead, onDelete, onNavigateProfile, onNavigatePost, onNavigateCommunity, onAcceptConnection, onDeclineConnection }: RowProps) {
+function NotificationRow({
+  notif,
+  c,
+  t,
+  onMarkRead,
+  onDelete,
+  onNavigateProfile,
+  onNavigatePost,
+  onNavigateCommunity,
+  onAcceptConnection,
+  onDeclineConnection,
+  onAcceptCommunityAdminInvite,
+  onDeclineCommunityAdminInvite,
+  onAcceptCommunityOwnershipTransfer,
+  onDeclineCommunityOwnershipTransfer,
+}: RowProps) {
   const obj = notif.content_object as any;
   const { icon, iconColor, actor, actorAvatar, body, postThumbnail, onPress } =
     resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity);
@@ -244,7 +431,18 @@ function NotificationRow({ notif, c, t, onMarkRead, onDelete, onNavigateProfile,
   const initial = (actor?.[0] || '?').toUpperCase();
   const isCR = notif.notification_type === 'CR';
   const requesterUsername = isCR ? (obj?.connection_requester?.username as string | undefined) : undefined;
+  const isCommunityAdminInvite = notif.notification_type === 'CI' && obj?.community_invite?.invite_type === 'A';
+  const isCommunityOwnershipInvitePending =
+    notif.notification_type === 'CI'
+    && obj?.community_invite?.invite_type === 'O'
+    && obj?.community_invite?.ownership_transfer_status === 'P';
+  const adminInviteId = isCommunityAdminInvite ? Number(obj?.community_invite?.id) : NaN;
+  const adminInviteCommunityName = isCommunityAdminInvite ? (obj?.community_invite?.community?.name as string | undefined) : undefined;
+  const ownershipInviteId = isCommunityOwnershipInvitePending ? Number(obj?.community_invite?.id) : NaN;
+  const ownershipInviteCommunityName = isCommunityOwnershipInvitePending ? (obj?.community_invite?.community?.name as string | undefined) : undefined;
   const [connectionState, setConnectionState] = React.useState<'idle' | 'accepting' | 'declining' | 'accepted' | 'declined'>('idle');
+  const [adminInviteState, setAdminInviteState] = React.useState<'idle' | 'accepting' | 'declining' | 'accepted' | 'declined'>('idle');
+  const [ownershipInviteState, setOwnershipInviteState] = React.useState<'idle' | 'accepting' | 'declining' | 'accepted' | 'declined'>('idle');
 
   function handlePress() {
     if (!notif.read) onMarkRead(notif.id);
@@ -272,6 +470,54 @@ function NotificationRow({ notif, c, t, onMarkRead, onDelete, onNavigateProfile,
       if (!notif.read) onMarkRead(notif.id);
     } catch {
       setConnectionState('idle');
+    }
+  }
+
+  async function handleAcceptAdminInvite() {
+    if (!Number.isFinite(adminInviteId) || !adminInviteCommunityName || adminInviteState !== 'idle') return;
+    setAdminInviteState('accepting');
+    try {
+      await onAcceptCommunityAdminInvite(adminInviteId, adminInviteCommunityName);
+      setAdminInviteState('accepted');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setAdminInviteState('idle');
+    }
+  }
+
+  async function handleDeclineAdminInvite() {
+    if (!Number.isFinite(adminInviteId) || !adminInviteCommunityName || adminInviteState !== 'idle') return;
+    setAdminInviteState('declining');
+    try {
+      await onDeclineCommunityAdminInvite(adminInviteId, adminInviteCommunityName);
+      setAdminInviteState('declined');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setAdminInviteState('idle');
+    }
+  }
+
+  async function handleAcceptOwnershipInvite() {
+    if (!Number.isFinite(ownershipInviteId) || !ownershipInviteCommunityName || ownershipInviteState !== 'idle') return;
+    setOwnershipInviteState('accepting');
+    try {
+      await onAcceptCommunityOwnershipTransfer(ownershipInviteId, ownershipInviteCommunityName);
+      setOwnershipInviteState('accepted');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setOwnershipInviteState('idle');
+    }
+  }
+
+  async function handleDeclineOwnershipInvite() {
+    if (!Number.isFinite(ownershipInviteId) || !ownershipInviteCommunityName || ownershipInviteState !== 'idle') return;
+    setOwnershipInviteState('declining');
+    try {
+      await onDeclineCommunityOwnershipTransfer(ownershipInviteId, ownershipInviteCommunityName);
+      setOwnershipInviteState('declined');
+      if (!notif.read) onMarkRead(notif.id);
+    } catch {
+      setOwnershipInviteState('idle');
     }
   }
 
@@ -411,6 +657,140 @@ function NotificationRow({ notif, c, t, onMarkRead, onDelete, onNavigateProfile,
                   <MaterialCommunityIcons name="account" size={14} color={c.textSecondary} />
                   <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
                     {t('home.profileViewAction', { defaultValue: 'View Profile' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+        {isCommunityAdminInvite && adminInviteCommunityName && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {adminInviteState === 'accepted' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="shield-check" size={14} color={c.textSecondary} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textSecondary }}>
+                  {t('home.communityAdminInviteAccepted', { defaultValue: 'Accepted' })}
+                </Text>
+              </View>
+            ) : adminInviteState === 'declined' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="shield-remove-outline" size={14} color={c.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>
+                  {t('home.communityAdminInviteDeclined', { defaultValue: 'Declined' })}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={adminInviteState !== 'idle'}
+                  onPress={() => void handleAcceptAdminInvite()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.primary, opacity: adminInviteState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {adminInviteState === 'accepting'
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <>
+                        <MaterialCommunityIcons name="shield-check" size={14} color="#fff" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>
+                          {t('home.communityAdminInviteAccept', { defaultValue: 'Accept' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={adminInviteState !== 'idle'}
+                  onPress={() => void handleDeclineAdminInvite()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border, opacity: adminInviteState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {adminInviteState === 'declining'
+                    ? <ActivityIndicator size="small" color={c.textSecondary} />
+                    : <>
+                        <MaterialCommunityIcons name="shield-remove-outline" size={14} color={c.textSecondary} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                          {t('home.communityAdminInviteDecline', { defaultValue: 'Decline' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    onNavigateCommunity(adminInviteCommunityName);
+                    if (!notif.read) onMarkRead(notif.id);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}
+                >
+                  <MaterialCommunityIcons name="account-group-outline" size={14} color={c.textSecondary} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                    {t('home.communityAdminInviteViewCommunity', { defaultValue: 'View Community' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+        {isCommunityOwnershipInvitePending && ownershipInviteCommunityName && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {ownershipInviteState === 'accepted' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="crown" size={14} color={c.textSecondary} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textSecondary }}>
+                  {t('home.communityOwnershipInviteAccepted', { defaultValue: 'Accepted' })}
+                </Text>
+              </View>
+            ) : ownershipInviteState === 'declined' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
+                <MaterialCommunityIcons name="crown-outline" size={14} color={c.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>
+                  {t('home.communityOwnershipInviteDeclined', { defaultValue: 'Declined' })}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={ownershipInviteState !== 'idle'}
+                  onPress={() => void handleAcceptOwnershipInvite()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.primary, opacity: ownershipInviteState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {ownershipInviteState === 'accepting'
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <>
+                        <MaterialCommunityIcons name="crown" size={14} color="#fff" />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>
+                          {t('home.communityOwnershipInviteAccept', { defaultValue: 'Accept ownership' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={ownershipInviteState !== 'idle'}
+                  onPress={() => void handleDeclineOwnershipInvite()}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border, opacity: ownershipInviteState !== 'idle' ? 0.6 : 1 }}
+                >
+                  {ownershipInviteState === 'declining'
+                    ? <ActivityIndicator size="small" color={c.textSecondary} />
+                    : <>
+                        <MaterialCommunityIcons name="crown-outline" size={14} color={c.textSecondary} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                          {t('home.communityOwnershipInviteDecline', { defaultValue: 'Decline' })}
+                        </Text>
+                      </>
+                  }
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    onNavigateCommunity(ownershipInviteCommunityName);
+                    if (!notif.read) onMarkRead(notif.id);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}
+                >
+                  <MaterialCommunityIcons name="account-group-outline" size={14} color={c.textSecondary} />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                    {t('home.communityOwnershipInviteViewCommunity', { defaultValue: 'View Community' })}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -590,11 +970,43 @@ function resolveNotification(
     case 'CI': {
       const creator = obj?.community_invite?.creator;
       const community = obj?.community_invite?.community;
+      const inviteType = obj?.community_invite?.invite_type;
+      const transferStatus = obj?.community_invite?.ownership_transfer_status;
+      const transferProposedOwner = obj?.community_invite?.ownership_transfer_proposed_owner;
       const name = creator?.profile?.name || creator?.username || someone;
       return {
         icon: 'account-group', iconColor: '#059669',
         actor: creator?.username, actorAvatar: creator?.profile?.avatar,
-        body: t('home.notificationTypeCommunityInvite', { name, community: community?.name || '' }),
+        body: inviteType === 'A'
+          ? t('home.notificationTypeCommunityAdminInvite', {
+              name,
+              community: community?.name || '',
+              defaultValue: '{{name}} invited you to become an administrator of c/{{community}}.',
+            })
+          : inviteType === 'O'
+            ? transferStatus === 'A'
+              ? t('home.notificationTypeCommunityOwnershipAccepted', {
+                  name: transferProposedOwner?.profile?.name || transferProposedOwner?.username || someone,
+                  community: community?.name || '',
+                  defaultValue: '{{name}} accepted ownership transfer for c/{{community}}.',
+                })
+              : transferStatus === 'D'
+                ? t('home.notificationTypeCommunityOwnershipDeclined', {
+                    name: transferProposedOwner?.profile?.name || transferProposedOwner?.username || someone,
+                    community: community?.name || '',
+                    defaultValue: '{{name}} declined ownership transfer for c/{{community}}.',
+                  })
+                : transferStatus === 'C'
+                  ? t('home.notificationTypeCommunityOwnershipCancelled', {
+                      community: community?.name || '',
+                      defaultValue: 'Ownership transfer for c/{{community}} was cancelled.',
+                    })
+                  : t('home.notificationTypeCommunityOwnershipInvite', {
+                      name,
+                      community: community?.name || '',
+                      defaultValue: '{{name}} invited you to become the owner of c/{{community}}.',
+                    })
+          : t('home.notificationTypeCommunityInvite', { name, community: community?.name || '' }),
         postThumbnail: null,
         onPress: () => community?.name && onNavigateCommunity(community.name),
       };
@@ -608,6 +1020,22 @@ function resolveNotification(
         body: t('home.notificationTypeCommunityNewPost', { community: community?.name || '' }),
         postThumbnail: post?.media_thumbnail || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
+      };
+    }
+    case 'CB': {
+      const community = obj?.community;
+      const bannedBy = obj?.banned_by;
+      const bannedByName = bannedBy?.profile?.name || bannedBy?.username || someone;
+      return {
+        icon: 'gavel', iconColor: '#DC2626',
+        actor: community?.name, actorAvatar: community?.avatar,
+        body: t('home.notificationTypeCommunityBan', {
+          community: community?.name || '',
+          moderator: bannedByName,
+          defaultValue: 'You were banned from c/{{community}} by {{moderator}}. You can no longer view, join, post, comment, or react there.',
+        }),
+        postThumbnail: null,
+        onPress: () => community?.name && onNavigateCommunity(community.name),
       };
     }
     case 'UNP': {

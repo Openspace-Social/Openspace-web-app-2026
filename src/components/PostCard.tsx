@@ -29,6 +29,11 @@ type MediaPreviewItem = {
   isVideo: boolean;
 };
 
+type CommentDraftMedia = {
+  kind: 'image' | 'gif';
+  uri: string;
+};
+
 function looksLikeVideoUrl(value?: string) {
   if (!value) return false;
   const clean = value.split('?')[0].toLowerCase();
@@ -352,6 +357,8 @@ type PostCardProps = {
   commentRepliesLoadingById: Record<number, boolean>;
   draftComments: Record<number, string>;
   draftReplies: Record<number, string>;
+  draftCommentMediaByPostId: Record<number, CommentDraftMedia | null>;
+  draftReplyMediaByCommentId: Record<number, CommentDraftMedia | null>;
   commentEditDrafts: Record<number, string>;
   replyEditDrafts: Record<number, string>;
   editingCommentById: Record<number, boolean>;
@@ -377,6 +384,12 @@ type PostCardProps = {
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
   onUpdateDraftReply: (commentId: number, value: string) => void;
+  onPickDraftCommentImage: (postId: number) => void;
+  onPickDraftReplyImage: (commentId: number) => void;
+  onSetDraftCommentGif: (postId: number) => void;
+  onSetDraftReplyGif: (commentId: number) => void;
+  onClearDraftCommentMedia: (postId: number) => void;
+  onClearDraftReplyMedia: (commentId: number) => void;
   onStartEditingComment: (commentId: number, currentText: string, isReply: boolean) => void;
   onCancelEditingComment: (commentId: number, isReply: boolean) => void;
   onUpdateEditCommentDraft: (commentId: number, value: string, isReply: boolean) => void;
@@ -395,6 +408,7 @@ type PostCardProps = {
   pinnedDisplayLimit?: number;
   onNavigateProfile: (username: string) => void;
   onNavigateCommunity: (communityName: string) => void;
+  onFilterCommunityPostsByUser?: (username: string, communityName: string) => void;
   getPostText: (post: FeedPost) => string;
   getPostLengthType: (post: FeedPost) => 'long' | 'short';
   getPostReactionCount: (post: FeedPost) => number;
@@ -421,6 +435,8 @@ export default function PostCard({
   commentRepliesLoadingById,
   draftComments,
   draftReplies,
+  draftCommentMediaByPostId,
+  draftReplyMediaByCommentId,
   commentEditDrafts,
   replyEditDrafts,
   editingCommentById,
@@ -446,6 +462,12 @@ export default function PostCard({
   onOpenLink,
   onUpdateDraftComment,
   onUpdateDraftReply,
+  onPickDraftCommentImage,
+  onPickDraftReplyImage,
+  onSetDraftCommentGif,
+  onSetDraftReplyGif,
+  onClearDraftCommentMedia,
+  onClearDraftReplyMedia,
   onStartEditingComment,
   onCancelEditingComment,
   onUpdateEditCommentDraft,
@@ -464,6 +486,7 @@ export default function PostCard({
   pinnedDisplayLimit = 5,
   onNavigateProfile,
   onNavigateCommunity,
+  onFilterCommunityPostsByUser,
   getPostText,
   getPostLengthType,
   getPostReactionCount,
@@ -577,7 +600,21 @@ export default function PostCard({
   const sharedCommunityNames = Array.isArray(post.shared_community_names)
     ? post.shared_community_names.filter((name): name is string => typeof name === 'string' && !!name.trim())
     : [];
+  const circleNames = Array.isArray(post.circles)
+    ? post.circles
+        .map((circle) => (typeof circle?.name === 'string' ? circle.name.trim() : ''))
+        .filter((name): name is string => !!name)
+    : [];
+  const primaryCircleName = circleNames[0] || '';
+  const extraCircleCount = Math.max(0, circleNames.length - 1);
+  const extraCirclesLabel = extraCircleCount > 0
+    ? t('home.postMultiCircleSuffix', {
+        count: extraCircleCount,
+        defaultValue: `+${extraCircleCount} ${extraCircleCount === 1 ? 'circle' : 'circles'}`,
+      })
+    : '';
   const primaryCommunityName = post.community?.name || sharedCommunityNames[0] || '';
+  const communityAccentColor = post.community?.color || c.textLink || c.primary;
   const secondaryCommunityNames = sharedCommunityNames.filter((name) => name !== primaryCommunityName);
   const sharedCommunitiesCount = typeof post.shared_communities_count === 'number'
     ? post.shared_communities_count
@@ -675,6 +712,54 @@ export default function PostCard({
     if (diffHours < 24) return t('home.relativeHoursAgo', { count: diffHours });
     const diffDays = Math.floor(diffHours / 24);
     return t('home.relativeDaysAgo', { count: diffDays });
+  }
+
+  function renderCommentMedia(items?: PostComment['media']) {
+    const first = Array.isArray(items) ? items[0] : undefined;
+    if (!first?.url) return null;
+    const isGif = (first.type || '').toUpperCase() === 'G';
+    return (
+      <View style={{ marginTop: 8 }}>
+        <Image
+          source={{ uri: first.url }}
+          style={{ width: 180, height: 180, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+          resizeMode="cover"
+        />
+        {isGif ? (
+          <View style={{ position: 'absolute', right: 8, bottom: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.primary }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }}>GIF</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderDraftMediaPreview(
+    media: CommentDraftMedia | null | undefined,
+    onClear: () => void
+  ) {
+    if (!media?.uri) return null;
+    return (
+      <View style={{ marginTop: 8, marginBottom: 8 }}>
+        <View style={{ width: 120, height: 120, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}>
+          <Image source={{ uri: media.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          {media.kind === 'gif' ? (
+            <View style={{ position: 'absolute', left: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: c.primary }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>GIF</Text>
+            </View>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onClear}
+          style={{ marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+        >
+          <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '700' }}>
+            {t('home.removeAction', { defaultValue: 'Remove' })}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   React.useEffect(() => {
@@ -996,6 +1081,30 @@ export default function PostCard({
     disabled: boolean;
     onPress: () => void;
   };
+  const canFilterByPosterInCommunity =
+    typeof onFilterCommunityPostsByUser === 'function' &&
+    typeof creatorUsername === 'string' &&
+    creatorUsername.trim().length > 0 &&
+    typeof post.community?.name === 'string' &&
+    post.community.name.trim().length > 0;
+
+  const filterByPosterAction: PostMenuAction | null = canFilterByPosterInCommunity
+    ? {
+        key: 'view-user-community-posts',
+        icon: 'account-search-outline' as const,
+        label: t('home.viewCommunityPostsByUserAction', {
+          username: creatorUsername,
+          community: post.community?.name,
+          defaultValue: `View all posts in c/${post.community?.name} by @${creatorUsername}`,
+        }),
+        disabled: false,
+        onPress: () => {
+          setPostMenuOpen(false);
+          onFilterCommunityPostsByUser?.(creatorUsername, post.community?.name || '');
+        },
+      }
+    : null;
+
   const postMenuActions: PostMenuAction[] = isPostOwner
     ? [
         {
@@ -1025,6 +1134,7 @@ export default function PostCard({
           disabled: postEditLoading,
           onPress: () => void handleDeletePost(),
         },
+        ...(filterByPosterAction ? [filterByPosterAction] : []),
       ]
     : [
         {
@@ -1034,6 +1144,7 @@ export default function PostCard({
           disabled: false,
           onPress: openPostReportMenuAction,
         },
+        ...(filterByPosterAction ? [filterByPosterAction] : []),
       ];
   const postCardBg = toOpaqueColor(
     variant === 'feed' ? c.inputBackground : c.surface,
@@ -1087,7 +1198,7 @@ export default function PostCard({
                     activeOpacity={0.8}
                     onPress={() => onNavigateCommunity(primaryCommunityName)}
                   >
-                    <Text style={[styles.feedCommunityHeaderLink, { color: c.textLink }]}>
+                    <Text style={[styles.feedCommunityHeaderLink, { color: communityAccentColor }]}>
                       {`c/${primaryCommunityName}`}
                     </Text>
                   </TouchableOpacity>
@@ -1124,6 +1235,20 @@ export default function PostCard({
                       </TouchableOpacity>
                     ))}
                   </View>
+                ) : null}
+              </View>
+            ) : null}
+            {primaryCircleName ? (
+              <View style={{ marginTop: primaryCommunityName ? 4 : 0, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <MaterialCommunityIcons name="account-group-outline" size={14} color={c.textSecondary} />
+                <Text style={[styles.feedDate, { color: c.textSecondary, fontWeight: '700' }]}>
+                  {t('home.postCircleLabel', {
+                    name: primaryCircleName,
+                    defaultValue: `Circle: ${primaryCircleName}`,
+                  })}
+                </Text>
+                {extraCirclesLabel ? (
+                  <Text style={[styles.feedDate, { color: c.textMuted }]}>{extraCirclesLabel}</Text>
                 ) : null}
               </View>
             ) : null}
@@ -1815,7 +1940,10 @@ export default function PostCard({
                       </View>
                     </View>
                   ) : (
-                    <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+                    <>
+                      <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+                      {renderCommentMedia(comment.media)}
+                    </>
                   )}
                   {(() => {
                     const activeEntries = (comment.reactions_emoji_counts || []).filter((e) => (e?.count || 0) > 0);
@@ -1999,7 +2127,10 @@ export default function PostCard({
                               </View>
                             </View>
                           ) : (
-                            <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                            <>
+                              <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                              {renderCommentMedia(reply.media)}
+                            </>
                           )}
                         </View>
                       </View>
@@ -2023,6 +2154,10 @@ export default function PostCard({
                   );
                 })}
                   <View style={styles.commentReplyComposer}>
+                    {renderDraftMediaPreview(
+                      draftReplyMediaByCommentId[comment.id],
+                      () => onClearDraftReplyMedia(comment.id)
+                    )}
                     <TextInput
                       style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
                       value={draftReplies[comment.id] || ''}
@@ -2030,6 +2165,26 @@ export default function PostCard({
                       placeholder={t('home.replyPlaceholder')}
                       placeholderTextColor={c.placeholder}
                     />
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                        onPress={() => onPickDraftReplyImage(comment.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                          {t('home.photoAction', { defaultValue: 'Photo' })}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                        onPress={() => onSetDraftReplyGif(comment.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TouchableOpacity
                       style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                       onPress={() => onSubmitReply(post.id, comment.id)}
@@ -2045,6 +2200,10 @@ export default function PostCard({
           })}
 
           <View style={styles.commentComposer}>
+            {renderDraftMediaPreview(
+              draftCommentMediaByPostId[post.id],
+              () => onClearDraftCommentMedia(post.id)
+            )}
             <TextInput
               style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
               value={draftComments[post.id] || ''}
@@ -2052,6 +2211,26 @@ export default function PostCard({
               placeholder={t('home.commentPlaceholder')}
               placeholderTextColor={c.placeholder}
             />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+              <TouchableOpacity
+                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                onPress={() => onPickDraftCommentImage(post.id)}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                  {t('home.photoAction', { defaultValue: 'Photo' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                onPress={() => onSetDraftCommentGif(post.id)}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               style={[styles.commentSendButton, { backgroundColor: c.primary }]}
               onPress={() => onSubmitComment(post.id)}

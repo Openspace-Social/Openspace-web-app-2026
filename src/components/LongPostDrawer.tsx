@@ -69,6 +69,7 @@ interface LongPostDrawerProps {
 
 const DURATION = 280;
 const LONG_POST_MAX_IMAGES = 5;
+const LONG_POST_MAX_CHAR_COUNT = 10000;
 
 const FOCAL_POSITIONS = [
   [{ label: '↖', value: 'left top' }, { label: '↑', value: 'center top' }, { label: '↗', value: 'right top' }],
@@ -89,6 +90,29 @@ function getFocalOffset(position?: string) {
     'right bottom': { x: 1, y: 1 },
   };
   return map[position || 'center center'] || { x: 0, y: 0 };
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function htmlToPlainText(value?: string) {
+  if (!value) return '';
+  return decodeHtmlEntities(
+    value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|h1|h2|h3|blockquote|li|div|tr|table)>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+  )
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function ImageBlockEditor({
@@ -430,6 +454,28 @@ export default function LongPostDrawer({
     () => blocks.filter((block) => block.type === 'image' && !!(block.url || '').trim()).length,
     [blocks]
   );
+  const longPostCharCount = useMemo(() => {
+    const safeTitle = (title || '').trim();
+    const bodyText =
+      editorMode === 'lexical'
+        ? htmlToPlainText(lexicalHtml)
+        : blocks
+            .map((block) => {
+              if (!block) return '';
+              if (block.type === 'table') {
+                return htmlToPlainText(block.tableHtml || '');
+              }
+              return [block.text || '', block.caption || '', block.url || '']
+                .join(' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+            })
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+    return `${safeTitle}\n${bodyText}`.trim().length;
+  }, [blocks, editorMode, lexicalHtml, title]);
+  const longPostCharsRemaining = LONG_POST_MAX_CHAR_COUNT - longPostCharCount;
 
   useEffect(() => {
     if (!visible) {
@@ -899,6 +945,23 @@ export default function LongPostDrawer({
                             defaultValue: 'Images used: {{count}} / {{max}}',
                             count: mediaCount,
                             max: maxImages,
+                          })}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.mediaUsageText,
+                            {
+                              color:
+                                longPostCharsRemaining < 0
+                                  ? (c.errorText ?? '#DC2626')
+                                  : (longPostCharsRemaining <= 500 ? '#D97706' : c.textMuted),
+                            },
+                          ]}
+                        >
+                          {t('home.longPostCharacterUsage', {
+                            defaultValue: 'Characters: {{count}} / {{max}}',
+                            count: longPostCharCount,
+                            max: LONG_POST_MAX_CHAR_COUNT,
                           })}
                         </Text>
                       </View>

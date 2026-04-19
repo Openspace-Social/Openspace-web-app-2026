@@ -160,6 +160,29 @@ export type UpdateAuthenticatedUserPayload = {
   visibility?: string;
 };
 
+export type UpdateAuthenticatedUserSettingsPayload = {
+  current_password?: string;
+  new_password?: string;
+  email?: string;
+};
+
+export type UserNotificationSettings = {
+  post_comment_notifications: boolean;
+  post_comment_reply_notifications: boolean;
+  post_reaction_notifications: boolean;
+  post_comment_reaction_notifications: boolean;
+  post_comment_user_mention_notifications: boolean;
+  post_user_mention_notifications: boolean;
+  follow_notifications: boolean;
+  follow_request_notifications: boolean;
+  follow_request_approved_notifications: boolean;
+  connection_request_notifications: boolean;
+  connection_confirmed_notifications: boolean;
+  community_invite_notifications: boolean;
+  community_new_post_notifications: boolean;
+  user_new_post_notifications: boolean;
+};
+
 export type UpdateAuthenticatedUserMediaPayload = {
   avatarFile?: Blob | null;
   coverFile?: Blob | null;
@@ -191,6 +214,7 @@ export type UpdatePostPayload = {
   long_text_blocks?: unknown[];
   long_text_rendered_html?: string;
   long_text_version?: number;
+  is_draft?: boolean;
   draft_expiry_days?: number;
   type?: string;
 };
@@ -271,8 +295,15 @@ export type FeedPost = {
     name?: string;
     title?: string;
   };
+  circles?: Array<{
+    id?: number;
+    name?: string;
+    color?: string;
+  }>;
   shared_communities_count?: number;
   shared_community_names?: string[];
+  shared_circles_count?: number;
+  shared_circle_ids?: number[];
   media_thumbnail?: string;
   media?: Array<{
     id?: number;
@@ -292,6 +323,12 @@ export type PostComment = {
   id: number;
   text?: string;
   created?: string;
+  media?: Array<{
+    id?: number;
+    type?: 'I' | 'G' | string;
+    url?: string;
+    created?: string;
+  }>;
   commenter?: {
     id?: number;
     username?: string;
@@ -323,6 +360,31 @@ export type PostComment = {
       code?: string;
     };
   };
+};
+
+export type ProfileCommentActivity = {
+  id: number;
+  text?: string;
+  created?: string;
+  is_reply?: boolean;
+  post?: {
+    id?: number;
+    uuid?: string;
+    text?: string;
+    type?: string;
+    community?: {
+      name?: string;
+      title?: string;
+      avatar?: string;
+      color?: string;
+    };
+  };
+};
+
+export type CreatePostCommentPayload = {
+  text?: string;
+  image?: Blob | null;
+  gif_url?: string;
 };
 
 export type ModerationCategory = {
@@ -358,6 +420,8 @@ export type FollowingUserResult = {
   is_following?: boolean;
   is_connected?: boolean;
 };
+
+export type BlockedUserResult = FollowingUserResult;
 
 export type DirectInviteEmailResponse = {
   status?: 'sent' | 'already_registered';
@@ -412,6 +476,23 @@ export type CommunityMember = {
   };
 };
 
+export type CommunityModeratedObject = {
+  id?: number;
+  object_type?: string;
+  object_id?: number;
+  verified?: boolean;
+  status?: string;
+  description?: string;
+  reports_count?: number;
+  category?: {
+    id?: number;
+    name?: string;
+    title?: string;
+    description?: string;
+  };
+  content_object?: any;
+};
+
 // ─── Notification types ───────────────────────────────────────────────────────
 
 export type NotificationType =
@@ -428,7 +509,8 @@ export type NotificationType =
   | 'PUM'  // post user mention
   | 'PCUM' // post comment user mention
   | 'CNP'  // community new post
-  | 'UNP'; // user new post
+  | 'UNP'  // user new post
+  | 'CB';  // community ban
 
 type NotifUser = {
   id?: number;
@@ -479,7 +561,20 @@ export type NotificationContentObject =
   | { post_user_mention?: { id?: number; post?: NotifPost; user?: NotifUser } }
   | { post_comment_user_mention?: { id?: number; post_comment?: NotifComment; user?: NotifUser } }
   // CI
-  | { community_invite?: { id?: number; creator?: NotifUser; community?: { id?: number; name?: string; avatar?: string; color?: string } } }
+  | {
+      community_invite?: {
+        id?: number;
+        invite_type?: 'M' | 'A' | 'O';
+        creator?: NotifUser;
+        community?: { id?: number; name?: string; avatar?: string; color?: string };
+        ownership_transfer_id?: number | null;
+        ownership_transfer_status?: 'P' | 'A' | 'D' | 'C' | 'E' | null;
+        ownership_transfer_current_owner?: NotifUser | null;
+        ownership_transfer_proposed_owner?: NotifUser | null;
+      };
+    }
+  // CB
+  | { community?: { id?: number; name?: string; avatar?: string; color?: string }; banned_by?: NotifUser }
   // CNP / UNP
   | { post?: NotifPost };
 
@@ -492,6 +587,30 @@ export type AppNotification = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+export type CommunityCategory = {
+  id?: number;
+  name: string;
+  title?: string;
+  description?: string;
+  color?: string;
+  avatar?: string;
+};
+
+export type CreateCommunityPayload = {
+  name: string;
+  title: string;
+  type: 'P' | 'T';
+  color: string;
+  categories: string[];
+  description: string;
+  rules: string;
+  user_adjective?: string;
+  users_adjective?: string;
+  invites_enabled?: boolean;
+  avatar?: Blob | null;
+  cover?: Blob | null;
+};
 
 export type SearchCommunityResult = {
   id: number;
@@ -518,6 +637,36 @@ export type SearchCommunityResult = {
     is_administrator?: boolean;
     is_moderator?: boolean;
   }>;
+  are_new_post_notifications_enabled?: boolean;
+};
+
+export type CommunityNotificationSubscriptionResult = {
+  id?: number;
+  are_new_post_notifications_enabled: boolean;
+};
+
+export type LeaveCommunityResult = {
+  id?: number;
+  memberships?: Array<{
+    id?: number;
+    user_id?: number;
+    community_id?: number;
+    is_administrator?: boolean;
+    is_moderator?: boolean;
+  }>;
+  removed_posts_count?: number;
+  message?: string;
+};
+
+export type CommunityOwnershipTransfer = {
+  id: number;
+  status: 'P' | 'A' | 'D' | 'C' | 'E';
+  created?: string;
+  modified?: string;
+  responded?: string | null;
+  invite_id?: number;
+  current_owner?: CommunityMember;
+  proposed_owner?: CommunityMember;
 };
 
 export type CircleResult = {
@@ -629,6 +778,20 @@ function normalizePostPayload(post: FeedPost): FeedPost {
     shared_community_names: Array.isArray(post.shared_community_names)
       ? post.shared_community_names.filter((name): name is string => typeof name === 'string' && !!name.trim())
       : undefined,
+    shared_circles_count:
+      typeof post.shared_circles_count === 'number' ? post.shared_circles_count : undefined,
+    shared_circle_ids: Array.isArray(post.shared_circle_ids)
+      ? post.shared_circle_ids.filter((id): id is number => typeof id === 'number' && Number.isFinite(id))
+      : undefined,
+    circles: Array.isArray(post.circles)
+      ? post.circles
+          .filter((circle): circle is NonNullable<FeedPost['circles']>[number] => !!circle && typeof circle === 'object')
+          .map((circle) => ({
+            id: typeof circle.id === 'number' ? circle.id : undefined,
+            name: typeof circle.name === 'string' ? circle.name : undefined,
+            color: typeof circle.color === 'string' ? circle.color : undefined,
+          }))
+      : undefined,
     media_thumbnail: normalizeMediaUrl(post.media_thumbnail),
     media: normalizedMedia,
   };
@@ -666,6 +829,30 @@ function normalizeFollowingUserPayload(user: FollowingUserResult): FollowingUser
 
 function normalizeFollowingUserList(payload: FollowingUserResult[]): FollowingUserResult[] {
   return (Array.isArray(payload) ? payload : []).map((user) => normalizeFollowingUserPayload(user));
+}
+
+function normalizePostCommentPayload(comment: PostComment): PostComment {
+  const normalizedMedia = Array.isArray(comment.media)
+    ? comment.media.map((item) => ({
+        ...item,
+        url: normalizeMediaUrl(item?.url),
+      }))
+    : undefined;
+  return {
+    ...comment,
+    media: normalizedMedia,
+    commenter: comment.commenter
+      ? {
+          ...comment.commenter,
+          profile: comment.commenter.profile
+            ? {
+                ...comment.commenter.profile,
+                avatar: normalizeMediaUrl(comment.commenter.profile.avatar),
+              }
+            : comment.commenter.profile,
+        }
+      : comment.commenter,
+  };
 }
 
 type RemoveFollowerStrategy = 'probe' | 'post' | 'delete' | 'put' | 'fallback';
@@ -728,6 +915,25 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  updateAuthenticatedUserSettings: (token: string, payload: UpdateAuthenticatedUserSettingsPayload) =>
+    request('/api/auth/user/settings/', {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  getNotificationSettings: (token: string) =>
+    request<UserNotificationSettings>('/api/auth/user/notifications-settings/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  updateNotificationSettings: (token: string, payload: Partial<UserNotificationSettings>) =>
+    request<UserNotificationSettings>('/api/auth/user/notifications-settings/', {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
   updateAuthenticatedUserWithMedia: (
     token: string,
     payload: UpdateAuthenticatedUserPayload = {},
@@ -777,6 +983,13 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ token: codeOrToken }),
     }),
+
+  verifyEmailChangeToken: (token: string, codeOrToken: string) =>
+    request<unknown>('/api/auth/email/verify/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ token: codeOrToken }),
+    }).then(extractSuccessMessage),
 
   requestPasswordReset: (email: string) =>
     request<unknown>('/api/auth/password/reset/', {
@@ -1043,6 +1256,18 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }).then((posts) => posts.map((post) => normalizePostPayload(post))),
 
+  getUserComments: (token: string, username: string, count = 10, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('username', username);
+    params.set('count', String(count));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) {
+      params.set('max_id', String(maxId));
+    }
+    return request<ProfileCommentActivity[]>(`/api/posts/profile/comments/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
   getPinnedPosts: (token: string, username?: string, count = 10) => {
     const params = new URLSearchParams();
     params.set('count', String(count));
@@ -1050,6 +1275,45 @@ export const api = {
     return request<FeedPost[]>(`/api/posts/profile/pinned/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     }).then((posts) => posts.map((post) => normalizePostPayload(post)));
+  },
+
+  getCategories: (token: string) =>
+    request<CommunityCategory[]>('/api/categories/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  checkCommunityName: async (token: string, name: string): Promise<boolean> => {
+    try {
+      await request<void>('/api/communities/name-check/', {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({ name }),
+      });
+      return true; // available
+    } catch {
+      return false; // taken or invalid
+    }
+  },
+
+  createCommunity: (token: string, payload: CreateCommunityPayload) => {
+    const form = new FormData();
+    form.append('name', payload.name);
+    form.append('title', payload.title);
+    form.append('type', payload.type);
+    form.append('color', payload.color);
+    payload.categories.forEach((cat) => form.append('categories', cat));
+    form.append('description', payload.description);
+    form.append('rules', payload.rules);
+    if (payload.user_adjective) form.append('user_adjective', payload.user_adjective);
+    if (payload.users_adjective) form.append('users_adjective', payload.users_adjective);
+    if (payload.invites_enabled != null) form.append('invites_enabled', String(payload.invites_enabled));
+    if (payload.avatar) form.append('avatar', payload.avatar, 'avatar.jpg');
+    if (payload.cover) form.append('cover', payload.cover, 'cover.jpg');
+    return request<SearchCommunityResult>('/api/communities/', {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: form,
+    });
   },
 
   getCommunity: (token: string, communityName: string) =>
@@ -1064,10 +1328,34 @@ export const api = {
     }),
 
   leaveCommunity: (token: string, communityName: string) =>
-    request<void>(`/api/communities/${encodeURIComponent(communityName)}/members/leave/`, {
+    request<LeaveCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/members/leave/`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  subscribeToCommunityNotifications: (token: string, communityName: string) =>
+    request<CommunityNotificationSubscriptionResult>(
+      `/api/communities/${encodeURIComponent(communityName)}/notifications/subscribe/new-post/`,
+      { method: 'PUT', headers: { Authorization: `Token ${token}` } }
+    ),
+
+  unsubscribeFromCommunityNotifications: (token: string, communityName: string) =>
+    request<CommunityNotificationSubscriptionResult>(
+      `/api/communities/${encodeURIComponent(communityName)}/notifications/subscribe/new-post/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } }
+    ),
+
+  subscribeToUserNewPostNotifications: (token: string, username: string) =>
+    request<{ are_new_post_notifications_enabled: boolean }>(
+      `/api/auth/users/${encodeURIComponent(username)}/notifications/subscribe/new-post/`,
+      { method: 'PUT', headers: { Authorization: `Token ${token}` } }
+    ),
+
+  unsubscribeFromUserNewPostNotifications: (token: string, username: string) =>
+    request<{ are_new_post_notifications_enabled: boolean }>(
+      `/api/auth/users/${encodeURIComponent(username)}/notifications/subscribe/new-post/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } }
+    ),
 
   getCommunityOwner: (token: string, communityName: string) =>
     request<CommunityOwner>(`/api/communities/community_owner/${encodeURIComponent(communityName)}/`, {
@@ -1077,9 +1365,18 @@ export const api = {
       user_avatar: normalizeMediaUrl(owner.user_avatar),
     })),
 
-  getCommunityMembers: (token: string, communityName: string, count = 9, maxId?: number) => {
+  getCommunityMembers: (
+    token: string,
+    communityName: string,
+    count = 9,
+    maxId?: number,
+    exclude?: Array<'administrators' | 'moderators'>
+  ) => {
     const params = new URLSearchParams({ count: String(count) });
     if (maxId != null) params.set('max_id', String(maxId));
+    if (Array.isArray(exclude) && exclude.length > 0) {
+      params.set('exclude', exclude.join(','));
+    }
     return request<CommunityMember[]>(
       `/api/communities/${encodeURIComponent(communityName)}/members/?${params.toString()}`,
       { headers: { Authorization: `Token ${token}` } }
@@ -1093,10 +1390,306 @@ export const api = {
     );
   },
 
-  getCommunityPosts: (token: string, communityName: string, count = 20) =>
-    request<FeedPost[]>(`/api/communities/${encodeURIComponent(communityName)}/posts/?count=${count}`, {
+  getCommunityPosts: async (token: string, communityName: string, count = 20) => {
+    const posts = await request<FeedPost[]>(
+      `/api/communities/${encodeURIComponent(communityName)}/posts/?count=${count}`,
+      {
+        headers: { Authorization: `Token ${token}` },
+      }
+    );
+    const normalized = (Array.isArray(posts) ? posts : []).map((post) => normalizePostPayload(post));
+
+    // Community posts endpoint can return a reduced serializer shape that omits
+    // long-post fields (type/long_text_blocks/long_text_rendered_html). Hydrate
+    // each row via the canonical post endpoint so feed rendering stays
+    // consistent with home/profile surfaces.
+    const hydrated = await Promise.allSettled(
+      normalized.map(async (post) => {
+        if (typeof post.id !== 'number' || !Number.isFinite(post.id)) return post;
+        try {
+          const payload = await request<unknown>(`/api/posts/${post.id}/`, {
+            headers: { Authorization: `Token ${token}` },
+          });
+          const full = normalizeMaybeWrappedPost(payload);
+          return full ? normalizePostPayload(full) : post;
+        } catch {
+          if (typeof post.uuid === 'string' && post.uuid.trim()) {
+            try {
+              const payloadByUuid = await request<unknown>(`/api/posts/${encodeURIComponent(post.uuid)}/`, {
+                headers: { Authorization: `Token ${token}` },
+              });
+              const fullByUuid = normalizeMaybeWrappedPost(payloadByUuid);
+              return fullByUuid ? normalizePostPayload(fullByUuid) : post;
+            } catch {
+              return post;
+            }
+          }
+          return post;
+        }
+      })
+    );
+
+    return hydrated.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      return normalized[index];
+    });
+  },
+
+  getClosedCommunityPosts: (token: string, communityName: string, count = 20) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    return request<FeedPost[]>(`/api/communities/${encodeURIComponent(communityName)}/posts/closed/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
-    }).then((posts) => posts.map((post) => normalizePostPayload(post))),
+    }).then((posts) => (Array.isArray(posts) ? posts : []).map((post) => normalizePostPayload(post)));
+  },
+
+  openPost: (token: string, postUuid: string) =>
+    request<FeedPost>(`/api/posts/${encodeURIComponent(postUuid)}/open/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }).then((post) => normalizePostPayload(post)),
+
+  updateCommunity: (
+    token: string,
+    communityName: string,
+    payload: {
+      name?: string;
+      title?: string;
+      description?: string;
+      rules?: string;
+      color?: string;
+      type?: string;
+      invites_enabled?: boolean;
+      user_adjective?: string;
+      users_adjective?: string;
+      categories?: string[];
+    }
+  ) =>
+    request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  updateCommunityAvatar: (token: string, communityName: string, avatarFile: Blob) => {
+    const form = new FormData();
+    const file = avatarFile as Blob & { name?: string };
+    form.append('avatar', file, file.name || 'community-avatar.jpg');
+    return request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/avatar/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: form,
+    });
+  },
+
+  updateCommunityCover: (token: string, communityName: string, coverFile: Blob) => {
+    const form = new FormData();
+    const file = coverFile as Blob & { name?: string };
+    form.append('cover', file, file.name || 'community-cover.jpg');
+    return request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/cover/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: form,
+    });
+  },
+
+  getCommunityAdministrators: (token: string, communityName: string, count = 20, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) params.set('max_id', String(maxId));
+    return request<CommunityMember[]>(`/api/communities/${encodeURIComponent(communityName)}/administrators/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((rows) => (Array.isArray(rows) ? rows : []).map((m) => ({
+      ...m,
+      profile: m.profile ? { ...m.profile, avatar: normalizeMediaUrl(m.profile.avatar) } : m.profile,
+    })));
+  },
+
+  addCommunityAdministrator: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/administrators/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  respondCommunityAdministratorInvite: (
+    token: string,
+    communityName: string,
+    inviteId: number,
+    decision: 'accept' | 'decline',
+  ) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/administrators/invites/respond/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ invite_id: inviteId, decision }),
+    }),
+
+  getPendingCommunityOwnershipTransfer: (token: string, communityName: string) =>
+    request<CommunityOwnershipTransfer | null>(`/api/communities/${encodeURIComponent(communityName)}/administrators/ownership-transfer/`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((row: any) => {
+      if (!row) return null;
+      const normalizeMember = (member: any) => {
+        if (!member) return member;
+        return {
+          ...member,
+          profile: member.profile
+            ? { ...member.profile, avatar: normalizeMediaUrl(member.profile.avatar) }
+            : member.profile,
+        };
+      };
+      return {
+        ...row,
+        current_owner: normalizeMember(row.current_owner),
+        proposed_owner: normalizeMember(row.proposed_owner),
+      } as CommunityOwnershipTransfer;
+    }),
+
+  initiateCommunityOwnershipTransfer: (
+    token: string,
+    communityName: string,
+    username: string,
+  ) =>
+    request<CommunityOwnershipTransfer>(`/api/communities/${encodeURIComponent(communityName)}/administrators/ownership-transfer/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  respondCommunityOwnershipTransferInvite: (
+    token: string,
+    communityName: string,
+    inviteId: number,
+    decision: 'accept' | 'decline',
+  ) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/administrators/ownership-transfer/respond/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ invite_id: inviteId, decision }),
+    }),
+
+  cancelCommunityOwnershipTransfer: (
+    token: string,
+    communityName: string,
+    transferId: number,
+  ) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/administrators/ownership-transfer/cancel/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ transfer_id: transferId }),
+    }),
+
+  removeCommunityAdministrator: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/administrators/${encodeURIComponent(username)}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getCommunityModerators: (token: string, communityName: string, count = 20, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) params.set('max_id', String(maxId));
+    return request<CommunityMember[]>(`/api/communities/${encodeURIComponent(communityName)}/moderators/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((rows) => (Array.isArray(rows) ? rows : []).map((m) => ({
+      ...m,
+      profile: m.profile ? { ...m.profile, avatar: normalizeMediaUrl(m.profile.avatar) } : m.profile,
+    })));
+  },
+
+  addCommunityModerator: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/moderators/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  removeCommunityModerator: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/moderators/${encodeURIComponent(username)}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getCommunityBannedUsers: (token: string, communityName: string, count = 20, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) params.set('max_id', String(maxId));
+    return request<CommunityMember[]>(`/api/communities/${encodeURIComponent(communityName)}/banned-users/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((rows) => (Array.isArray(rows) ? rows : []).map((m) => ({
+      ...m,
+      profile: m.profile ? { ...m.profile, avatar: normalizeMediaUrl(m.profile.avatar) } : m.profile,
+    })));
+  },
+
+  banCommunityUser: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/banned-users/ban/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  unbanCommunityUser: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/banned-users/unban/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  inviteCommunityMember: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/members/invite/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  uninviteCommunityMember: (token: string, communityName: string, username: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/members/uninvite/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username }),
+    }),
+
+  removeCommunityMember: (
+    token: string,
+    communityName: string,
+    username: string,
+    options?: { ban?: boolean }
+  ) =>
+    request<{
+      message?: string;
+      username?: string;
+      community_name?: string;
+      removed_posts_count?: number;
+      was_member?: boolean;
+      was_banned?: boolean;
+      is_banned?: boolean;
+    }>(`/api/communities/${encodeURIComponent(communityName)}/members/remove/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ username, ban: !!options?.ban }),
+    }),
+
+  unfavoriteCommunity: (token: string, communityName: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/favorite/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  deleteCommunity: (token: string, communityName: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getCommunityModerationReports: (token: string, communityName: string, count = 20, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) params.set('max_id', String(maxId));
+    return request<CommunityModeratedObject[]>(`/api/communities/${encodeURIComponent(communityName)}/moderated-objects/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
 
   getPostById: (token: string, postId: number) =>
     request<unknown>(`/api/posts/${postId}/`, {
@@ -1113,22 +1706,42 @@ export const api = {
     params.set('sort', 'DESC');
     return request<PostComment[]>(`/api/posts/${postUuid}/comments/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
-    });
+    }).then((comments) => (Array.isArray(comments) ? comments : []).map((comment) => normalizePostCommentPayload(comment)));
   },
 
-  createPostComment: (token: string, postUuid: string, text: string) =>
-    request<PostComment>(`/api/posts/${postUuid}/comments/`, {
+  createPostComment: (token: string, postUuid: string, payload: CreatePostCommentPayload) => {
+    const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+    const gifUrl = typeof payload.gif_url === 'string' ? payload.gif_url.trim() : '';
+    const hasImage = !!payload.image;
+
+    if (hasImage || gifUrl) {
+      const form = new FormData();
+      if (text) form.append('text', text);
+      if (hasImage) {
+        const file = payload.image as Blob & { name?: string };
+        form.append('image', file, file.name || 'comment-image.jpg');
+      }
+      if (gifUrl) form.append('gif_url', gifUrl);
+      return request<PostComment>(`/api/posts/${postUuid}/comments/`, {
+        method: 'PUT',
+        headers: { Authorization: `Token ${token}` },
+        body: form,
+      }).then((comment) => normalizePostCommentPayload(comment));
+    }
+
+    return request<PostComment>(`/api/posts/${postUuid}/comments/`, {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ text }),
-    }),
+    }).then((comment) => normalizePostCommentPayload(comment));
+  },
 
   updatePostComment: (token: string, postUuid: string, postCommentId: number, text: string) =>
     request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/`, {
       method: 'PATCH',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ text }),
-    }),
+    }).then((comment) => normalizePostCommentPayload(comment)),
 
   deletePostComment: (token: string, postUuid: string, postCommentId: number) =>
     request<{ message?: string }>(`/api/posts/${postUuid}/comments/${postCommentId}/`, {
@@ -1168,15 +1781,40 @@ export const api = {
     params.set('sort', 'DESC');
     return request<PostComment[]>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
-    });
+    }).then((replies) => (Array.isArray(replies) ? replies : []).map((reply) => normalizePostCommentPayload(reply)));
   },
 
-  createPostCommentReply: (token: string, postUuid: string, postCommentId: number, text: string) =>
-    request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/`, {
+  createPostCommentReply: (
+    token: string,
+    postUuid: string,
+    postCommentId: number,
+    payload: CreatePostCommentPayload
+  ) => {
+    const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+    const gifUrl = typeof payload.gif_url === 'string' ? payload.gif_url.trim() : '';
+    const hasImage = !!payload.image;
+
+    if (hasImage || gifUrl) {
+      const form = new FormData();
+      if (text) form.append('text', text);
+      if (hasImage) {
+        const file = payload.image as Blob & { name?: string };
+        form.append('image', file, file.name || 'reply-image.jpg');
+      }
+      if (gifUrl) form.append('gif_url', gifUrl);
+      return request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/`, {
+        method: 'PUT',
+        headers: { Authorization: `Token ${token}` },
+        body: form,
+      }).then((reply) => normalizePostCommentPayload(reply));
+    }
+
+    return request<PostComment>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/`, {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ text }),
-    }),
+    }).then((reply) => normalizePostCommentPayload(reply));
+  },
 
   getPostReactionEmojiGroups: (token: string) =>
     request<Array<{
@@ -1282,6 +1920,9 @@ export const api = {
     }
     if (typeof payload.long_text_version === 'number' && Number.isFinite(payload.long_text_version)) {
       form.append('long_text_version', String(payload.long_text_version));
+    }
+    if (typeof payload.is_draft === 'boolean') {
+      form.append('is_draft', payload.is_draft ? 'true' : 'false');
     }
     if (typeof payload.draft_expiry_days === 'number' && Number.isFinite(payload.draft_expiry_days)) {
       form.append('draft_expiry_days', String(payload.draft_expiry_days));
@@ -1463,14 +2104,63 @@ export const api = {
     });
   },
 
-  getJoinedCommunities: (token: string, count = 20, offset = 0, username?: string) => {
+  getJoinedCommunities: (
+    token: string,
+    count = 20,
+    offset = 0,
+    username?: string,
+    sort?: 'default' | 'most_active'
+  ) => {
     const params = new URLSearchParams();
     params.set('count', String(Math.min(Math.max(count, 1), 20)));
     params.set('offset', String(Math.max(offset, 0)));
     if (username) {
       params.set('username', username);
     }
+    if (sort) params.set('sort', sort);
     return request<SearchCommunityResult[]>(`/api/communities/joined/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  getFavoriteCommunities: (token: string, count = 20, offset = 0) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    params.set('offset', String(Math.max(offset, 0)));
+    return request<SearchCommunityResult[]>(`/api/communities/favorites/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  getModeratedCommunities: (token: string, count = 20, offset = 0) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    params.set('offset', String(Math.max(offset, 0)));
+    return request<SearchCommunityResult[]>(`/api/communities/moderated/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  getAdministratedCommunities: (token: string, count = 20, offset = 0) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 20)));
+    params.set('offset', String(Math.max(offset, 0)));
+    return request<SearchCommunityResult[]>(`/api/communities/administrated/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  getSuggestedCommunities: (token: string) =>
+    request<SearchCommunityResult[]>('/api/communities/suggested/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getTrendingCommunities: (token: string, category?: string) => {
+    const params = new URLSearchParams();
+    if (typeof category === 'string' && category.trim()) params.set('category', category.trim());
+    const query = params.toString();
+    const path = query ? `/api/communities/trending/?${query}` : '/api/communities/trending/';
+    return request<SearchCommunityResult[]>(path, {
       headers: { Authorization: `Token ${token}` },
     });
   },
@@ -1480,8 +2170,14 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }),
 
-  getUserCommunities: (token: string, username: string) =>
-    request<Array<UserCommunityMembershipResult | SearchCommunityResult>>(`/api/communities/user_communities/${encodeURIComponent(username)}/`, {
+  getUserCommunities: (token: string, username: string, sort?: 'default' | 'most_active') => {
+    const params = new URLSearchParams();
+    if (sort) params.set('sort', sort);
+    const query = params.toString();
+    const path = query
+      ? `/api/communities/user_communities/${encodeURIComponent(username)}/?${query}`
+      : `/api/communities/user_communities/${encodeURIComponent(username)}/`;
+    return request<Array<UserCommunityMembershipResult | SearchCommunityResult>>(path, {
       headers: { Authorization: `Token ${token}` },
     }).then((rows) =>
       (Array.isArray(rows) ? rows : []).map((row) => {
@@ -1501,7 +2197,8 @@ export const api = {
           avatar: normalizeMediaUrl(legacy.community_avatar),
         } as SearchCommunityResult;
       })
-    ),
+    );
+  },
 
   searchHashtags: (token: string, query: string, count = 10) => {
     const params = new URLSearchParams();
@@ -1690,6 +2387,26 @@ export const api = {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  getBlockedUsers: (token: string, count = 10, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 10)));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) {
+      params.set('max_id', String(maxId));
+    }
+    return request<BlockedUserResult[]>(`/api/auth/blocked-users/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((users) => normalizeFollowingUserList(users));
+  },
+
+  searchBlockedUsers: (token: string, query: string, count = 10) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(Math.min(Math.max(count, 1), 10)));
+    return request<BlockedUserResult[]>(`/api/auth/blocked-users/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    }).then((users) => normalizeFollowingUserList(users));
+  },
 
   // ─── User reports ────────────────────────────────────────────────────────────
 
