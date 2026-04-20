@@ -36,7 +36,7 @@ const COLOR_PRESETS = [
 ];
 
 const DESC_MIN = 200;
-const DESC_MAX = 500;
+const DESC_MAX = 5000;
 const RULES_MIN = 200;
 const RULES_MAX = 5000;
 const NAME_MAX = 32;
@@ -97,7 +97,7 @@ export default function CreateCommunityDrawer({ visible, token, c, t, onClose, o
   // ── Step 1: Identity ──
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
-  const [communityType, setCommunityType] = useState<'P' | 'T'>('P');
+  const [communityType, setCommunityType] = useState<'P' | 'T' | 'R'>('P');
   const [color, setColor] = useState(COLOR_PRESETS[0]);
   const [hexInput, setHexInput] = useState(COLOR_PRESETS[0]);
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null);
@@ -495,35 +495,44 @@ export default function CreateCommunityDrawer({ visible, token, c, t, onClose, o
               </FieldGroup>
 
               <FieldGroup label={t('createCommunity.typeLabel', { defaultValue: 'Community type' })} c={c}>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {(['P', 'T'] as const).map((typeKey) => {
+                <View style={{ flexDirection: 'column', gap: 8 }}>
+                  {(['P', 'R', 'T'] as const).map((typeKey) => {
                     const selected = communityType === typeKey;
                     const label = typeKey === 'P'
                       ? t('createCommunity.typePublic', { defaultValue: 'Public' })
-                      : t('createCommunity.typePrivate', { defaultValue: 'Private' });
-                    const icon = typeKey === 'P' ? 'earth' : 'lock-outline';
+                      : typeKey === 'R'
+                        ? t('createCommunity.typeRestricted', { defaultValue: 'Restricted' })
+                        : t('createCommunity.typePrivate', { defaultValue: 'Private' });
+                    const icon = typeKey === 'P' ? 'earth' : typeKey === 'R' ? 'account-check-outline' : 'lock-outline';
                     return (
                       <TouchableOpacity
                         key={typeKey}
                         onPress={() => setCommunityType(typeKey)}
                         style={{
-                          flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
                           borderWidth: 1.5, borderRadius: 12, padding: 12,
                           borderColor: selected ? c.primary : c.border,
                           backgroundColor: selected ? `${c.primary}14` : c.inputBackground,
                         }}
                       >
                         <MaterialCommunityIcons name={icon as any} size={18} color={selected ? c.primary : c.textSecondary} />
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: selected ? c.primary : c.textSecondary }}>{label}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: selected ? c.primary : c.textSecondary }}>{label}</Text>
+                          <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 1 }}>
+                            {typeKey === 'P'
+                              ? t('createCommunity.typePublicHint', { defaultValue: 'Anyone can find and join.' })
+                              : typeKey === 'R'
+                                ? t('createCommunity.typeRestrictedHint', { defaultValue: 'Visible to everyone, but joining requires admin approval.' })
+                                : t('createCommunity.typePrivateHint', { defaultValue: 'Invite-only. Hidden from public search.' })}
+                          </Text>
+                        </View>
+                        {selected ? (
+                          <MaterialCommunityIcons name="check-circle" size={18} color={c.primary} />
+                        ) : null}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 6, lineHeight: 16 }}>
-                  {communityType === 'P'
-                    ? t('createCommunity.typePublicHint', { defaultValue: 'Anyone can find and join this community.' })
-                    : t('createCommunity.typePrivateHint', { defaultValue: 'Only invited members can join this community.' })}
-                </Text>
               </FieldGroup>
 
               <FieldGroup label={t('createCommunity.colorLabel', { defaultValue: 'Brand color' })} c={c}>

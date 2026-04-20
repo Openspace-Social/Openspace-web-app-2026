@@ -206,6 +206,7 @@ export type CreatePostPayload = {
   is_draft?: boolean;
   draft_expiry_days?: number;
   type?: string;
+  shared_post_uuid?: string;
 };
 
 export type UpdatePostPayload = {
@@ -317,6 +318,48 @@ export type FeedPost = {
     duration?: number;
   }>;
   links?: Array<{ url?: string; title?: string; image?: string; description?: string; site_name?: string }>;
+  reposts_count?: number;
+  user_has_reposted?: boolean;
+  shared_post?: {
+    id?: number;
+    uuid?: string;
+    text?: string;
+    long_text?: string;
+    long_text_blocks?: unknown[];
+    long_text_rendered_html?: string;
+    long_text_version?: number;
+    type?: string;
+    created?: string;
+    is_edited?: boolean;
+    is_closed?: boolean;
+    media_height?: number;
+    media_width?: number;
+    media_thumbnail?: string;
+    creator?: {
+      username?: string;
+      name?: string;
+      avatar?: string;
+      profile?: { avatar?: string };
+    };
+    community?: {
+      id?: number;
+      name?: string;
+      title?: string;
+      avatar?: string;
+      color?: string;
+    };
+    media?: Array<{
+      id?: number;
+      type?: string;
+      order?: number;
+      image?: string;
+      thumbnail?: string;
+      file?: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+    }>;
+  };
 };
 
 export type PostComment = {
@@ -510,7 +553,8 @@ export type NotificationType =
   | 'PCUM' // post comment user mention
   | 'CNP'  // community new post
   | 'UNP'  // user new post
-  | 'CB';  // community ban
+  | 'CB'   // community ban
+  | 'PRE'; // post repost
 
 type NotifUser = {
   id?: number;
@@ -600,7 +644,7 @@ export type CommunityCategory = {
 export type CreateCommunityPayload = {
   name: string;
   title: string;
-  type: 'P' | 'T';
+  type: 'P' | 'T' | 'R';
   color: string;
   categories: string[];
   description: string;
@@ -623,7 +667,8 @@ export type SearchCommunityResult = {
   color?: string;
   description?: string;
   rules?: string;
-  type?: string; // 'P' = public, 'T' = private
+  /** 'P' = Public, 'T' = Private, 'R' = Restricted (visible but requires approval to join) */
+  type?: string;
   is_creator?: boolean;
   user_adjective?: string;
   users_adjective?: string;
@@ -638,6 +683,41 @@ export type SearchCommunityResult = {
     is_moderator?: boolean;
   }>;
   are_new_post_notifications_enabled?: boolean;
+  /** True when the current user has a pending join request for a restricted community */
+  is_pending_join_request?: boolean;
+  /** True when the current user has actively muted this community from their home feed */
+  is_timeline_muted?: boolean;
+};
+
+export type MutedCommunityResult = {
+  id: number;
+  community: {
+    id: number;
+    name?: string;
+    title?: string;
+    avatar?: string;
+    color?: string;
+  };
+  /** ISO datetime string if mute expires; null / undefined = indefinite */
+  expires_at?: string | null;
+  created?: string;
+};
+
+export type CommunityJoinRequest = {
+  id: number;
+  requester: {
+    id: number;
+    username?: string;
+    profile?: { avatar?: string; name?: string };
+  };
+  status: string;
+  created?: string;
+};
+
+export type JoinCommunityResult = {
+  /** Present only when a restricted community queued the user's request */
+  status?: 'pending';
+  id?: number;
 };
 
 export type CommunityNotificationSubscriptionResult = {
@@ -1125,6 +1205,10 @@ export const api = {
       form.append('video', videoFile, videoFile.name || 'post-video.mp4');
     }
 
+    if (typeof payload.shared_post_uuid === 'string' && payload.shared_post_uuid.trim()) {
+      form.append('shared_post_uuid', payload.shared_post_uuid.trim());
+    }
+
     return request<FeedPost>('/api/posts/', {
       method: 'PUT',
       headers: { Authorization: `Token ${token}` },
@@ -1322,10 +1406,28 @@ export const api = {
     }),
 
   joinCommunity: (token: string, communityName: string) =>
-    request<void>(`/api/communities/${encodeURIComponent(communityName)}/members/join/`, {
+    request<JoinCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/members/join/`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  getCommunityJoinRequests: (token: string, communityName: string) =>
+    request<CommunityJoinRequest[]>(
+      `/api/communities/${encodeURIComponent(communityName)}/members/join-requests/`,
+      { headers: { Authorization: `Token ${token}` } }
+    ),
+
+  approveCommunityJoinRequest: (token: string, communityName: string, requestId: number) =>
+    request<void>(
+      `/api/communities/${encodeURIComponent(communityName)}/members/join-requests/${requestId}/approve/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } }
+    ),
+
+  rejectCommunityJoinRequest: (token: string, communityName: string, requestId: number) =>
+    request<void>(
+      `/api/communities/${encodeURIComponent(communityName)}/members/join-requests/${requestId}/reject/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } }
+    ),
 
   leaveCommunity: (token: string, communityName: string) =>
     request<LeaveCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/members/leave/`, {
@@ -1681,6 +1783,36 @@ export const api = {
       method: 'DELETE',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  /** Fetch all communities the current user has actively muted from their timeline. */
+  getMutedTimelineCommunities: (token: string) =>
+    request<MutedCommunityResult[]>('/api/communities/muted-timelines/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  /**
+   * Mute a community from the current user's home timeline feed.
+   * @param durationDays  30 for a 30-day mute; omit or null for indefinite.
+   */
+  muteCommunityTimeline: (token: string, communityName: string, durationDays?: number | null) =>
+    request<{ id: number; is_timeline_muted: boolean }>(
+      `/api/communities/${encodeURIComponent(communityName)}/timeline-mute/`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify(durationDays != null ? { duration_days: durationDays } : {}),
+      },
+    ),
+
+  /** Remove the timeline mute for a community. */
+  unmuteCommunityTimeline: (token: string, communityName: string) =>
+    request<{ id: number; is_timeline_muted: boolean }>(
+      `/api/communities/${encodeURIComponent(communityName)}/timeline-mute/`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Token ${token}` },
+      },
+    ),
 
   getCommunityModerationReports: (token: string, communityName: string, count = 20, maxId?: number) => {
     const params = new URLSearchParams();
@@ -2204,6 +2336,15 @@ export const api = {
     const params = new URLSearchParams();
     params.set('query', query);
     params.set('count', String(count));
+    return request<SearchHashtagResult[]>(`/api/hashtags/search/?${params.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  getTrendingHashtags: (token: string, count = 8) => {
+    const params = new URLSearchParams();
+    params.set('count', String(count));
+    // No query param → backend returns hashtags ordered by post count desc
     return request<SearchHashtagResult[]>(`/api/hashtags/search/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     });

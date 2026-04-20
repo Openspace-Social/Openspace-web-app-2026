@@ -255,6 +255,8 @@ type Props = {
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
   onToggleCommentReplies: (postId: number, commentId: number) => void;
   onSharePost: (post: FeedPost) => void;
+  onRepostPost?: (post: FeedPost) => void;
+  onOpenSharedPost?: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
   onUpdateDraftReply: (commentId: number, value: string) => void;
@@ -317,6 +319,8 @@ export default function PostDetailModal({
   onReactToComment,
   onToggleCommentReplies,
   onSharePost,
+  onRepostPost,
+  onOpenSharedPost,
   onOpenLink,
   onUpdateDraftComment,
   onUpdateDraftReply,
@@ -1222,6 +1226,82 @@ export default function PostDetailModal({
     });
   }
 
+  function renderSharedPostInset(post: FeedPost) {
+    const sp = post.shared_post;
+    if (!sp) return null;
+
+    const spAvatar = sp.creator?.avatar || sp.creator?.profile?.avatar;
+    const spText = sp.text || '';
+    const spTitle = sp.community?.title || sp.community?.name || '';
+    const spFirstImage = Array.isArray(sp.media) && sp.media.length > 0
+      ? (sp.media.sort((a, b) => (a?.order || 0) - (b?.order || 0))[0]?.image ||
+         sp.media.sort((a, b) => (a?.order || 0) - (b?.order || 0))[0]?.thumbnail)
+      : sp.media_thumbnail;
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => onOpenSharedPost?.(sp as FeedPost)}
+        style={{
+          marginHorizontal: 0,
+          marginBottom: 10,
+          borderWidth: 1,
+          borderColor: c.border,
+          borderRadius: 12,
+          backgroundColor: c.inputBackground,
+          overflow: 'hidden',
+        }}
+      >
+        {spTitle ? (
+          <View style={{ paddingHorizontal: 12, paddingTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            {sp.community?.avatar ? (
+              <Image source={{ uri: sp.community.avatar }} style={{ width: 14, height: 14, borderRadius: 7 }} resizeMode="cover" />
+            ) : null}
+            <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted }}>
+              c/{sp.community?.name || spTitle}
+            </Text>
+          </View>
+        ) : null}
+        <View style={{ paddingHorizontal: 12, paddingTop: spTitle ? 5 : 10, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c.primary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+            {spAvatar ? (
+              <Image source={{ uri: spAvatar }} style={{ width: 24, height: 24 }} resizeMode="cover" />
+            ) : (
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>
+                {(sp.creator?.username?.[0] || 'U').toUpperCase()}
+              </Text>
+            )}
+          </View>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>
+            @{sp.creator?.username || t('home.unknownUser', { defaultValue: 'Unknown' })}
+          </Text>
+          <MaterialCommunityIcons
+            name="arrow-top-right"
+            size={13}
+            color={c.textMuted}
+            style={{ marginLeft: 'auto' as any }}
+          />
+        </View>
+        {spText ? (
+          <Text
+            style={{ paddingHorizontal: 12, paddingBottom: 8, fontSize: 14, lineHeight: 20, color: c.textPrimary }}
+            numberOfLines={6}
+          >
+            {spText}
+          </Text>
+        ) : null}
+        {spFirstImage ? (
+          <Image
+            source={{ uri: spFirstImage }}
+            style={{ width: '100%', height: 200 }}
+            resizeMode="cover"
+          />
+        ) : null}
+        {!spFirstImage && !spText ? <View style={{ height: 8 }} /> : null}
+      </TouchableOpacity>
+    );
+  }
+
   function renderPostActions(post: FeedPost) {
     return (
       <View style={styles.feedActionsRow}>
@@ -1285,6 +1365,31 @@ export default function PostDetailModal({
             <Text style={[styles.feedActionText, { color: hasReacted ? c.primary : c.textSecondary }]}>{t('home.reactAction')}</Text>
           </TouchableOpacity>
         </View>
+
+        {onRepostPost ? (
+          <TouchableOpacity
+            style={[
+              styles.feedActionButton,
+              {
+                borderColor: post.user_has_reposted ? c.primary : c.border,
+                backgroundColor: post.user_has_reposted ? c.surface : c.inputBackground,
+              },
+            ]}
+            onPress={() => onRepostPost(post)}
+            activeOpacity={0.85}
+          >
+            <MaterialCommunityIcons
+              name="repeat-variant"
+              size={16}
+              color={post.user_has_reposted ? c.primary : c.textSecondary}
+            />
+            <Text style={[styles.feedActionText, { color: post.user_has_reposted ? c.primary : c.textSecondary }]}>
+              {post.reposts_count && post.reposts_count > 0
+                ? `${post.reposts_count}`
+                : t('home.repostAction', { defaultValue: 'Repost' })}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -1594,8 +1699,9 @@ export default function PostDetailModal({
                     )
                     : null)}
                 {!isLongPost ? renderShortPostLinkPreview() : null}
+                {renderSharedPostInset(activePost)}
 
-                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
+                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}</Text>
                 </View>
@@ -1686,8 +1792,9 @@ export default function PostDetailModal({
                     )
                     : null)}
                 {!isLongPost ? renderShortPostLinkPreview() : null}
+                {renderSharedPostInset(activePost)}
 
-                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
+                <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(activePost) })}</Text>
                   <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedCommentsCount', { count: getPostCommentsCount(activePost) })}</Text>
                 </View>

@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
+  Pressable,
   Text,
   TouchableOpacity,
   View,
@@ -31,13 +33,19 @@ type Props = {
   postsError: string;
   communityPostsFilterUsername?: string | null;
   isJoined: boolean;
+  isPendingJoinRequest?: boolean;
   joinLoading: boolean;
   notificationsEnabled?: boolean | null;
   notificationsLoading?: boolean;
+  isTimelineMuted?: boolean;
+  muteLoading?: boolean;
   canManageCommunity?: boolean;
   onJoin: () => void;
   onLeave: () => void;
   onToggleNotifications?: () => void;
+  /** Called with durationDays=30 or null (indefinite) when user picks a mute duration */
+  onMuteTimeline?: (durationDays: number | null) => void;
+  onUnmuteTimeline?: () => void;
   onOpenManageCommunity?: () => void;
   onLoadMoreMembers?: () => void;
   onClearCommunityPostsFilter?: () => void;
@@ -61,13 +69,18 @@ export default function CommunityProfileScreen({
   postsError,
   communityPostsFilterUsername = null,
   isJoined,
+  isPendingJoinRequest = false,
   joinLoading,
   notificationsEnabled = null,
   notificationsLoading = false,
+  isTimelineMuted = false,
+  muteLoading = false,
   canManageCommunity = false,
   onJoin,
   onLeave,
   onToggleNotifications,
+  onMuteTimeline,
+  onUnmuteTimeline,
   onOpenManageCommunity,
   onLoadMoreMembers,
   onClearCommunityPostsFilter,
@@ -76,6 +89,7 @@ export default function CommunityProfileScreen({
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const isTwoCol = screenWidth >= TWO_COL_BREAKPOINT;
+  const [showMuteMenu, setShowMuteMenu] = useState(false);
 
   const coverUri = community?.cover || null;
   const avatarUri = community?.avatar || null;
@@ -169,19 +183,25 @@ export default function CommunityProfileScreen({
               styles.profileFollowButton,
               isJoined
                 ? { borderColor: c.border, backgroundColor: c.inputBackground }
-                : { borderColor: c.primary, backgroundColor: c.primary },
+                : isPendingJoinRequest
+                  ? { borderColor: c.border, backgroundColor: c.inputBackground }
+                  : { borderColor: c.primary, backgroundColor: c.primary },
             ]}
             activeOpacity={0.85}
-            disabled={joinLoading}
+            disabled={joinLoading || isPendingJoinRequest}
             onPress={isJoined ? onLeave : onJoin}
           >
             {joinLoading ? (
-              <ActivityIndicator size="small" color={isJoined ? c.textSecondary : '#fff'} />
+              <ActivityIndicator size="small" color={isJoined || isPendingJoinRequest ? c.textSecondary : '#fff'} />
             ) : (
-              <Text style={[styles.profileFollowButtonText, { color: isJoined ? c.textSecondary : '#fff' }]}>
+              <Text style={[styles.profileFollowButtonText, { color: isJoined || isPendingJoinRequest ? c.textSecondary : '#fff' }]}>
                 {isJoined
                   ? t('home.communityLeaveAction', { defaultValue: 'Leave' })
-                  : t('home.communityJoinAction', { defaultValue: 'Join' })}
+                  : isPendingJoinRequest
+                    ? t('home.communityRequestPendingAction', { defaultValue: 'Request pending…' })
+                    : community?.type === 'R'
+                      ? t('home.communityRequestToJoinAction', { defaultValue: 'Request to join' })
+                      : t('home.communityJoinAction', { defaultValue: 'Join' })}
               </Text>
             )}
           </TouchableOpacity>
@@ -216,6 +236,48 @@ export default function CommunityProfileScreen({
                     {notificationsEnabled
                       ? t('community.notificationsOnLabel', { defaultValue: 'Notifications On' })
                       : t('community.notificationsOffLabel', { defaultValue: 'Notifications Off' })}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
+
+          {/* Mute feed toggle — only shown when joined */}
+          {isJoined && (onMuteTimeline || onUnmuteTimeline) ? (
+            <TouchableOpacity
+              style={[
+                styles.profileFollowButton,
+                {
+                  borderColor: isTimelineMuted ? c.primary : c.border,
+                  backgroundColor: isTimelineMuted ? c.primary + '18' : c.inputBackground,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                },
+              ]}
+              activeOpacity={0.85}
+              disabled={muteLoading}
+              onPress={() => {
+                if (isTimelineMuted) {
+                  onUnmuteTimeline?.();
+                } else {
+                  setShowMuteMenu(true);
+                }
+              }}
+            >
+              {muteLoading ? (
+                <ActivityIndicator size="small" color={c.textSecondary} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons
+                    name={isTimelineMuted ? 'bell-off' : 'bell-off-outline'}
+                    size={15}
+                    color={isTimelineMuted ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[styles.profileFollowButtonText, { color: isTimelineMuted ? c.primary : c.textSecondary }]}>
+                    {isTimelineMuted
+                      ? t('community.feedMutedLabel', { defaultValue: 'Feed Muted' })
+                      : t('community.muteFeedAction', { defaultValue: 'Mute Feed' })}
                   </Text>
                 </>
               )}
@@ -598,8 +660,118 @@ export default function CommunityProfileScreen({
     </View>
   );
 
+  // ── Mute duration picker modal ──────────────────────────────────────────────
+  const muteDurationModal = (
+    <Modal
+      visible={showMuteMenu}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowMuteMenu(false)}
+    >
+      <Pressable
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }}
+        onPress={() => setShowMuteMenu(false)}
+      >
+        <Pressable
+          style={{
+            width: 280,
+            borderRadius: 14,
+            backgroundColor: c.surface,
+            borderWidth: 1,
+            borderColor: c.border,
+            overflow: 'hidden',
+          }}
+          onPress={() => {}}
+        >
+          <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 10 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: c.textPrimary, marginBottom: 4 }}>
+              {t('community.muteFeedTitle', { defaultValue: 'Mute community feed?' })}
+            </Text>
+            <Text style={{ fontSize: 13, color: c.textMuted }}>
+              {t('community.muteFeedSubtitle', { defaultValue: "Posts from this community won't appear in your home feed." })}
+            </Text>
+          </View>
+
+          {/* 30-day option */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 14,
+              borderTopWidth: 1,
+              borderTopColor: c.border,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+            activeOpacity={0.75}
+            onPress={() => {
+              setShowMuteMenu(false);
+              onMuteTimeline?.(30);
+            }}
+          >
+            <MaterialCommunityIcons name="clock-outline" size={20} color={c.textSecondary} />
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: c.textPrimary }}>
+                {t('community.mute30DaysAction', { defaultValue: 'Mute for 30 days' })}
+              </Text>
+              <Text style={{ fontSize: 12, color: c.textMuted }}>
+                {t('community.mute30DaysHint', { defaultValue: 'Automatically unmutes after 30 days' })}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Indefinite option */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 14,
+              borderTopWidth: 1,
+              borderTopColor: c.border,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+            activeOpacity={0.75}
+            onPress={() => {
+              setShowMuteMenu(false);
+              onMuteTimeline?.(null);
+            }}
+          >
+            <MaterialCommunityIcons name="infinity" size={20} color={c.textSecondary} />
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: c.textPrimary }}>
+                {t('community.muteIndefiniteAction', { defaultValue: 'Mute indefinitely' })}
+              </Text>
+              <Text style={{ fontSize: 12, color: c.textMuted }}>
+                {t('community.muteIndefiniteHint', { defaultValue: 'Until you manually unmute' })}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Cancel */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 14,
+              borderTopWidth: 1,
+              borderTopColor: c.border,
+              alignItems: 'center',
+            }}
+            activeOpacity={0.75}
+            onPress={() => setShowMuteMenu(false)}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '600', color: c.textMuted }}>
+              {t('common.cancel', { defaultValue: 'Cancel' })}
+            </Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
   return (
     <View style={[styles.profilePageCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+      {muteDurationModal}
       {header}
 
       {isTwoCol ? (

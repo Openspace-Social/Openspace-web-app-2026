@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} sizi c/{{community}} topluluğuna davet etti.",
     "notificationTypeCommunityNewPost": "c/{{community}} topluluğunda yeni gönderi.",
     "notificationTypeUserNewPost": "{{name}} yeni bir gönderi yayımladı.",
+    "notificationTypePostRepost": "{{name}} gönderinizi yeniden paylaştı.",
     "notificationTypeGeneric": "Yeni bildirim",
     "profileActionsAddToList": "Listeye ekle",
     "profileActionsAddToListSub": "Kimleri takip ettiğinizi düzenleyin",

@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} meghívott a c/{{community}} közösségbe.",
     "notificationTypeCommunityNewPost": "Új bejegyzés a c/{{community}} közösségben.",
     "notificationTypeUserNewPost": "{{name}} új bejegyzést tett közzé.",
+    "notificationTypePostRepost": "{{name}} megosztotta a bejegyzésedet.",
     "notificationTypeGeneric": "Új értesítés",
     "profileActionsAddToList": "Hozzáadás listához",
     "profileActionsAddToListSub": "Rendszerezd, kit követsz",

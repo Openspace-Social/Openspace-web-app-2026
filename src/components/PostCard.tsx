@@ -381,6 +381,7 @@ type PostCardProps = {
   onToggleCommentBox: (postId: number) => void;
   onToggleCommentReplies: (postId: number, commentId: number) => void;
   onSharePost: (post: FeedPost) => void;
+  onRepostPost: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
   onUpdateDraftReply: (commentId: number, value: string) => void;
@@ -401,6 +402,7 @@ type PostCardProps = {
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
   onOpenLongPostEdit?: (post: FeedPost) => void;
   onDeletePost: (post: FeedPost) => void | Promise<void>;
+  onMovePostCommunities?: (post: FeedPost) => void;
   onTogglePinPost: (post: FeedPost) => void | Promise<void>;
   pinnedPostsCount?: number;
   pinnedPostsLimit?: number;
@@ -459,6 +461,7 @@ export default function PostCard({
   onToggleCommentBox,
   onToggleCommentReplies,
   onSharePost,
+  onRepostPost,
   onOpenLink,
   onUpdateDraftComment,
   onUpdateDraftReply,
@@ -479,6 +482,7 @@ export default function PostCard({
   onEditPost,
   onOpenLongPostEdit,
   onDeletePost,
+  onMovePostCommunities,
   onTogglePinPost,
   pinnedPostsCount = 0,
   pinnedPostsLimit = 5,
@@ -1134,6 +1138,13 @@ export default function PostCard({
           disabled: postEditLoading,
           onPress: () => void handleDeletePost(),
         },
+        ...(onMovePostCommunities ? [{
+          key: 'move-communities',
+          icon: 'arrow-right-bold-box-outline' as const,
+          label: t('home.movePostCommunitiesAction', { defaultValue: 'Change communities' }),
+          disabled: false,
+          onPress: () => { setPostMenuOpen(false); onMovePostCommunities(post); },
+        }] : []),
         ...(filterByPosterAction ? [filterByPosterAction] : []),
       ]
     : [
@@ -1784,7 +1795,88 @@ export default function PostCard({
         </TouchableOpacity>
       ) : null}
 
-      <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}> 
+      {/* ── Shared (reposted) post inset ─────────────────────────────────── */}
+      {post.shared_post ? (() => {
+        const sp = post.shared_post;
+        const spAvatar = sp.creator?.avatar || sp.creator?.profile?.avatar;
+        const spText = sp.text || '';
+        const spTitle = sp.community?.title || sp.community?.name || '';
+        const spFirstImage = Array.isArray(sp.media) && sp.media.length > 0
+          ? (sp.media.sort((a, b) => (a?.order || 0) - (b?.order || 0))[0]?.image ||
+             sp.media.sort((a, b) => (a?.order || 0) - (b?.order || 0))[0]?.thumbnail)
+          : sp.media_thumbnail;
+        return (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => onOpenPostDetail(sp as FeedPost)}
+            style={{
+              marginHorizontal: 12,
+              marginBottom: 10,
+              borderWidth: 1,
+              borderColor: c.border,
+              borderRadius: 12,
+              backgroundColor: c.inputBackground,
+              overflow: 'hidden',
+            }}
+          >
+            {/* community tag */}
+            {spTitle ? (
+              <View style={{ paddingHorizontal: 12, paddingTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                {sp.community?.avatar ? (
+                  <Image source={{ uri: sp.community.avatar }} style={{ width: 14, height: 14, borderRadius: 7 }} resizeMode="cover" />
+                ) : null}
+                <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted }}>
+                  c/{sp.community?.name || spTitle}
+                </Text>
+              </View>
+            ) : null}
+            {/* creator row */}
+            <View style={{ paddingHorizontal: 12, paddingTop: spTitle ? 5 : 10, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c.primary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                {spAvatar ? (
+                  <Image source={{ uri: spAvatar }} style={{ width: 24, height: 24 }} resizeMode="cover" />
+                ) : (
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>
+                    {(sp.creator?.username?.[0] || 'U').toUpperCase()}
+                  </Text>
+                )}
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>
+                @{sp.creator?.username || t('home.unknownUser', { defaultValue: 'Unknown' })}
+              </Text>
+              <MaterialCommunityIcons
+                name="arrow-top-right"
+                size={13}
+                color={c.textMuted}
+                style={{ marginLeft: 'auto' as any }}
+              />
+            </View>
+            {/* text */}
+            {spText ? (
+              <Text
+                style={{ paddingHorizontal: 12, paddingBottom: 8, fontSize: 14, lineHeight: 20, color: c.textPrimary }}
+                numberOfLines={4}
+              >
+                {spText}
+              </Text>
+            ) : null}
+            {/* first image preview */}
+            {spFirstImage ? (
+              <Image
+                source={{ uri: spFirstImage }}
+                style={{ width: '100%', height: 160 }}
+                resizeMode="cover"
+              />
+            ) : null}
+            {/* bottom padding if no image */}
+            {!spFirstImage && !spText ? (
+              <View style={{ height: 8 }} />
+            ) : null}
+          </TouchableOpacity>
+        );
+      })() : null}
+
+      <View style={[styles.feedStatsRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
         <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedReactionsCount', { count: getPostReactionCount(post) })}</Text>
         <Text style={[styles.feedStatText, { color: c.textMuted }]}>{t('home.feedCommentsCount', { count: getPostCommentsCount(post) })}</Text>
       </View>
@@ -1871,6 +1963,29 @@ export default function PostCard({
         >
           <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
           <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.commentAction')}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.feedActionButton,
+            {
+              borderColor: post.user_has_reposted ? c.primary : c.border,
+              backgroundColor: post.user_has_reposted ? c.surface : c.inputBackground,
+            },
+          ]}
+          onPress={() => onRepostPost(post)}
+          activeOpacity={0.85}
+        >
+          <MaterialCommunityIcons
+            name="repeat-variant"
+            size={16}
+            color={post.user_has_reposted ? c.primary : c.textSecondary}
+          />
+          <Text style={[styles.feedActionText, { color: post.user_has_reposted ? c.primary : c.textSecondary }]}>
+            {post.reposts_count && post.reposts_count > 0
+              ? `${post.reposts_count}`
+              : t('home.repostAction', { defaultValue: 'Repost' })}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity

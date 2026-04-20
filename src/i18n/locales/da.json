@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} inviterede dig til c/{{community}}.",
     "notificationTypeCommunityNewPost": "Nyt opslag i c/{{community}}.",
     "notificationTypeUserNewPost": "{{name}} publicerede et nyt opslag.",
+    "notificationTypePostRepost": "{{name}} delte dit opslag.",
     "notificationTypeGeneric": "Ny notifikation",
     "profileActionsAddToList": "Føj til liste",
     "profileActionsAddToListSub": "Organisér hvem du følger",

@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} vous a invité à c/{{community}}.",
     "notificationTypeCommunityNewPost": "Nouvelle publication dans c/{{community}}.",
     "notificationTypeUserNewPost": "{{name}} a publié une nouvelle publication.",
+    "notificationTypePostRepost": "{{name}} a repartagé votre publication.",
     "notificationTypeGeneric": "Nouvelle notification",
     "profileActionsAddToList": "Ajouter à une liste",
     "profileActionsAddToListSub": "Organisez vos abonnements",

@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} nodigde je uit voor c/{{community}}.",
     "notificationTypeCommunityNewPost": "Nieuw bericht in c/{{community}}.",
     "notificationTypeUserNewPost": "{{name}} heeft een nieuw bericht gepubliceerd.",
+    "notificationTypePostRepost": "{{name}} heeft jouw bericht gedeeld.",
     "notificationTypeGeneric": "Nieuwe melding",
     "profileActionsAddToList": "Toevoegen aan lijst",
     "profileActionsAddToListSub": "Organiseer wie je volgt",

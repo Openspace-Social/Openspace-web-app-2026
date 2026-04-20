@@ -16,6 +16,7 @@ export type AppRoute =
   | { screen: 'following' }
   | { screen: 'blocked' }
   | { screen: 'manage-communities' }
+  | { screen: 'muted-communities' }
   | { screen: 'settings' };
 
 export function defaultAuthedRoute(): AppRoute {
@@ -41,6 +42,7 @@ export function parsePathToRoute(pathname: string): AppRoute {
     if (first === 'following') return { screen: 'following' };
     if (first === 'blocked') return { screen: 'blocked' };
     if (first === 'manage-communities') return { screen: 'manage-communities' };
+    if (first === 'muted-communities') return { screen: 'muted-communities' };
     if (first === 'settings') return { screen: 'settings' };
   }
 
@@ -100,6 +102,8 @@ export function routeToPath(route: AppRoute): string {
       return '/blocked';
     case 'manage-communities':
       return '/manage-communities';
+    case 'muted-communities':
+      return '/muted-communities';
     case 'settings':
       return '/settings';
     default:

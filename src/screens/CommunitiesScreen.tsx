@@ -31,6 +31,10 @@ type SectionKey = 'administrated' | 'moderated' | 'joined' | 'favorites';
 type TabKey = SectionKey | 'discover';
 type ViewMode = 'grid' | 'list';
 type JoinedSortKey = 'default' | 'active' | 'members' | 'az';
+type CommunitiesLayoutMode = 'classic' | 'three-panel';
+
+// Toggle to quickly back out of the 3-panel Communities test layout.
+const ENABLE_COMMUNITIES_3_PANEL_TEST = true;
 
 const INTEREST_CATEGORIES = [
   'all',
@@ -53,6 +57,21 @@ const INTEREST_CATEGORIES = [
   'psychology',
 ];
 const FAVORITES_ORDER_STORAGE_KEY = '@openspace/communities_favorites_order_v1';
+const LAYOUT_MODE_STORAGE_KEY = '@openspace/communities_layout_mode_v1';
+const LAYOUT_MODE_COOKIE_NAME = 'openspace_communities_layout';
+
+function readCookie(name: string): string | null {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function writeCookie(name: string, value: string) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const oneYear = 60 * 60 * 24 * 365;
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${oneYear}; SameSite=Lax`;
+}
 
 function normalizeCommunityName(value?: string) {
   return (value || '').trim().toLowerCase();
@@ -246,15 +265,27 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   const { showToast } = useAppToast();
   const { width, height } = useWindowDimensions();
   const searchSeqRef = useRef(0);
+  const discoverCacheRef = useRef<Record<string, SearchCommunityResult[]>>({});
+  const previewCommunityCacheRef = useRef<Record<string, SearchCommunityResult>>({});
 
   const [activeTab, setActiveTab] = useState<TabKey>('joined');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [layoutMode, setLayoutMode] = useState<CommunitiesLayoutMode>('three-panel');
 
   const numCols = width >= 1480 ? 4 : width >= 1060 ? 3 : width >= 680 ? 2 : 1;
   const horizontalGap = 14;
-  const contentWidth = Math.max(320, Math.min(width - 40, 1480));
+  const contentWidth = Math.max(320, Math.min(width - 40, 1520));
   const panelHeight = Math.max(560, Math.min(Math.floor(height * 0.86), 980));
-  const usable = Math.max(0, contentWidth - 24);
+  const testThreePanelEnabled =
+    ENABLE_COMMUNITIES_3_PANEL_TEST &&
+    layoutMode === 'three-panel' &&
+    width >= 1280;
+  const leftPanelWidth = 308;
+  const rightPanelWidth = 320;
+  const threePanelGap = 12;
+  const usable = testThreePanelEnabled
+    ? Math.max(0, contentWidth - 24 - leftPanelWidth - rightPanelWidth - (threePanelGap * 2))
+    : Math.max(0, contentWidth - 24);
   const cardWidth =
     usable > 0 ? Math.max(220, Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)) : undefined;
 
@@ -276,6 +307,36 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   const [dragSourceName, setDragSourceName] = useState<string | null>(null);
   const [dragOverName, setDragOverName] = useState<string | null>(null);
   const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
+  const [selectedCommunityName, setSelectedCommunityName] = useState<string | null>(null);
+  const [previewCommunityDetails, setPreviewCommunityDetails] = useState<SearchCommunityResult | null>(null);
+  const [previewCommunityLoading, setPreviewCommunityLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(LAYOUT_MODE_STORAGE_KEY)
+      .then((storedMode) => {
+        if (cancelled) return;
+        const cookieMode = readCookie(LAYOUT_MODE_COOKIE_NAME);
+        const source = cookieMode || storedMode || '';
+        if (source === 'classic' || source === 'three-panel') {
+          setLayoutMode(source);
+        }
+      })
+      .catch(() => {
+        // non-fatal
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function updateLayoutMode(nextMode: CommunitiesLayoutMode) {
+    setLayoutMode(nextMode);
+    AsyncStorage.setItem(LAYOUT_MODE_STORAGE_KEY, nextMode).catch(() => {
+      // non-fatal
+    });
+    writeCookie(LAYOUT_MODE_COOKIE_NAME, nextMode);
+  }
 
   const applySectionError = useCallback(
     (message: string) => {
@@ -340,11 +401,19 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   const loadDiscover = useCallback(
     async (query: string, category: string) => {
       const trimmed = query.trim();
+      const cacheKey = `${trimmed.toLowerCase()}::${category}`;
+      const cached = discoverCacheRef.current[cacheKey];
+      if (cached) {
+        setDiscover(cached);
+        return;
+      }
       setDiscoverLoading(true);
       try {
         if (trimmed.length >= 2) {
           const results = await api.searchCommunities(token, trimmed, 24);
-          setDiscover(dedupeCommunities(Array.isArray(results) ? results : []));
+          const deduped = dedupeCommunities(Array.isArray(results) ? results : []);
+          discoverCacheRef.current[cacheKey] = deduped;
+          setDiscover(deduped);
           return;
         }
         const [trendingRes, suggestedRes] = await Promise.allSettled([
@@ -353,7 +422,9 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
         ]);
         const trending = trendingRes.status === 'fulfilled' ? trendingRes.value : [];
         const suggested = suggestedRes.status === 'fulfilled' ? suggestedRes.value : [];
-        setDiscover(dedupeCommunities([...(Array.isArray(trending) ? trending : []), ...(Array.isArray(suggested) ? suggested : [])]));
+        const deduped = dedupeCommunities([...(Array.isArray(trending) ? trending : []), ...(Array.isArray(suggested) ? suggested : [])]);
+        discoverCacheRef.current[cacheKey] = deduped;
+        setDiscover(deduped);
       } catch (err: any) {
         setDiscover([]);
         applySectionError(err?.message || t('communitiesHub.loadDiscoverError', { defaultValue: 'Failed to load discover communities.' }));
@@ -505,6 +576,73 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
     return activeSectionItems;
   }, [activeSectionItems, activeTab, orderedFavorites, sortedJoined]);
 
+  useEffect(() => {
+    if (displayItems.length === 0) {
+      setSelectedCommunityName(null);
+      return;
+    }
+    setSelectedCommunityName((prev) => {
+      if (prev && displayItems.some((item) => normalizeCommunityName(item.name) === normalizeCommunityName(prev))) {
+        return prev;
+      }
+      return displayItems[0]?.name || null;
+    });
+  }, [displayItems]);
+
+  const selectedCommunity = useMemo(
+    () =>
+      displayItems.find(
+        (item) => normalizeCommunityName(item.name) === normalizeCommunityName(selectedCommunityName || '')
+      ) || null,
+    [displayItems, selectedCommunityName]
+  );
+
+  useEffect(() => {
+    const name = (selectedCommunityName || '').trim();
+    if (!testThreePanelEnabled || !name) {
+      setPreviewCommunityDetails(null);
+      setPreviewCommunityLoading(false);
+      return;
+    }
+
+    const key = normalizeCommunityName(name);
+    if (!key) return;
+
+    const cached = previewCommunityCacheRef.current[key];
+    if (cached) {
+      setPreviewCommunityDetails(cached);
+      setPreviewCommunityLoading(false);
+      return;
+    }
+
+    setPreviewCommunityLoading(true);
+    let cancelled = false;
+    api
+      .getCommunity(token, name)
+      .then((community) => {
+        if (cancelled || !community) return;
+        previewCommunityCacheRef.current[key] = community;
+        setPreviewCommunityDetails(community);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPreviewCommunityDetails(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewCommunityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCommunityName, testThreePanelEnabled, token]);
+
+  useEffect(() => {
+    if (activeTab === 'discover' && discoverLoading) {
+      setSelectedCommunityName(null);
+    }
+  }, [activeTab, discoverLoading]);
+
   const activeSectionEmpty = useMemo(() => {
     if (activeTab === 'administrated') return t('communitiesHub.administratedEmpty', { defaultValue: 'No administrated communities yet.' });
     if (activeTab === 'moderated') return t('communitiesHub.moderatedEmpty', { defaultValue: 'No moderated communities yet.' });
@@ -546,91 +684,179 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
     setFavoritesOrder(next);
   }
 
+  function handleCommunityCardPress(communityName?: string) {
+    const name = (communityName || '').trim();
+    if (!name) return;
+    setSelectedCommunityName(name);
+    if (!testThreePanelEnabled) {
+      onOpenCommunity(name);
+    }
+  }
+
   return (
     <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border, height: panelHeight }]}>
       <View style={[s.header, { borderBottomColor: c.border }]}>
         <Text style={[s.headerTitle, { color: c.textPrimary }]}>
           {t('communitiesHub.title', { defaultValue: 'Communities' })}
         </Text>
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-            backgroundColor: c.primary,
-          }}
-          activeOpacity={0.85}
-          onPress={() => setCreateDrawerOpen(true)}
-        >
-          <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
-            {t('communitiesHub.createCommunity', { defaultValue: 'Create Community' })}
-          </Text>
-        </TouchableOpacity>
+        <View style={s.headerActions}>
+          {ENABLE_COMMUNITIES_3_PANEL_TEST ? (
+            <View style={[s.layoutToggleWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+              <TouchableOpacity
+                style={[
+                  s.layoutToggleButton,
+                  layoutMode === 'classic'
+                    ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                    : { borderColor: 'transparent', backgroundColor: 'transparent' },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => updateLayoutMode('classic')}
+              >
+                <Text style={[s.layoutToggleButtonText, { color: layoutMode === 'classic' ? c.primary : c.textSecondary }]}>
+                  {t('communitiesHub.layoutClassic', { defaultValue: 'Classic' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  s.layoutToggleButton,
+                  layoutMode === 'three-panel'
+                    ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                    : { borderColor: 'transparent', backgroundColor: 'transparent' },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => updateLayoutMode('three-panel')}
+              >
+                <Text style={[s.layoutToggleButtonText, { color: layoutMode === 'three-panel' ? c.primary : c.textSecondary }]}>
+                  {t('communitiesHub.layoutThreePanel', { defaultValue: '3-panel' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          <View style={[s.layoutToggleWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+            <TouchableOpacity
+              style={[
+                s.layoutToggleButton,
+                viewMode === 'grid'
+                  ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                  : { borderColor: 'transparent', backgroundColor: 'transparent' },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => setViewMode('grid')}
+            >
+              <View style={s.layoutToggleButtonInner}>
+                <MaterialCommunityIcons
+                  name="view-grid-outline"
+                  size={14}
+                  color={viewMode === 'grid' ? c.primary : c.textSecondary}
+                />
+                <Text style={[s.layoutToggleButtonText, { color: viewMode === 'grid' ? c.primary : c.textSecondary }]}>
+                  {t('communitiesHub.viewGrid', { defaultValue: 'Grid' })}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.layoutToggleButton,
+                viewMode === 'list'
+                  ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                  : { borderColor: 'transparent', backgroundColor: 'transparent' },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => setViewMode('list')}
+            >
+              <View style={s.layoutToggleButtonInner}>
+                <MaterialCommunityIcons
+                  name="view-list-outline"
+                  size={14}
+                  color={viewMode === 'list' ? c.primary : c.textSecondary}
+                />
+                <Text style={[s.layoutToggleButtonText, { color: viewMode === 'list' ? c.primary : c.textSecondary }]}>
+                  {t('communitiesHub.viewList', { defaultValue: 'List' })}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+              backgroundColor: c.primary,
+            }}
+            activeOpacity={0.85}
+            onPress={() => setCreateDrawerOpen(true)}
+          >
+            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+              {t('communitiesHub.createCommunity', { defaultValue: 'Create Community' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
         <View style={[s.contentColumn, { maxWidth: contentWidth }]}>
+          <View style={testThreePanelEnabled ? s.threePanelShell : undefined}>
+            {testThreePanelEnabled ? (
+              <View style={[s.threePanelSide, { width: leftPanelWidth, borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                <Text style={[s.threePanelSideTitle, { color: c.textPrimary }]}>
+                  {t('communitiesHub.filtersTitle', { defaultValue: 'Browse filters' })}
+                </Text>
+                <View style={s.sideTabsStack}>
+                  {tabs.map((tab) => {
+                    const selected = activeTab === tab.key;
+                    return (
+                      <TouchableOpacity
+                        key={`left-${tab.key}`}
+                        style={[
+                          s.sideTabRow,
+                          selected
+                            ? { borderColor: c.primary, backgroundColor: `${c.primary}18` }
+                            : { borderColor: c.border, backgroundColor: c.surface },
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => setActiveTab(tab.key)}
+                      >
+                        <Text style={[s.sideTabText, { color: selected ? c.primary : c.textSecondary }]}>
+                          {tab.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+            <View style={testThreePanelEnabled ? s.threePanelCenter : undefined}>
           <View style={s.topControls}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabsRow}>
-              {tabs.map((tab) => {
-                const selected = activeTab === tab.key;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[
-                      s.tabChip,
-                      selected
-                        ? { borderColor: c.primary, backgroundColor: `${c.primary}20` }
-                        : { borderColor: c.border, backgroundColor: c.surface },
-                    ]}
-                    activeOpacity={0.85}
-                    onPress={() => setActiveTab(tab.key)}
-                  >
-                    <Text style={[s.tabChipText, { color: selected ? c.primary : c.textSecondary }]}>
-                      {tab.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            {!testThreePanelEnabled ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabsRow}>
+                {tabs.map((tab) => {
+                  const selected = activeTab === tab.key;
+                  return (
+                    <TouchableOpacity
+                      key={tab.key}
+                      style={[
+                        s.tabChip,
+                        selected
+                          ? { borderColor: c.primary, backgroundColor: `${c.primary}20` }
+                          : { borderColor: c.border, backgroundColor: c.surface },
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={() => setActiveTab(tab.key)}
+                    >
+                      <Text style={[s.tabChipText, { color: selected ? c.primary : c.textSecondary }]}>
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
 
-            <View style={s.viewModeRow}>
-              <TouchableOpacity
-                style={[
-                  s.viewChip,
-                  viewMode === 'grid'
-                    ? { borderColor: c.primary, backgroundColor: `${c.primary}20` }
-                    : { borderColor: c.border, backgroundColor: c.surface },
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setViewMode('grid')}
-              >
-                <MaterialCommunityIcons name="view-grid-outline" size={16} color={viewMode === 'grid' ? c.primary : c.textSecondary} />
-                <Text style={[s.viewChipText, { color: viewMode === 'grid' ? c.primary : c.textSecondary }]}>
-                  {t('communitiesHub.viewGrid', { defaultValue: 'Grid' })}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  s.viewChip,
-                  viewMode === 'list'
-                    ? { borderColor: c.primary, backgroundColor: `${c.primary}20` }
-                    : { borderColor: c.border, backgroundColor: c.surface },
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setViewMode('list')}
-              >
-                <MaterialCommunityIcons name="view-list-outline" size={16} color={viewMode === 'list' ? c.primary : c.textSecondary} />
-                <Text style={[s.viewChipText, { color: viewMode === 'list' ? c.primary : c.textSecondary }]}>
-                  {t('communitiesHub.viewList', { defaultValue: 'List' })}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {activeTab === 'discover' ? (
-            <>
-              <View style={[s.searchWrap, { backgroundColor: c.inputBackground, borderColor: c.inputBorder }]}>
+            <View style={s.discoverControlsWrap}>
+              <View style={[s.searchWrap, s.searchWrapDiscover, { backgroundColor: c.inputBackground, borderColor: c.inputBorder }]}>
                 <MaterialCommunityIcons name="magnify" size={16} color={c.textMuted} />
                 <TextInput
                   style={[s.searchInput, { color: c.textPrimary }]}
@@ -643,7 +869,12 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                 />
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipsRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={s.discoverCategoryScroller}
+                contentContainerStyle={s.chipsRow}
+              >
                 {INTEREST_CATEGORIES.map((category) => {
                   const selected = selectedCategory === category;
                   const label =
@@ -669,7 +900,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                   );
                 })}
               </ScrollView>
-            </>
+            </View>
           ) : null}
 
           {activeTab === 'favorites' ? (
@@ -728,7 +959,12 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
           ) : null}
 
           {loading || (activeTab === 'discover' && discoverLoading) ? (
-            <ActivityIndicator color={c.primary} size="large" style={{ marginTop: 24 }} />
+            <View style={s.loadingStateWrap}>
+              <ActivityIndicator color={c.primary} size="large" />
+              <Text style={[s.loadingStateText, { color: c.textMuted }]}>
+                {t('communitiesHub.loadingDiscover', { defaultValue: 'Loading communities…' })}
+              </Text>
+            </View>
           ) : displayItems.length === 0 ? (
             <Text style={[s.emptyText, { color: c.textMuted }]}>{activeSectionEmpty}</Text>
           ) : viewMode === 'grid' ? (
@@ -745,7 +981,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                     t={t}
                     mode="grid"
                     width={cardWidth}
-                    onPress={() => communityName && onOpenCommunity(communityName)}
+                    onPress={() => handleCommunityCardPress(communityName)}
                     action={
                       activeTab === 'discover' && communityName
                         ? joinedAlready
@@ -903,7 +1139,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                     c={c}
                     t={t}
                     mode="list"
-                    onPress={() => communityName && onOpenCommunity(communityName)}
+                    onPress={() => handleCommunityCardPress(communityName)}
                     action={
                       activeTab === 'discover' && communityName
                         ? joinedAlready
@@ -1049,6 +1285,68 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
               })}
             </View>
           )}
+            </View>
+            {testThreePanelEnabled ? (
+              <View style={[s.threePanelSide, { width: rightPanelWidth, borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                {!selectedCommunity ? (
+                  <View style={s.sideEmptyState}>
+                    <MaterialCommunityIcons name="information-outline" size={24} color={c.textMuted} />
+                    <Text style={[s.sideEmptyText, { color: c.textMuted }]}>
+                      {t('communitiesHub.selectCommunityHint', { defaultValue: 'Select a community to preview details.' })}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={s.sideDetailBody}>
+                    {(() => {
+                      const previewCommunity = previewCommunityDetails || selectedCommunity;
+                      return (
+                        <>
+                    <View style={[s.sideDetailHero, { borderColor: c.border, backgroundColor: c.surface }]}>
+                      {previewCommunity.cover ? (
+                        <Image source={{ uri: previewCommunity.cover }} style={s.sideDetailHeroImage} resizeMode="cover" />
+                      ) : (
+                        <View style={[s.sideDetailHeroFallback, { backgroundColor: `${(previewCommunity.color || c.primary)}22` }]} />
+                      )}
+                    </View>
+                    <Text style={[s.sideDetailTitle, { color: c.textPrimary }]} numberOfLines={2}>
+                      {previewCommunity.title || previewCommunity.name}
+                    </Text>
+                    <Text style={[s.sideDetailHandle, { color: c.textMuted }]} numberOfLines={1}>
+                      {previewCommunity.name ? `c/${previewCommunity.name}` : 'c/community'}
+                    </Text>
+                    <Text style={[s.sideDetailMembers, { color: c.textSecondary }]}>
+                      {getMembersLabel(previewCommunity, t)}
+                    </Text>
+                    <Text style={[s.sideDetailDescription, { color: c.textSecondary }]} numberOfLines={5}>
+                      {previewCommunity.description?.trim()
+                        ? previewCommunity.description.trim()
+                        : t('communitiesHub.descriptionFallback', { defaultValue: 'No community description provided yet.' })}
+                    </Text>
+                    {previewCommunityLoading ? (
+                      <View style={s.sideDetailLoadingRow}>
+                        <ActivityIndicator size="small" color={c.primary} />
+                        <Text style={[s.sideDetailLoadingText, { color: c.textMuted }]}>
+                          {t('communitiesHub.loadingCommunityDetails', { defaultValue: 'Loading details…' })}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[s.sideDetailOpenBtn, { borderColor: c.primary, backgroundColor: c.primary }]}
+                      activeOpacity={0.85}
+                      onPress={() => previewCommunity.name && onOpenCommunity(previewCommunity.name)}
+                    >
+                      <Text style={s.sideDetailOpenBtnText}>
+                        {t('communitiesHub.openCommunity', { defaultValue: 'Open community' })}
+                      </Text>
+                    </TouchableOpacity>
+                    </>
+                      );
+                    })()}
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </View>
         </View>
       </ScrollView>
       <CreateCommunityDrawer
@@ -1325,6 +1623,38 @@ function makeStyles(c: any) {
       justifyContent: 'space-between',
       gap: 12,
     },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+    },
+    layoutToggleWrap: {
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    layoutToggleButton: {
+      borderWidth: 1,
+      borderRadius: 8,
+      minHeight: 32,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    layoutToggleButtonText: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    layoutToggleButtonInner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
     headerTitle: {
       fontSize: 44,
       fontWeight: '800',
@@ -1342,9 +1672,137 @@ function makeStyles(c: any) {
       width: '100%',
       alignSelf: 'center',
     },
+    threePanelShell: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: 12,
+      minHeight: 560,
+      paddingTop: 12,
+    },
+    threePanelCenter: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 560,
+    },
+    threePanelSide: {
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      minHeight: 560,
+    },
+    threePanelSideTitle: {
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginBottom: 10,
+    },
+    sideTabsStack: {
+      gap: 8,
+    },
+    sideTabRow: {
+      borderWidth: 1,
+      borderRadius: 10,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+    },
+    sideTabText: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    sideEmptyState: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 8,
+    },
+    sideEmptyText: {
+      fontSize: 14,
+      textAlign: 'center',
+      lineHeight: 20,
+      fontWeight: '600',
+    },
+    sideDetailBody: {
+      gap: 10,
+    },
+    sideDetailHero: {
+      height: 138,
+      borderWidth: 1,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    sideDetailHeroImage: {
+      width: '100%',
+      height: '100%',
+    },
+    sideDetailHeroFallback: {
+      width: '100%',
+      height: '100%',
+    },
+    sideDetailTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    sideDetailHandle: {
+      marginTop: -2,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    sideDetailMembers: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    sideDetailDescription: {
+      fontSize: 13,
+      lineHeight: 19,
+      fontWeight: '500',
+    },
+    sideDetailLoadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: -2,
+    },
+    sideDetailLoadingText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    sideDetailOpenBtn: {
+      borderWidth: 1,
+      borderRadius: 10,
+      minHeight: 38,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    sideDetailOpenBtnText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    loadingStateWrap: {
+      minHeight: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      paddingHorizontal: 8,
+    },
+    loadingStateText: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
     topControls: {
       paddingHorizontal: 8,
       paddingTop: 18,
+      gap: 10,
+    },
+    discoverControlsWrap: {
+      paddingHorizontal: 8,
+      paddingTop: 8,
       gap: 10,
     },
     tabsRow: {
@@ -1363,12 +1821,6 @@ function makeStyles(c: any) {
     tabChipText: {
       fontSize: 13,
       fontWeight: '700',
-    },
-    viewModeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      alignSelf: 'flex-start',
     },
     favoritesToolsRow: {
       paddingHorizontal: 8,
@@ -1436,20 +1888,6 @@ function makeStyles(c: any) {
       fontSize: 12,
       fontWeight: '700',
     },
-    viewChip: {
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      minHeight: 32,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-    },
-    viewChipText: {
-      fontSize: 13,
-      fontWeight: '700',
-    },
     searchWrap: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1461,6 +1899,10 @@ function makeStyles(c: any) {
       marginHorizontal: 8,
       marginTop: 14,
     },
+    searchWrapDiscover: {
+      marginHorizontal: 0,
+      marginTop: 0,
+    },
     searchInput: {
       flex: 1,
       fontSize: 16,
@@ -1468,12 +1910,15 @@ function makeStyles(c: any) {
       fontWeight: '500',
     },
     chipsRow: {
-      paddingTop: 12,
+      paddingTop: 0,
       paddingBottom: 4,
       gap: 8,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 8,
+      paddingHorizontal: 0,
+    },
+    discoverCategoryScroller: {
+      flexGrow: 0,
     },
     chip: {
       borderWidth: 1,

@@ -57,6 +57,7 @@ import ListsScreen from './ListsScreen';
 import FollowPeopleScreen from './FollowPeopleScreen';
 import CommunitiesScreen from './CommunitiesScreen';
 import ManageCommunitiesScreen from './ManageCommunitiesScreen';
+import MutedCommunitiesScreen from './MutedCommunitiesScreen';
 import SettingsScreen from './SettingsScreen';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
@@ -601,6 +602,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [communityInfo, setCommunityInfo] = useState<SearchCommunityResult | null>(null);
   const [communityInfoLoading, setCommunityInfoLoading] = useState(false);
   const [communityJoinLoading, setCommunityJoinLoading] = useState(false);
+  const [communityPendingJoinRequest, setCommunityPendingJoinRequest] = useState(false);
+  const [communityTimelineMuted, setCommunityTimelineMuted] = useState(false);
+  const [communityMuteLoading, setCommunityMuteLoading] = useState(false);
   const [communityLeaveConfirmOpen, setCommunityLeaveConfirmOpen] = useState(false);
   const [communityNotifEnabled, setCommunityNotifEnabled] = useState<boolean | null>(null);
   const [communityNotifLoading, setCommunityNotifLoading] = useState(false);
@@ -715,6 +719,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [composerDrafts, setComposerDrafts] = useState<FeedPost[]>([]);
   const [composerDraftDeleteUuid, setComposerDraftDeleteUuid] = useState<string | null>(null);
   const [composerDraftDeleteConfirmUuid, setComposerDraftDeleteConfirmUuid] = useState<string | null>(null);
+  const [composerSharedPost, setComposerSharedPost] = useState<FeedPost | null>(null);
   const [longPostDrawerOpen, setLongPostDrawerOpen] = useState(false);
   const [longPostDrawerExpanded, setLongPostDrawerExpanded] = useState(false);
   const [longPostEditDrawerOpen, setLongPostEditDrawerOpen] = useState(false);
@@ -731,6 +736,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [composerJoinedCommunities, setComposerJoinedCommunities] = useState<SearchCommunityResult[]>([]);
   const [composerCommunitySearch, setComposerCommunitySearch] = useState('');
   const [composerDestinationsLoading, setComposerDestinationsLoading] = useState(false);
+  const [sidebarCommunities, setSidebarCommunities] = useState<SearchCommunityResult[]>([]);
+  const [sidebarCircles, setSidebarCircles] = useState<CircleResult[]>([]);
+  const [sidebarHashtags, setSidebarHashtags] = useState<SearchHashtagResult[]>([]);
+  const [sidebarDataLoaded, setSidebarDataLoaded] = useState(false);
+  const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [moveCommunitiesPost, setMoveCommunitiesPost] = useState<FeedPost | null>(null);
+  const [moveCommunitiesSelectedNames, setMoveCommunitiesSelectedNames] = useState<string[]>([]);
+  const [moveCommunitiesJoined, setMoveCommunitiesJoined] = useState<SearchCommunityResult[]>([]);
+  const [moveCommunitiesSearch, setMoveCommunitiesSearch] = useState('');
+  const [moveCommunitiesLoading, setMoveCommunitiesLoading] = useState(false);
+  const [moveCommunitiesSubmitting, setMoveCommunitiesSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -840,6 +856,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       active = false;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (token && user?.id && !sidebarDataLoaded) {
+      void loadSidebarData();
+    }
+  }, [token, user?.id]);
 
   useEffect(() => {
     if (!notice) return;
@@ -1887,6 +1909,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setCommunityRouteLoading(false);
       setCommunityRoutePosterFilterUsername(null);
       setCommunityInfo(null);
+      setCommunityPendingJoinRequest(false);
+      setCommunityTimelineMuted(false);
+      setCommunityMuteLoading(false);
       setCommunityNotifEnabled(null);
       setCommunityOwner(null);
       setCommunityMembers([]);
@@ -1915,6 +1940,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           const safeMembers = Array.isArray(members) ? (members as CommunityMember[]) : [];
           setCommunityRoutePosts(safePosts);
           setCommunityInfo(info);
+          setCommunityPendingJoinRequest(!!info?.is_pending_join_request);
+          setCommunityTimelineMuted(!!info?.is_timeline_muted);
           setCommunityNotifEnabled(typeof info?.are_new_post_notifications_enabled === 'boolean' ? info.are_new_post_notifications_enabled : null);
           setCommunityOwner(owner);
           setCommunityMembers(safeMembers);
@@ -2000,12 +2027,22 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     if (!name || communityJoinLoading) return;
     setCommunityJoinLoading(true);
     try {
-      await api.joinCommunity(token, name);
-      setCommunityInfo((prev) => prev ? {
-        ...prev,
-        members_count: (prev.members_count ?? 0) + 1,
-        memberships: [...(prev.memberships ?? []), { user_id: -1 }],
-      } : prev);
+      const result = await api.joinCommunity(token, name);
+      if (result && result.status === 'pending') {
+        // Restricted community — join request submitted, awaiting approval.
+        setCommunityPendingJoinRequest(true);
+        setCommunityInfo((prev) => prev ? { ...prev, is_pending_join_request: true } : prev);
+        setNotice(t('home.communityJoinRequestSent', {
+          defaultValue: 'Your request to join c/{{name}} has been sent. An admin will review it shortly.',
+          name,
+        }));
+      } else {
+        setCommunityInfo((prev) => prev ? {
+          ...prev,
+          members_count: (prev.members_count ?? 0) + 1,
+          memberships: [...(prev.memberships ?? []), { user_id: -1 }],
+        } : prev);
+      }
     } catch (e: any) {
       setError(e?.message || t('home.feedLoadError'));
     } finally {
@@ -2075,6 +2112,41 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setError(e?.message || t('home.feedLoadError'));
     } finally {
       setCommunityNotifLoading(false);
+    }
+  }
+
+  async function handleMuteCommunityTimeline(durationDays: number | null) {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityMuteLoading) return;
+    setCommunityMuteLoading(true);
+    try {
+      await api.muteCommunityTimeline(token, name, durationDays);
+      setCommunityTimelineMuted(true);
+      setCommunityInfo((prev) => prev ? { ...prev, is_timeline_muted: true } : prev);
+      const muteLabel = durationDays
+        ? t('community.feedMuted30DaysNotice', { defaultValue: 'Community muted for 30 days.' })
+        : t('community.feedMutedIndefiniteNotice', { defaultValue: 'Community muted indefinitely.' });
+      setNotice(muteLabel);
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setCommunityMuteLoading(false);
+    }
+  }
+
+  async function handleUnmuteCommunityTimeline() {
+    const name = route.screen === 'community' ? route.name : '';
+    if (!name || communityMuteLoading) return;
+    setCommunityMuteLoading(true);
+    try {
+      await api.unmuteCommunityTimeline(token, name);
+      setCommunityTimelineMuted(false);
+      setCommunityInfo((prev) => prev ? { ...prev, is_timeline_muted: false } : prev);
+      setNotice(t('community.feedUnmutedNotice', { defaultValue: 'Community unmuted. Posts will appear in your feed again.' }));
+    } catch (e: any) {
+      setError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setCommunityMuteLoading(false);
     }
   }
 
@@ -2208,9 +2280,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setSearchResultsQuery('');
     setActiveFeed(feed);
     onNavigate({ screen: 'feed', feed });
-    if (feed !== activeFeed || route.screen !== 'feed') {
-      await loadFeed(feed);
-    }
   }
 
   function toPlainText(value?: string) {
@@ -2838,6 +2907,60 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
+  async function handleMovePostCommunities(post: FeedPost) {
+    // Seed selection from post's current communities
+    const current = Array.isArray(post.shared_community_names) && post.shared_community_names.length > 0
+      ? post.shared_community_names
+      : (post.community?.name ? [post.community.name] : []);
+    setMoveCommunitiesSelectedNames(current);
+    setMoveCommunitiesSearch('');
+    setMoveCommunitiesPost(post);
+    setMoveCommunitiesLoading(true);
+    try {
+      const firstPage = await api.getJoinedCommunities(token, 20, 0);
+      const all: SearchCommunityResult[] = Array.isArray(firstPage) ? [...firstPage] : [];
+      let offset = all.length;
+      while (all.length > 0 && all.length % 20 === 0) {
+        const next = await api.getJoinedCommunities(token, 20, offset);
+        if (!Array.isArray(next) || next.length === 0) break;
+        all.push(...next);
+        offset += next.length;
+        if (next.length < 20) break;
+      }
+      setMoveCommunitiesJoined(all.filter((c, i, a) => a.findIndex((x) => x.id === c.id) === i));
+    } catch {
+      setMoveCommunitiesJoined([]);
+    } finally {
+      setMoveCommunitiesLoading(false);
+    }
+  }
+
+  async function submitMovePostCommunities() {
+    if (!moveCommunitiesPost?.uuid || moveCommunitiesSubmitting) return;
+    if (moveCommunitiesSelectedNames.length === 0) {
+      setError(t('home.movePostCommunitiesNoneError', { defaultValue: 'Select at least one community.' }));
+      return;
+    }
+    setMoveCommunitiesSubmitting(true);
+    try {
+      const updated = await api.updatePostTargets(token, moveCommunitiesPost.uuid, {
+        community_names: moveCommunitiesSelectedNames,
+      });
+      applyPostPatch(moveCommunitiesPost.id, (current) => ({
+        ...current,
+        community: updated?.community ?? current.community,
+        shared_community_names: moveCommunitiesSelectedNames,
+        shared_communities_count: moveCommunitiesSelectedNames.length,
+      }));
+      setMoveCommunitiesPost(null);
+      setNotice(t('home.movePostCommunitiesSuccess', { defaultValue: 'Communities updated.' }));
+    } catch (e: any) {
+      setError(e?.message || t('home.movePostCommunitiesFailed', { defaultValue: 'Could not update communities.' }));
+    } finally {
+      setMoveCommunitiesSubmitting(false);
+    }
+  }
+
   async function togglePinPost(post: FeedPost) {
     if (!post.uuid) {
       setError(t('home.postPinUnavailable'));
@@ -3202,6 +3325,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     } catch (e) {
       setError(t('home.openShareLinkFailed'));
     }
+  }
+
+  function handleRepostPost(post: FeedPost) {
+    // Open the composer at the compose step so the user can optionally add a
+    // quote/comment, then proceed to the destination picker.
+    setComposerSharedPost(post);
+    setComposerStep('compose');
+    showComposerDrawer();
   }
 
   function isInternalOpenspaceUrl(url: string) {
@@ -4006,6 +4137,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     longPostInlineMediaOrderRef.current = 1000;
     setLongPostDrawerOpen(false);
     setLongPostDrawerExpanded(false);
+    setComposerSharedPost(null);
     if (longPostAutosaveTimerRef.current) {
       clearTimeout(longPostAutosaveTimerRef.current);
       longPostAutosaveTimerRef.current = null;
@@ -4550,6 +4682,30 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     });
   }
 
+  async function loadSidebarData() {
+    if (!token) return;
+    setSidebarLoading(true);
+    const [communitiesResult, circlesResult, hashtagsResult] = await Promise.allSettled([
+      api.getJoinedCommunities(token, 10, 0),
+      api.getCircles(token),
+      api.getTrendingHashtags(token, 8),
+    ]);
+    if (communitiesResult.status === 'fulfilled') {
+      const v = communitiesResult.value;
+      setSidebarCommunities(Array.isArray(v) ? v.slice(0, 8) : []);
+    }
+    if (circlesResult.status === 'fulfilled') {
+      const v = circlesResult.value;
+      setSidebarCircles(Array.isArray(v) ? v : []);
+    }
+    if (hashtagsResult.status === 'fulfilled') {
+      const v = hashtagsResult.value;
+      setSidebarHashtags(Array.isArray(v) ? v.slice(0, 8) : []);
+    }
+    setSidebarDataLoaded(true);
+    setSidebarLoading(false);
+  }
+
   async function loadComposerDestinations() {
     setComposerDestinationsLoading(true);
     try {
@@ -4616,7 +4772,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const hasImages = composerImages.length > 0;
     const hasVideo = !!composerVideo;
     const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
-    if (!hasTextContent && !hasImages && !hasVideo) {
+    if (!hasTextContent && !hasImages && !hasVideo && !composerSharedPost) {
       setError(t('home.postComposerValidation', { defaultValue: 'Write something or attach media.' }));
       return;
     }
@@ -4642,7 +4798,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const hasImages = composerImages.length > 0;
     const hasVideo = !!composerVideo;
     const hasTextContent = composerPostType === 'LP' ? !!trimmedLongText : !!trimmedText;
-    if (!hasTextContent && !hasImages && !hasVideo) {
+    if (!hasTextContent && !hasImages && !hasVideo && !composerSharedPost) {
       setError(t('home.postComposerValidation', { defaultValue: 'Write something or attach media.' }));
       return;
     }
@@ -4681,6 +4837,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           circle_id: targetCircleId ? [targetCircleId] : undefined,
           community_names: targetCommunityNames.length > 0 ? targetCommunityNames : undefined,
           is_draft: isDraft || undefined,
+          shared_post_uuid: composerSharedPost?.uuid,
         });
       };
 
@@ -4887,6 +5044,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const viewingHashtagRoute = displayRoute.screen === 'hashtag';
   const viewingBlockedRoute = displayRoute.screen === 'blocked';
   const viewingManageCommunitiesRoute = displayRoute.screen === 'manage-communities';
+  const viewingMutedCommunitiesRoute = displayRoute.screen === 'muted-communities';
   const viewingSettingsRoute = displayRoute.screen === 'settings';
   const viewingFollowPeopleRoute =
     displayRoute.screen === 'followers' ||
@@ -4904,6 +5062,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     return !!mine?.is_administrator || !!mine?.is_moderator;
   }, [communityInfo, user?.id]);
   const hashtagRouteName = displayRoute.screen === 'hashtag' ? displayRoute.name : '';
+  const SIDEBAR_BREAKPOINT = 1280;
+  const SIDEBAR_LEFT_W = 260;
+  const SIDEBAR_RIGHT_W = 260;
+  const showSidebars = viewportWidth >= SIDEBAR_BREAKPOINT;
+  const showHomeShellSidebars = showSidebars && !viewingCommunitiesRoute;
+
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
   const hasActivePostMedia = postHasMedia(activePost);
@@ -4915,6 +5079,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         return name.includes(composerCommunitySearchTrimmed) || title.includes(composerCommunitySearchTrimmed);
       })
     : composerJoinedCommunities;
+
+  const moveCommunitiesSearchTrimmed = moveCommunitiesSearch.trim().toLowerCase();
+  const filteredMoveCommunitiesJoined = moveCommunitiesSearchTrimmed
+    ? moveCommunitiesJoined.filter((community) => {
+        const name = (community.name || '').toLowerCase();
+        const title = (community.title || '').toLowerCase();
+        return name.includes(moveCommunitiesSearchTrimmed) || title.includes(moveCommunitiesSearchTrimmed);
+      })
+    : moveCommunitiesJoined;
 
   function sanitizeCircleColor(value?: string) {
     if (!value || typeof value !== 'string') return undefined;
@@ -4942,7 +5115,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     { key: 'reels', label: t('home.profileTabReels') },
     { key: 'more', label: t('home.profileTabMore') },
   ];
-  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
+  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingMutedCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
   const composerDrawerWidth =
     Platform.OS === 'web'
@@ -5015,6 +5188,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onToggleCommentBox={toggleCommentBox}
         onToggleCommentReplies={toggleCommentReplies}
         onSharePost={handleSharePost}
+        onRepostPost={handleRepostPost}
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}
         onUpdateDraftReply={updateDraftReply}
@@ -5035,6 +5209,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onEditPost={editPost}
         onOpenLongPostEdit={openLongPostEdit}
         onDeletePost={deletePost}
+        onMovePostCommunities={handleMovePostCommunities}
         onTogglePinPost={togglePinPost}
         pinnedPostsCount={pinnedPostsSource.length}
         pinnedPostsLimit={PIN_LIMIT}
@@ -5413,6 +5588,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 { icon: 'account-outline', label: t('home.sideMenuProfile', { defaultValue: 'Profile' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'me' }); } },
                 { icon: 'account-group-outline', label: t('home.sideMenuCommunities', { defaultValue: 'Communities' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'communities' }); } },
                 { icon: 'shield-crown-outline', label: t('home.sideMenuManageCommunities', { defaultValue: 'Manage Communities' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'manage-communities' }); } },
+                { icon: 'bell-off-outline', label: t('home.sideMenuMutedCommunities', { defaultValue: 'Muted Communities' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'muted-communities' }); } },
                 { icon: 'circle-outline', label: t('home.sideMenuCircles', { defaultValue: 'Circles' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'circles' }); } },
                 { icon: 'format-list-bulleted', label: t('home.sideMenuLists', { defaultValue: 'Lists' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'lists' }); } },
                 { icon: 'account-arrow-down-outline', label: t('home.sideMenuFollowers', { defaultValue: 'Followers' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'followers' }); } },
@@ -5784,9 +5960,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                         color: c.textPrimary,
                       },
                     ]}
-                    placeholder={t('home.postComposerInputPlaceholder', {
-                      defaultValue: "What's on your mind?",
-                    })}
+                    placeholder={composerSharedPost
+                      ? t('home.repostComposerInputPlaceholder', { defaultValue: 'Add a comment… (optional)' })
+                      : t('home.postComposerInputPlaceholder', { defaultValue: "What's on your mind?" })}
                     placeholderTextColor={c.placeholder}
                     defaultValue={composerTextRef.current}
                     onChangeText={(value) => {
@@ -5802,6 +5978,56 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     textAlignVertical="top"
                     maxLength={SHORT_POST_MAX_LENGTH}
                   />
+
+                  {/* Shared post preview in compose step */}
+                  {composerSharedPost ? (
+                    <View style={{
+                      marginTop: 8,
+                      marginBottom: 4,
+                      borderWidth: 1,
+                      borderColor: c.border,
+                      borderRadius: 10,
+                      backgroundColor: c.inputBackground,
+                      overflow: 'hidden',
+                    }}>
+                      {composerSharedPost.community?.name ? (
+                        <View style={{ paddingHorizontal: 10, paddingTop: 7, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted }}>
+                            c/{composerSharedPost.community.name}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View style={{ paddingHorizontal: 10, paddingTop: 5, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: c.primary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                          {(composerSharedPost.creator?.avatar || composerSharedPost.creator?.profile?.avatar) ? (
+                            <Image
+                              source={{ uri: composerSharedPost.creator.avatar || composerSharedPost.creator.profile?.avatar }}
+                              style={{ width: 20, height: 20 }}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>
+                              {(composerSharedPost.creator?.username?.[0] || 'U').toUpperCase()}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }}>
+                          @{composerSharedPost.creator?.username || t('home.unknownUser', { defaultValue: 'Unknown' })}
+                        </Text>
+                      </View>
+                      {composerSharedPost.text ? (
+                        <Text
+                          numberOfLines={3}
+                          style={{ paddingHorizontal: 10, paddingBottom: 9, fontSize: 13, lineHeight: 18, color: c.textSecondary }}
+                        >
+                          {composerSharedPost.text}
+                        </Text>
+                      ) : (
+                        <View style={{ height: 8 }} />
+                      )}
+                    </View>
+                  ) : null}
+
                   <View style={styles.postComposerCounterAndToolsRow}>
                     <View style={styles.postComposerToolbarInline}>
                       <TouchableOpacity
@@ -5957,6 +6183,55 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       defaultValue: 'Select one circle or up to 3 joined communities.',
                     })}
                   </Text>
+
+                  {/* Shared post preview when reposting */}
+                  {composerSharedPost ? (
+                    <View style={{
+                      marginTop: 12,
+                      marginBottom: 4,
+                      borderWidth: 1,
+                      borderColor: c.border,
+                      borderRadius: 12,
+                      backgroundColor: c.inputBackground,
+                      overflow: 'hidden',
+                    }}>
+                      {composerSharedPost.community?.name ? (
+                        <View style={{ paddingHorizontal: 12, paddingTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted }}>
+                            c/{composerSharedPost.community.name}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.primary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                          {(composerSharedPost.creator?.avatar || composerSharedPost.creator?.profile?.avatar) ? (
+                            <Image
+                              source={{ uri: composerSharedPost.creator.avatar || composerSharedPost.creator.profile?.avatar }}
+                              style={{ width: 22, height: 22 }}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>
+                              {(composerSharedPost.creator?.username?.[0] || 'U').toUpperCase()}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>
+                          @{composerSharedPost.creator?.username || t('home.unknownUser', { defaultValue: 'Unknown' })}
+                        </Text>
+                      </View>
+                      {composerSharedPost.text ? (
+                        <Text
+                          numberOfLines={3}
+                          style={{ paddingHorizontal: 12, paddingBottom: 10, fontSize: 13, lineHeight: 19, color: c.textPrimary }}
+                        >
+                          {composerSharedPost.text}
+                        </Text>
+                      ) : (
+                        <View style={{ height: 10 }} />
+                      )}
+                    </View>
+                  ) : null}
 
                   {composerDestinationsLoading ? (
                     <View style={styles.postComposerDestinationLoading}>
@@ -6264,6 +6539,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onReactToComment={reactToComment}
         onToggleCommentReplies={toggleCommentReplies}
         onSharePost={handleSharePost}
+        onRepostPost={handleRepostPost}
+        onOpenSharedPost={openPostDetail}
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}
         onUpdateDraftReply={updateDraftReply}
@@ -6860,6 +7137,168 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         </TouchableOpacity>
       </Modal>
 
+      {/* ── Change communities modal ─────────────────────────────── */}
+      <Modal
+        visible={!!moveCommunitiesPost}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !moveCommunitiesSubmitting && setMoveCommunitiesPost(null)}
+      >
+        <TouchableOpacity
+          style={[styles.postComposerModalBackdrop, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+          activeOpacity={1}
+          onPress={() => !moveCommunitiesSubmitting && setMoveCommunitiesPost(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[
+              styles.postComposerModalCard,
+              {
+                backgroundColor: c.surface,
+                borderColor: c.border,
+                maxHeight: '80%',
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={[styles.linkedModalHeader, { borderBottomColor: c.border }]}>
+              <Text style={[styles.postComposerDestinationSectionTitle, { color: c.textPrimary, marginBottom: 0, fontSize: 16 }]}>
+                {t('home.movePostCommunitiesTitle', { defaultValue: 'Change communities' })}
+              </Text>
+              <TouchableOpacity onPress={() => !moveCommunitiesSubmitting && setMoveCommunitiesPost(null)} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={20} color={c.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 16, gap: 12 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.postComposerDestinationCounterRow}>
+                <Text style={[styles.postComposerDestinationBody, { color: c.textMuted }]}>
+                  {t('home.movePostCommunitiesHint', { defaultValue: 'Select up to 3 communities.' })}
+                </Text>
+                <Text style={[styles.postComposerDestinationCounterText, { color: c.textMuted }]}>
+                  {`${moveCommunitiesSelectedNames.length}/3`}
+                </Text>
+              </View>
+
+              <TextInput
+                style={[
+                  styles.postComposerDestinationSearchInput,
+                  { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
+                ]}
+                placeholder={t('home.postComposerCommunitySearchPlaceholder', { defaultValue: 'Search your communities' })}
+                placeholderTextColor={c.placeholder}
+                value={moveCommunitiesSearch}
+                onChangeText={setMoveCommunitiesSearch}
+                editable={!moveCommunitiesSubmitting}
+              />
+
+              {moveCommunitiesLoading ? (
+                <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 12 }} />
+              ) : (
+                <View style={[styles.postComposerDestinationList, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                  {filteredMoveCommunitiesJoined.map((community) => {
+                    const selected = !!community.name && moveCommunitiesSelectedNames.includes(community.name);
+                    const communityInitial = (community.title || community.name || 'C').slice(0, 1).toUpperCase();
+                    return (
+                      <TouchableOpacity
+                        key={`move-community-${community.id}`}
+                        style={[
+                          styles.postComposerDestinationItem,
+                          {
+                            borderColor: selected ? c.primary : c.border,
+                            backgroundColor: selected ? `${c.primary}14` : c.surface,
+                          },
+                        ]}
+                        activeOpacity={0.85}
+                        disabled={moveCommunitiesSubmitting}
+                        onPress={() => {
+                          const targetName = community.name || '';
+                          if (!targetName) return;
+                          setMoveCommunitiesSelectedNames((prev) => {
+                            if (prev.includes(targetName)) return prev.filter((n) => n !== targetName);
+                            if (prev.length >= 3) {
+                              setError(t('home.postComposerCommunityLimitReached', { defaultValue: 'You can select up to 3 communities.' }));
+                              return prev;
+                            }
+                            return [...prev, targetName];
+                          });
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                          size={18}
+                          color={selected ? c.primary : c.textMuted}
+                        />
+                        <View style={[styles.postComposerCommunityAvatar, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                          {community.avatar ? (
+                            <Image
+                              source={{ uri: community.avatar }}
+                              style={styles.postComposerCommunityAvatarImage}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <Text style={[styles.postComposerCommunityAvatarLetter, { color: c.textSecondary }]}>
+                              {communityInitial}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.postComposerDestinationItemMeta}>
+                          <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
+                            {community.title || (community.name ? `c/${community.name}` : '')}
+                          </Text>
+                          <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
+                            {community.name ? `c/${community.name}` : ''}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {filteredMoveCommunitiesJoined.length === 0 && !moveCommunitiesLoading ? (
+                    <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
+                      {moveCommunitiesSearchTrimmed
+                        ? t('home.postComposerNoMatchingCommunities', { defaultValue: 'No matching communities found.' })
+                        : t('home.postComposerNoJoinedCommunities', { defaultValue: 'No joined communities found.' })}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={[styles.postComposerActions, { borderTopColor: c.border }]}>
+              <TouchableOpacity
+                style={[styles.externalLinkCancelButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => !moveCommunitiesSubmitting && setMoveCommunitiesPost(null)}
+                activeOpacity={0.85}
+                disabled={moveCommunitiesSubmitting}
+              >
+                <Text style={[styles.externalLinkCancelButtonText, { color: c.textSecondary }]}>
+                  {t('home.cancelAction', { defaultValue: 'Cancel' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.externalLinkContinueButton, { backgroundColor: c.primary, opacity: moveCommunitiesSubmitting ? 0.6 : 1 }]}
+                onPress={() => void submitMovePostCommunities()}
+                activeOpacity={0.85}
+                disabled={moveCommunitiesSubmitting || moveCommunitiesLoading}
+              >
+                {moveCommunitiesSubmitting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.externalLinkContinueButtonText}>
+                    {t('home.movePostCommunitiesSave', { defaultValue: 'Save' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {showWelcomeNotice && !loading ? (
         <View style={styles.welcomeNoticeWrap}>
           <Animated.View
@@ -6883,10 +7322,121 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         </View>
       ) : null}
 
-      <ScrollView
-        ref={mainScrollRef}
-        contentContainerStyle={styles.rootContent}
-        scrollEventThrottle={200}
+      <View style={{ flexDirection: 'row', flex: 1 }}>
+
+        {/* ── Left sidebar ──────────────────────────────────────── */}
+        {showHomeShellSidebars ? (
+          <View style={{ width: SIDEBAR_LEFT_W, flexShrink: 0, overflow: 'hidden', borderRightWidth: 1, borderRightColor: c.border, backgroundColor: c.surface }}>
+          <ScrollView
+            style={[styles.sidebarPanel, { width: SIDEBAR_LEFT_W }]}
+            contentContainerStyle={styles.sidebarContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Profile card */}
+            <View style={[styles.sidebarWidget, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <View style={styles.sidebarProfileRow}>
+                <View style={[styles.sidebarAvatar, { backgroundColor: c.primary }]}>
+                  {user?.profile?.avatar ? (
+                    <Image source={{ uri: user.profile.avatar }} style={styles.sidebarAvatarImage} resizeMode="cover" />
+                  ) : (
+                    <Text style={[styles.sidebarAvatarLetter, { color: '#fff' }]}>
+                      {(user?.username?.[0] || 'O').toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.sidebarProfileName, { color: c.textPrimary }]} numberOfLines={1}>
+                    {user?.profile?.name || user?.username || ''}
+                  </Text>
+                  <Text style={[styles.sidebarProfileUsername, { color: c.textMuted }]} numberOfLines={1}>
+                    @{user?.username}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.sidebarProfileStats}>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.posts_count ?? 0}</Text>
+                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatPosts', { defaultValue: 'Posts' })}</Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.followers_count ?? 0}</Text>
+                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowers', { defaultValue: 'Followers' })}</Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.following_count ?? 0}</Text>
+                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowing', { defaultValue: 'Following' })}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.sidebarViewProfileBtn, { borderColor: c.primary }]}
+                activeOpacity={0.85}
+                onPress={() => onNavigate({ screen: 'me' })}
+              >
+                <Text style={[styles.sidebarViewProfileBtnText, { color: c.primary }]}>
+                  {t('home.sidebarViewProfile', { defaultValue: 'View Profile' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Joined communities */}
+            <View style={[styles.sidebarWidget, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <View style={styles.sidebarWidgetHeader}>
+                <Text style={[styles.sidebarWidgetTitle, { color: c.textPrimary }]}>
+                  {t('home.sidebarCommunitiesTitle', { defaultValue: 'Communities' })}
+                </Text>
+                <TouchableOpacity onPress={() => onNavigate({ screen: 'communities' })} activeOpacity={0.8}>
+                  <Text style={[styles.sidebarWidgetAction, { color: c.primary }]}>
+                    {t('home.sidebarManageAction', { defaultValue: 'Manage' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {sidebarLoading && !sidebarDataLoaded ? (
+                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+              ) : sidebarCommunities.length === 0 ? (
+                <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
+                  {t('home.sidebarCommunitiesEmpty', { defaultValue: 'Join communities to see them here.' })}
+                </Text>
+              ) : (
+                sidebarCommunities.map((community) => {
+                  const initial = (community.title || community.name || 'C').slice(0, 1).toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      key={community.id}
+                      style={styles.sidebarListRow}
+                      activeOpacity={0.8}
+                      onPress={() => handleNavigateCommunity(community.name || '')}
+                    >
+                      <View style={[styles.sidebarCommunityAvatar, { backgroundColor: c.border }]}>
+                        {community.avatar ? (
+                          <Image source={{ uri: community.avatar }} style={styles.sidebarCommunityAvatarImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={[styles.sidebarCommunityAvatarLetter, { color: c.textSecondary }]}>{initial}</Text>
+                        )}
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[styles.sidebarListRowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                          {community.title || `c/${community.name}`}
+                        </Text>
+                        <Text style={[styles.sidebarListRowSub, { color: c.textMuted }]} numberOfLines={1}>
+                          c/{community.name}
+                        </Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={14} color={c.textMuted} />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
+          </ScrollView>
+          </View>
+        ) : null}
+
+        {/* ── Main feed ─────────────────────────────────────────── */}
+        <ScrollView
+          ref={mainScrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={showHomeShellSidebars ? [styles.rootContent, { paddingHorizontal: 16 }] : styles.rootContent}
+          scrollEventThrottle={200}
         onScroll={({ nativeEvent }) => {
           // Native (iOS/Android) scroll handling — web uses the DOM listener above
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
@@ -7025,13 +7575,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 communityPostsFilterUsername={communityRoutePosterFilterUsername}
                 onClearCommunityPostsFilter={() => setCommunityRoutePosterFilterUsername(null)}
                 isJoined={!!(communityInfo?.memberships?.length)}
+                isPendingJoinRequest={communityPendingJoinRequest}
                 joinLoading={communityJoinLoading}
                 notificationsEnabled={communityNotifEnabled}
                 notificationsLoading={communityNotifLoading}
+                isTimelineMuted={communityTimelineMuted}
+                muteLoading={communityMuteLoading}
                 canManageCommunity={canManageCurrentCommunity}
                 onJoin={() => void handleJoinCommunity()}
                 onLeave={() => requestLeaveCommunity()}
                 onToggleNotifications={() => void handleToggleCommunityNotifications()}
+                onMuteTimeline={(durationDays) => void handleMuteCommunityTimeline(durationDays)}
+                onUnmuteTimeline={() => void handleUnmuteCommunityTimeline()}
                 onLoadMoreMembers={() => void loadMoreCommunityMembers()}
                 onOpenManageCommunity={() => {
                   setCommunityManageTarget(communityInfo);
@@ -7081,6 +7636,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onOpenManageCommunity={(name: string) => {
                   void openCommunityManagerByName(name);
                 }}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'muted-communities' ? (
+              <MutedCommunitiesScreen
+                token={token}
+                c={c}
+                t={t}
+                onNotice={setNotice}
+                onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
               />
             ) : null}
 
@@ -7201,6 +7766,102 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           </>
         )}
       </ScrollView>
+
+        {/* ── Right sidebar ─────────────────────────────────────── */}
+        {showHomeShellSidebars ? (
+          <View style={{ width: SIDEBAR_RIGHT_W, flexShrink: 0, overflow: 'hidden', borderLeftWidth: 1, borderLeftColor: c.border, backgroundColor: c.surface }}>
+          <ScrollView
+            style={[styles.sidebarPanel, { width: SIDEBAR_RIGHT_W }]}
+            contentContainerStyle={styles.sidebarContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Your circles */}
+            <View style={[styles.sidebarWidget, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <View style={styles.sidebarWidgetHeader}>
+                <Text style={[styles.sidebarWidgetTitle, { color: c.textPrimary }]}>
+                  {t('home.sidebarCirclesTitle', { defaultValue: 'Your Circles' })}
+                </Text>
+                <TouchableOpacity onPress={() => onNavigate({ screen: 'circles' })} activeOpacity={0.8}>
+                  <Text style={[styles.sidebarWidgetAction, { color: c.primary }]}>
+                    {t('home.sidebarManageAction', { defaultValue: 'Manage' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {sidebarLoading && !sidebarDataLoaded ? (
+                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+              ) : sidebarCircles.length === 0 ? (
+                <View style={{ paddingBottom: 4 }}>
+                  <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
+                    {t('home.sidebarCirclesEmpty', { defaultValue: 'You have no circles yet.' })}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => onNavigate({ screen: 'circles' })}
+                    activeOpacity={0.8}
+                    style={{ marginTop: 6 }}
+                  >
+                    <Text style={{ fontSize: 12, color: c.primary, fontWeight: '600' }}>
+                      {t('home.sidebarCirclesCreate', { defaultValue: 'Create a circle →' })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                sidebarCircles.map((circle) => (
+                  <TouchableOpacity
+                    key={circle.id}
+                    style={styles.sidebarListRow}
+                    activeOpacity={0.8}
+                    onPress={() => onNavigate({ screen: 'circles' })}
+                  >
+                    <View style={[styles.sidebarCircleDot, { backgroundColor: circle.color || c.primary }]} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.sidebarListRowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                        {circle.name}
+                      </Text>
+                      <Text style={[styles.sidebarListRowSub, { color: c.textMuted }]}>
+                        {t('home.sidebarCircleMembers', { count: circle.users_count ?? 0, defaultValue: '{{count}} members' })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+
+            {/* Trending hashtags */}
+            <View style={[styles.sidebarWidget, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <Text style={[styles.sidebarWidgetTitle, { color: c.textPrimary }]}>
+                {t('home.sidebarTrendingTitle', { defaultValue: 'Trending' })}
+              </Text>
+              {sidebarLoading && !sidebarDataLoaded ? (
+                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+              ) : sidebarHashtags.length === 0 ? (
+                <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
+                  {t('home.sidebarTrendingEmpty', { defaultValue: 'Trending topics will appear here as the community grows.' })}
+                </Text>
+              ) : (
+                sidebarHashtags.map((hashtag, index) => (
+                  <TouchableOpacity
+                    key={hashtag.id}
+                    style={[styles.sidebarHashtagRow, index < sidebarHashtags.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.border }]}
+                    activeOpacity={0.8}
+                    onPress={() => hashtag.name && onNavigate({ screen: 'hashtag', name: hashtag.name })}
+                  >
+                    <Text style={[styles.sidebarHashtagName, { color: c.textPrimary }]} numberOfLines={1}>
+                      #{hashtag.name}
+                    </Text>
+                    {typeof hashtag.posts_count === 'number' && hashtag.posts_count > 0 ? (
+                      <Text style={[styles.sidebarHashtagCount, { color: c.textMuted }]}>
+                        {hashtag.posts_count.toLocaleString()} {t('home.sidebarHashtagPosts', { defaultValue: 'posts' })}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </ScrollView>
+          </View>
+        ) : null}
+
+      </View>{/* end three-column row */}
 
       <Modal
         transparent
@@ -10390,5 +11051,142 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  // ── Sidebar ──────────────────────────────────────────────────────────────────
+  sidebarPanel: {
+    flexShrink: 0,
+  },
+  sidebarContent: {
+    padding: 8,
+    gap: 8,
+  },
+  sidebarWidget: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    gap: 8,
+  },
+  sidebarWidgetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sidebarWidgetTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  sidebarWidgetAction: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sidebarEmptyText: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingBottom: 2,
+  },
+  sidebarProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sidebarAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  sidebarAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  sidebarAvatarLetter: {
+    fontWeight: '700',
+    fontSize: 17,
+  },
+  sidebarProfileName: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sidebarProfileUsername: {
+    fontSize: 14,
+  },
+  sidebarProfileStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 2,
+  },
+  sidebarStatNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sidebarStatLabel: {
+    fontSize: 13,
+    marginTop: 1,
+  },
+  sidebarViewProfileBtn: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  sidebarViewProfileBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sidebarListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  sidebarListRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sidebarListRowSub: {
+    fontSize: 13,
+    marginTop: 1,
+  },
+  sidebarCommunityAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  sidebarCommunityAvatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  sidebarCommunityAvatarLetter: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sidebarCircleDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    flexShrink: 0,
+  },
+  sidebarHashtagRow: {
+    paddingVertical: 6,
+    gap: 2,
+  },
+  sidebarHashtagName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sidebarHashtagCount: {
+    fontSize: 13,
   },
 });

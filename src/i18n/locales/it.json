@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} ti ha invitato a c/{{community}}.",
     "notificationTypeCommunityNewPost": "Nuovo post in c/{{community}}.",
     "notificationTypeUserNewPost": "{{name}} ha pubblicato un nuovo post.",
+    "notificationTypePostRepost": "{{name}} ha ricondiviso il tuo post.",
     "notificationTypeGeneric": "Nuova notifica",
     "profileActionsAddToList": "Aggiungi alla lista",
     "profileActionsAddToListSub": "Organizza chi segui",

@@ -337,6 +337,7 @@
     "notificationTypeCommunityInvite": "{{name}} bjöd in dig till c/{{community}}.",
     "notificationTypeCommunityNewPost": "Nytt inlägg i c/{{community}}.",
     "notificationTypeUserNewPost": "{{name}} publicerade ett nytt inlägg.",
+    "notificationTypePostRepost": "{{name}} delade ditt inlägg.",
     "notificationTypeGeneric": "Ny avisering",
     "profileActionsAddToList": "Lägg till i lista",
     "profileActionsAddToListSub": "Organisera vem du följer",

@@ -94,6 +94,7 @@ export default function NotificationDrawer({
       { key: 'communities' as const, label: t('home.notificationFilterCommunities', { defaultValue: 'Communities' }) },
       { key: 'mentions' as const, label: t('home.notificationFilterMentions', { defaultValue: 'Mentions' }) },
       { key: 'reactions' as const, label: t('home.notificationFilterReactions', { defaultValue: 'Reactions' }) },
+      { key: 'reposts' as const, label: t('home.notificationFilterReposts', { defaultValue: 'Reposts' }) },
       { key: 'moderation' as const, label: t('home.notificationFilterModeration', { defaultValue: 'Moderation' }) },
     ],
     [t]
@@ -372,6 +373,7 @@ type NotificationFilterKey =
   | 'communities'
   | 'mentions'
   | 'reactions'
+  | 'reposts'
   | 'moderation';
 
 function matchesNotificationFilter(notif: AppNotification, filter: NotificationFilterKey) {
@@ -385,6 +387,7 @@ function matchesNotificationFilter(notif: AppNotification, filter: NotificationF
   if (filter === 'communities') return type === 'CI' || type === 'CNP' || type === 'CB';
   if (filter === 'mentions') return type === 'PUM' || type === 'PCUM';
   if (filter === 'reactions') return type === 'PR' || type === 'PCRA';
+  if (filter === 'reposts') return type === 'PRE';
   if (filter === 'moderation') return type.startsWith('M') || type === 'CB';
   return true;
 }
@@ -425,7 +428,7 @@ function NotificationRow({
   onDeclineCommunityOwnershipTransfer,
 }: RowProps) {
   const obj = notif.content_object as any;
-  const { icon, iconColor, actor, actorAvatar, body, postThumbnail, onPress } =
+  const { icon, iconColor, actor, actorAvatar, body, postThumbnail, postPreviewText, onPress } =
     resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity);
 
   const initial = (actor?.[0] || '?').toUpperCase();
@@ -596,6 +599,23 @@ function NotificationRow({
             {formatRelativeTime(notif.created, t)}
           </Text>
         )}
+        {postPreviewText ? (
+          <View style={{
+            marginTop: 6,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.inputBackground,
+            borderLeftWidth: 3,
+            borderLeftColor: iconColor,
+          }}>
+            <Text style={{ fontSize: 12, color: c.textSecondary, lineHeight: 17 }} numberOfLines={2}>
+              {postPreviewText}
+            </Text>
+          </View>
+        ) : null}
         {isCR && requesterUsername && (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             {connectionState === 'accepted' ? (
@@ -842,7 +862,7 @@ function resolveNotification(
         icon: 'account-plus', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeFollow', { name }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
@@ -853,7 +873,7 @@ function resolveNotification(
         icon: 'account-clock', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeFollowRequest', { name }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
@@ -864,7 +884,7 @@ function resolveNotification(
         icon: 'account-check', iconColor: '#7C3AED',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeFollowRequestApproved', { name }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
@@ -878,6 +898,7 @@ function resolveNotification(
         actor: r?.username, actorAvatar: r?.profile?.avatar,
         body: t('home.notificationTypePostReaction', { name, emoji }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -891,6 +912,7 @@ function resolveNotification(
         actor: cmtr?.username, actorAvatar: cmtr?.profile?.avatar,
         body: t('home.notificationTypePostComment', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -898,25 +920,29 @@ function resolveNotification(
       const cmt = obj?.post_comment;
       const cmtr = cmt?.commenter;
       const post = cmt?.post;
+      const parentCmt = cmt?.parent_comment;
       const name = cmtr?.profile?.name || cmtr?.username || someone;
       return {
         icon: 'comment-text-outline', iconColor: '#2563EB',
         actor: cmtr?.username, actorAvatar: cmtr?.profile?.avatar,
         body: t('home.notificationTypePostCommentReply', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(parentCmt?.text || post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
     case 'PCRA': {
       const r = obj?.post_comment_reaction?.reactor;
       const emoji = obj?.post_comment_reaction?.emoji?.keyword || '❤️';
-      const post = obj?.post_comment_reaction?.post_comment?.post;
+      const cmt = obj?.post_comment_reaction?.post_comment;
+      const post = cmt?.post;
       const name = r?.profile?.name || r?.username || someone;
       return {
         icon: 'emoticon-happy-outline', iconColor: '#EC4899',
         actor: r?.username, actorAvatar: r?.profile?.avatar,
         body: t('home.notificationTypeCommentReaction', { name, emoji }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(cmt?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -927,7 +953,7 @@ function resolveNotification(
         icon: 'account-multiple-plus', iconColor: '#0891B2',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeConnectionRequest', { name }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
@@ -938,7 +964,7 @@ function resolveNotification(
         icon: 'account-multiple-check', iconColor: '#0891B2',
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeConnectionConfirmed', { name }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => u?.username && onNavigateProfile(u.username),
       };
     }
@@ -951,6 +977,7 @@ function resolveNotification(
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypePostMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -964,6 +991,7 @@ function resolveNotification(
         actor: u?.username, actorAvatar: u?.profile?.avatar,
         body: t('home.notificationTypeCommentMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(cmt?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -1007,7 +1035,7 @@ function resolveNotification(
                       defaultValue: '{{name}} invited you to become the owner of c/{{community}}.',
                     })
           : t('home.notificationTypeCommunityInvite', { name, community: community?.name || '' }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => community?.name && onNavigateCommunity(community.name),
       };
     }
@@ -1019,6 +1047,7 @@ function resolveNotification(
         actor: community?.name, actorAvatar: community?.avatar,
         body: t('home.notificationTypeCommunityNewPost', { community: community?.name || '' }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
@@ -1034,7 +1063,7 @@ function resolveNotification(
           moderator: bannedByName,
           defaultValue: 'You were banned from c/{{community}} by {{moderator}}. You can no longer view, join, post, comment, or react there.',
         }),
-        postThumbnail: null,
+        postThumbnail: null, postPreviewText: null,
         onPress: () => community?.name && onNavigateCommunity(community.name),
       };
     }
@@ -1047,11 +1076,25 @@ function resolveNotification(
         actor: creator?.username, actorAvatar: creator?.profile?.avatar,
         body: t('home.notificationTypeUserNewPost', { name }),
         postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
         onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
+    case 'PRE': {
+      const repost = obj?.post;
+      const reposter = repost?.creator;
+      const name = reposter?.profile?.name || reposter?.username || someone;
+      return {
+        icon: 'repeat-variant', iconColor: '#10B981',
+        actor: reposter?.username, actorAvatar: reposter?.profile?.avatar,
+        body: t('home.notificationTypePostRepost', { name, defaultValue: '{{name}} reposted your post.' }),
+        postThumbnail: repost?.media_thumbnail || null,
+        postPreviewText: truncate(repost?.text, 120) || null,
+        onPress: () => repost?.id && onNavigatePost(repost.id, repost.uuid),
+      };
+    }
     default:
-      return { icon: 'bell', iconColor: c.primary, actor: undefined, actorAvatar: undefined, body: t('home.notificationTypeGeneric'), postThumbnail: null, onPress: undefined };
+      return { icon: 'bell', iconColor: c.primary, actor: undefined, actorAvatar: undefined, body: t('home.notificationTypeGeneric'), postThumbnail: null, postPreviewText: null, onPress: undefined };
   }
 }
 

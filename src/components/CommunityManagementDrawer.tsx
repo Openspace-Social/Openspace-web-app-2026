@@ -16,6 +16,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   api,
+  CommunityJoinRequest,
   CommunityMember,
   CommunityModeratedObject,
   CommunityOwnershipTransfer,
@@ -31,6 +32,7 @@ type Panel =
   | 'administrators'
   | 'ownershipTransfer'
   | 'moderators'
+  | 'joinRequests'
   | 'banned'
   | 'reports'
   | 'closed'
@@ -114,6 +116,7 @@ export default function CommunityManagementDrawer({
   const [userSuggestionsLoading, setUserSuggestionsLoading] = useState(false);
   const [admins, setAdmins] = useState<CommunityMember[]>([]);
   const [mods, setMods] = useState<CommunityMember[]>([]);
+  const [joinRequests, setJoinRequests] = useState<CommunityJoinRequest[]>([]);
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [banned, setBanned] = useState<CommunityMember[]>([]);
   const [ownershipTransfer, setOwnershipTransfer] = useState<CommunityOwnershipTransfer | null>(null);
@@ -171,7 +174,7 @@ export default function CommunityManagementDrawer({
   }, [visible, community]);
 
   useEffect(() => {
-    const supportsUserSearchPanels = panel === 'members' || panel === 'administrators' || panel === 'ownershipTransfer' || panel === 'moderators' || panel === 'banned' || panel === 'invite';
+    const supportsUserSearchPanels = panel === 'members' || panel === 'administrators' || panel === 'ownershipTransfer' || panel === 'moderators' || panel === 'banned' || panel === 'invite' || panel === 'joinRequests';
     if (!visible || !supportsUserSearchPanels) {
       setUserSuggestions([]);
       setUserSuggestionsLoading(false);
@@ -235,6 +238,9 @@ export default function CommunityManagementDrawer({
         } else if (panel === 'moderators') {
           const rows = await api.getCommunityModerators(token, communityName, 20);
           setMods(rows);
+        } else if (panel === 'joinRequests') {
+          const rows = await api.getCommunityJoinRequests(token, communityName);
+          setJoinRequests(Array.isArray(rows) ? rows : []);
         } else if (panel === 'banned') {
           const rows = await api.getCommunityBannedUsers(token, communityName, 20);
           setBanned(rows);
@@ -275,6 +281,7 @@ export default function CommunityManagementDrawer({
       case 'administrators': return t('community.manageAdministrators', { defaultValue: 'Administrators' });
       case 'ownershipTransfer': return t('community.manageOwnershipTransfer', { defaultValue: 'Transfer community ownership' });
       case 'moderators': return t('community.manageModerators', { defaultValue: 'Moderators' });
+      case 'joinRequests': return t('community.manageJoinRequests', { defaultValue: 'Join requests' });
       case 'banned': return t('community.manageBannedUsers', { defaultValue: 'Banned users' });
       case 'reports': return t('community.manageReports', { defaultValue: 'Moderation reports' });
       case 'closed': return t('community.manageClosedPosts', { defaultValue: 'Closed posts' });
@@ -476,6 +483,14 @@ export default function CommunityManagementDrawer({
           ownershipTransfer ? t('community.transferOwnershipPendingBadge', { defaultValue: 'Pending' }) : undefined,
         ) : null}
         {renderMenuItem('gavel', t('community.manageModerators', { defaultValue: 'Moderators' }), t('community.manageModeratorsSub', { defaultValue: 'See, add and remove moderators.' }), 'moderators')}
+        {community?.type === 'R' ? renderMenuItem(
+          'account-clock-outline',
+          t('community.manageJoinRequests', { defaultValue: 'Join requests' }),
+          t('community.manageJoinRequestsSub', { defaultValue: 'Review and approve pending membership requests.' }),
+          'joinRequests',
+          false,
+          joinRequests.length > 0 ? String(joinRequests.length) : undefined,
+        ) : null}
         {renderMenuItem('clipboard-text-search-outline', t('community.manageReports', { defaultValue: 'Moderation reports' }), t('community.manageReportsSub', { defaultValue: 'Review the community moderation reports.' }), 'reports')}
         {renderMenuItem('cancel', t('community.manageBannedUsers', { defaultValue: 'Banned users' }), t('community.manageBannedUsersSub', { defaultValue: 'See, add and remove banned users.' }), 'banned')}
         {renderMenuItem('lock-outline', t('community.manageClosedPosts', { defaultValue: 'Closed posts' }), t('community.manageClosedPostsSub', { defaultValue: 'See and manage closed posts.' }), 'closed')}
@@ -703,6 +718,68 @@ export default function CommunityManagementDrawer({
         }, t('community.removeModerator', { defaultValue: 'Remove' })))}
       </>
     );
+  }
+
+  function renderJoinRequests() {
+    if (joinRequests.length === 0) {
+      return (
+        <Text style={{ color: c.textMuted, padding: 16 }}>
+          {t('community.noJoinRequests', { defaultValue: 'No pending join requests.' })}
+        </Text>
+      );
+    }
+    return joinRequests.map((req) => {
+      const avatar = req.requester?.profile?.avatar || undefined;
+      const displayName = (req.requester?.profile?.name || '').trim() || req.requester?.username || 'User';
+      const handle = req.requester?.username ? `@${req.requester.username}` : '@user';
+      const initial = displayName[0]?.toUpperCase() ?? '?';
+      return (
+        <View
+          key={`jr-${req.id}`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}
+        >
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.border }} />
+          ) : (
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>{initial}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>{displayName}</Text>
+            <Text style={{ color: c.textMuted, fontSize: 12 }}>{handle}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity
+              disabled={busy}
+              onPress={() => void runAction(async () => {
+                await api.approveCommunityJoinRequest(token, communityName, req.id);
+                const rows = await api.getCommunityJoinRequests(token, communityName);
+                setJoinRequests(Array.isArray(rows) ? rows : []);
+              }, t('community.joinRequestApproved', { defaultValue: 'Join request approved.' }))}
+              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: c.primary }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                {t('community.approveAction', { defaultValue: 'Approve' })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled={busy}
+              onPress={() => void runAction(async () => {
+                await api.rejectCommunityJoinRequest(token, communityName, req.id);
+                const rows = await api.getCommunityJoinRequests(token, communityName);
+                setJoinRequests(Array.isArray(rows) ? rows : []);
+              }, t('community.joinRequestRejected', { defaultValue: 'Join request rejected.' }))}
+              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+            >
+              <Text style={{ color: c.errorText, fontWeight: '700', fontSize: 12 }}>
+                {t('community.rejectAction', { defaultValue: 'Reject' })}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    });
   }
 
   function renderOwnershipTransfer() {
@@ -1152,6 +1229,7 @@ export default function CommunityManagementDrawer({
           {panel === 'administrators' ? renderAdministrators() : null}
           {panel === 'ownershipTransfer' ? renderOwnershipTransfer() : null}
           {panel === 'moderators' ? renderModerators() : null}
+          {panel === 'joinRequests' ? renderJoinRequests() : null}
           {panel === 'banned' ? renderBanned() : null}
           {panel === 'reports' ? renderReports() : null}
           {panel === 'closed' ? renderClosedPosts() : null}
