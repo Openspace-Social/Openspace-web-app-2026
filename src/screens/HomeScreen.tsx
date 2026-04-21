@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  RefreshControl,
   TextInput,
   Image,
   Linking,
@@ -61,6 +62,7 @@ import MutedCommunitiesScreen from './MutedCommunitiesScreen';
 import SettingsScreen from './SettingsScreen';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
+import MentionHashtagInput from '../components/MentionHashtagInput';
 import { useAppToast } from '../toast/AppToastContext';
 import {
   ShortPostLinkPreview,
@@ -595,6 +597,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [feedHasMore, setFeedHasMore] = useState(false);
   const [feedNextMaxId, setFeedNextMaxId] = useState<number | undefined>(undefined);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const [newPostsAvailable, setNewPostsAvailable] = useState(false);
+  // Ref to the newest (highest) post ID currently rendered — used by the new-posts poller
+  const feedNewestIdRef = useRef<number | undefined>(undefined);
+  // Ref so the interval callback always sees the current feed type
+  const activeFeedRef = useRef<FeedType>('home');
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
   const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
   const [communityRouteError, setCommunityRouteError] = useState('');
@@ -694,6 +702,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const composerTextRef = useRef('');
+  const [composerText, setComposerText] = useState('');
   const [composerTextLength, setComposerTextLength] = useState(0);
   const [composerLinkPreview, setComposerLinkPreview] = useState<ShortPostLinkPreview | null>(null);
   const [composerLinkPreviewLoading, setComposerLinkPreviewLoading] = useState(false);
@@ -1127,6 +1136,55 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }
     };
   }, [token]);
+
+  // Keep feedNewestIdRef in sync with the current top post
+  useEffect(() => {
+    const id = feedPosts[0]?.id;
+    if (typeof id === 'number') feedNewestIdRef.current = id;
+  }, [feedPosts]);
+
+  // Keep activeFeedRef in sync so the poller always sees the current feed
+  useEffect(() => { activeFeedRef.current = activeFeed; }, [activeFeed]);
+
+  // Track whether the user is currently viewing the main feed (not a profile/community/etc.)
+  const isOnFeedRef = useRef(true);
+  useEffect(() => {
+    isOnFeedRef.current = displayRoute.screen === 'feed';
+  });
+
+  // ── New-posts polling (every 5 minutes, feed view only) ───────────────────
+  useEffect(() => {
+    if (!token) return;
+    // Reset banner whenever the active feed tab or token changes
+    setNewPostsAvailable(false);
+    feedNewestIdRef.current = undefined;
+
+    const poll = async () => {
+      // Only show the banner when the user is looking at the feed
+      if (!isOnFeedRef.current) return;
+      const newestId = feedNewestIdRef.current;
+      if (typeof newestId !== 'number') return;
+      try {
+        const fresh = await api.getFeed(token, activeFeedRef.current, 3, undefined, newestId);
+        if (fresh.length > 0) setNewPostsAvailable(true);
+      } catch {
+        // silently ignore — non-critical background check
+      }
+    };
+
+    const timer = setInterval(poll, 5 * 60_000); // 5 minutes
+
+    // Also check when the browser tab becomes visible again (re-focus after switching tabs)
+    const onVisible = () => {
+      if (Platform.OS === 'web' && document.visibilityState === 'visible') void poll();
+    };
+    if (Platform.OS === 'web') document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(timer);
+      if (Platform.OS === 'web') document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [token, activeFeed]);
 
   useEffect(() => {
     if (menuOpen) {
@@ -1811,11 +1869,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // Match the server's own page size — the existing site uses count=10
   const FEED_PAGE_SIZE = 10;
 
-  async function loadFeed(feed: FeedType) {
-    setFeedLoading(true);
+  // silent=true skips the full-screen spinner (used by pull-to-refresh)
+  async function loadFeed(feed: FeedType, silent = false) {
+    if (!silent) setFeedLoading(true);
     setFeedError('');
     setFeedNextMaxId(undefined);
     setFeedHasMore(false);
+    setNewPostsAvailable(false);
     try {
       const nextPosts = await api.getFeed(token, feed, FEED_PAGE_SIZE);
       setFeedPosts(nextPosts);
@@ -1833,8 +1893,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setFeedPostsFeed(feed);
       setFeedError(e.message || t('home.feedLoadError'));
     } finally {
-      setFeedLoading(false);
+      if (!silent) setFeedLoading(false);
     }
+  }
+
+  // Pull-to-refresh / banner tap: reload without full-screen spinner, scroll to top
+  async function handleRefreshFeed() {
+    if (feedRefreshing) return;
+    setFeedRefreshing(true);
+    await loadFeed(activeFeed, true);
+    setFeedRefreshing(false);
+    try { mainScrollRef.current?.scrollTo?.({ y: 0, animated: true }); } catch {}
   }
 
   async function loadMoreFeed() {
@@ -4058,6 +4127,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function openComposerModal(action?: 'video' | 'image' | 'emoji') {
     composerTextRef.current = '';
+    setComposerText('');
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -4108,6 +4178,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function resetComposerState() {
     composerTextRef.current = '';
+    setComposerText('');
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -5128,6 +5199,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     onNavigate({ screen: 'profile', username });
   }
 
+  function handleNavigateHashtag(tag: string) {
+    onNavigate({ screen: 'search', query: `#${tag}` });
+  }
+
+  function handleNavigateHashtagFromPostDetail(tag: string) {
+    closeReactionList();
+    clearWebFocus();
+    setActivePost(null);
+    onNavigate({ screen: 'search', query: `#${tag}` } as any, true);
+  }
+
   function handleNavigateProfileFromPostDetail(username: string) {
     closeReactionList();
     clearWebFocus();
@@ -5216,6 +5298,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         pinnedDisplayIndex={pinnedIndex >= 0 ? pinnedIndex + 1 : null}
         pinnedDisplayLimit={PIN_LIMIT}
         onNavigateProfile={handleNavigateProfile}
+        onNavigateHashtag={handleNavigateHashtag}
         onNavigateCommunity={handleNavigateCommunity}
         onFilterCommunityPostsByUser={route.screen === 'community' ? filterCommunityPostsByUser : undefined}
         token={token}
@@ -5950,8 +6033,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       </Text>
                     </TouchableOpacity>
                   </View>
-                  <TextInput
-                    key={`composer-input-${composerInputKey}`}
+                  <MentionHashtagInput
                     style={[
                       styles.postComposerTextInput,
                       {
@@ -5964,19 +6046,22 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       ? t('home.repostComposerInputPlaceholder', { defaultValue: 'Add a comment… (optional)' })
                       : t('home.postComposerInputPlaceholder', { defaultValue: "What's on your mind?" })}
                     placeholderTextColor={c.placeholder}
-                    defaultValue={composerTextRef.current}
+                    value={composerText}
                     onChangeText={(value) => {
                       composerTextRef.current = value;
+                      setComposerText(value);
                       setComposerTextLength(value.length);
                       void refreshComposerLinkPreview(value);
                       if (composerPostType === 'LP') {
                         setComposerPostType('P');
                       }
                     }}
-                    editable={!composerSubmitting && !composerDestinationsLoading}
+                    token={token}
+                    c={c}
                     multiline
                     textAlignVertical="top"
                     maxLength={SHORT_POST_MAX_LENGTH}
+                    editable={!composerSubmitting && !composerDestinationsLoading}
                   />
 
                   {/* Shared post preview in compose step */}
@@ -6558,6 +6643,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onSubmitComment={submitComment}
         onSubmitReply={submitReply}
         onNavigateProfile={handleNavigateProfileFromPostDetail}
+        onNavigateHashtag={handleNavigateHashtagFromPostDetail}
+        token={token}
         reactionListOpen={reactionListOpen}
         reactionListLoading={reactionListLoading}
         reactionListEmoji={reactionListEmoji}
@@ -6638,6 +6725,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           void openComposerDestinationFromLongPost();
         }}
         onToggleExpanded={() => setLongPostDrawerExpanded((prev) => !prev)}
+        token={token}
       />
 
       <Modal
@@ -6770,6 +6858,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         }}
         onApply={() => { setLongPostEditError(''); void saveLongPostEdit(); }}
         onToggleExpanded={() => setLongPostEditDrawerExpanded((prev) => !prev)}
+        token={token}
       />
 
       <Modal
@@ -7386,7 +7475,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 </Text>
                 <TouchableOpacity onPress={() => onNavigate({ screen: 'communities' })} activeOpacity={0.8}>
                   <Text style={[styles.sidebarWidgetAction, { color: c.primary }]}>
-                    {t('home.sidebarManageAction', { defaultValue: 'Manage' })}
+                    {t('home.sidebarExploreAction', { defaultValue: 'Explore' })}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -7432,11 +7521,40 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         ) : null}
 
         {/* ── Main feed ─────────────────────────────────────────── */}
+        <View style={{ flex: 1, position: 'relative' }}>
+          {/* New posts banner — stays visible while loading to show progress */}
+          {(newPostsAvailable || feedRefreshing) && !feedLoading && displayRoute.screen === 'feed' ? (
+            <TouchableOpacity
+              activeOpacity={feedRefreshing ? 1 : 0.9}
+              onPress={feedRefreshing ? undefined : handleRefreshFeed}
+              style={[styles.newPostsBanner, { backgroundColor: c.primary }]}
+            >
+              {feedRefreshing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialCommunityIcons name="arrow-up" size={14} color="#fff" />
+              )}
+              <Text style={styles.newPostsBannerText}>
+                {feedRefreshing
+                  ? t('home.newPostsBannerLoading', { defaultValue: 'Loading…' })
+                  : t('home.newPostsBanner', { defaultValue: 'New posts available' })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
         <ScrollView
           ref={mainScrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={showHomeShellSidebars ? [styles.rootContent, { paddingHorizontal: 16 }] : styles.rootContent}
           scrollEventThrottle={200}
+          refreshControl={
+            <RefreshControl
+              refreshing={feedRefreshing}
+              onRefresh={handleRefreshFeed}
+              tintColor={c.primary}
+              colors={[c.primary]}
+            />
+          }
         onScroll={({ nativeEvent }) => {
           // Native (iOS/Android) scroll handling — web uses the DOM listener above
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
@@ -7766,6 +7884,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           </>
         )}
       </ScrollView>
+        </View>{/* end main feed wrapper */}
 
         {/* ── Right sidebar ─────────────────────────────────────── */}
         {showHomeShellSidebars ? (
@@ -11086,6 +11205,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     paddingBottom: 2,
+  },
+  newPostsBanner: {
+    position: 'absolute',
+    top: 12,
+    alignSelf: 'center',
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  newPostsBannerText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   sidebarProfileRow: {
     flexDirection: 'row',

@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
 import LexicalLongPostEditor from './LexicalLongPostEditor';
+import MentionHashtagInput from './MentionHashtagInput';
 
 export type LongPostBlockType = 'paragraph' | 'heading' | 'quote' | 'image' | 'embed' | 'table';
 export type LongPostEditorMode = 'blocks' | 'lexical';
@@ -65,6 +66,7 @@ interface LongPostDrawerProps {
   onClose: () => void;
   onApply: () => void;
   onToggleExpanded: () => void;
+  token?: string;
 }
 
 const DURATION = 280;
@@ -432,6 +434,7 @@ export default function LongPostDrawer({
   onClose,
   onApply,
   onToggleExpanded,
+  token,
 }: LongPostDrawerProps) {
   const { theme } = useTheme();
   const { t } = useTranslation();
@@ -692,7 +695,7 @@ export default function LongPostDrawer({
           </View>
         ) : null}
 
-        <TextInput
+        <MentionHashtagInput
           style={[
             styles.blockInput,
             block.type !== 'heading' ? styles.blockInputMultiline : null,
@@ -711,6 +714,8 @@ export default function LongPostDrawer({
           value={block.text || ''}
           onChangeText={(value) => updateBlock(block.id, { text: value })}
           numberOfLines={block.type === 'heading' ? 1 : 5}
+          token={token}
+          c={c}
         />
       </View>
     );

@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
+import MentionHashtagInput from './MentionHashtagInput';
 
 type ReactionEmoji = {
   id?: number;
@@ -274,6 +275,8 @@ type Props = {
   onSubmitComment: (postId: number) => void | Promise<void>;
   onSubmitReply: (postId: number, commentId: number) => void | Promise<void>;
   onNavigateProfile: (username: string) => void;
+  onNavigateHashtag?: (tag: string) => void;
+  token?: string;
   reactionListOpen: boolean;
   reactionListLoading: boolean;
   reactionListEmoji: ReactionEmoji | null;
@@ -338,6 +341,8 @@ export default function PostDetailModal({
   onSubmitComment,
   onSubmitReply,
   onNavigateProfile,
+  onNavigateHashtag,
+  token,
   reactionListOpen,
   reactionListLoading,
   reactionListEmoji,
@@ -658,50 +663,67 @@ export default function PostDetailModal({
   }
 
   function extractTextSegmentsWithLinks(text: string) {
-    const segments: Array<{ text: string; isLink: boolean; url?: string }> = [];
-    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+    type Segment =
+      | { text: string; isLink: false; isMention: false; isHashtag: false }
+      | { text: string; isLink: true; url: string; isMention: false; isHashtag: false }
+      | { text: string; isLink: false; isMention: true; username: string; isHashtag: false }
+      | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
+
+    const segments: Segment[] = [];
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
-    while ((match = urlRegex.exec(text)) !== null) {
-      const rawUrl = match[0];
+    while ((match = tokenRegex.exec(text)) !== null) {
       const start = match.index;
-      const end = start + rawUrl.length;
-      const trimmedUrl = rawUrl.replace(/[),.;!?]+$/g, '');
-      const trailing = rawUrl.slice(trimmedUrl.length);
 
       if (start > lastIndex) {
-        segments.push({ text: text.slice(lastIndex, start), isLink: false });
+        segments.push({ text: text.slice(lastIndex, start), isLink: false, isMention: false, isHashtag: false });
       }
 
-      segments.push({ text: trimmedUrl, isLink: true, url: trimmedUrl });
-
-      if (trailing) {
-        segments.push({ text: trailing, isLink: false });
+      if (match[1]) {
+        const rawUrl = match[1];
+        const trimmedUrl = rawUrl.replace(/[),.;!?]+$/g, '');
+        const trailing = rawUrl.slice(trimmedUrl.length);
+        segments.push({ text: trimmedUrl, isLink: true, url: trimmedUrl, isMention: false, isHashtag: false });
+        if (trailing) segments.push({ text: trailing, isLink: false, isMention: false, isHashtag: false });
+      } else if (match[2]) {
+        segments.push({ text: match[2], isLink: false, isMention: true, username: match[2].slice(1), isHashtag: false });
+      } else if (match[3]) {
+        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: true, tag: match[3].slice(1) });
       }
 
-      lastIndex = end;
+      lastIndex = start + match[0].length;
     }
 
     if (lastIndex < text.length) {
-      segments.push({ text: text.slice(lastIndex), isLink: false });
+      segments.push({ text: text.slice(lastIndex), isLink: false, isMention: false, isHashtag: false });
     }
 
-    return segments.length ? segments : [{ text, isLink: false }];
+    return segments.length ? segments : [{ text, isLink: false, isMention: false, isHashtag: false } as Segment];
   }
 
   function renderLinkedText(text: string, keyPrefix: string, textStyle?: any) {
     return (
       <Text style={textStyle}>
-        {extractTextSegmentsWithLinks(text).map((segment, idx) => (
-          <Text
-            key={`${keyPrefix}-${idx}`}
-            onPress={segment.isLink ? () => onOpenLink(segment.url) : undefined}
-            style={segment.isLink ? [{ color: c.textLink, textDecorationLine: 'underline' } as any] : undefined}
-          >
-            {segment.text}
-          </Text>
-        ))}
+        {extractTextSegmentsWithLinks(text).map((segment, idx) => {
+          if (segment.isLink) return (
+            <Text key={`${keyPrefix}-${idx}`} onPress={() => onOpenLink(segment.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>
+              {segment.text}
+            </Text>
+          );
+          if (segment.isMention) return (
+            <Text key={`${keyPrefix}-${idx}`} onPress={() => onNavigateProfile(segment.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '600' }}>
+              {segment.text}
+            </Text>
+          );
+          if (segment.isHashtag) return (
+            <Text key={`${keyPrefix}-${idx}`} onPress={onNavigateHashtag ? () => onNavigateHashtag!(segment.tag) : undefined} style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '500' } : undefined}>
+              {segment.text}
+            </Text>
+          );
+          return <Text key={`${keyPrefix}-${idx}`}>{segment.text}</Text>;
+        })}
       </Text>
     );
   }
@@ -967,7 +989,7 @@ export default function PostDetailModal({
               </View>
             ) : (
               <>
-                <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+                {renderLinkedText(comment.text || '', `comment-${comment.id}`, [styles.detailCommentText, { color: c.textSecondary }])}
                 {renderCommentMedia(comment.media)}
               </>
             )}
@@ -1154,7 +1176,7 @@ export default function PostDetailModal({
                       </View>
                     ) : (
                       <>
-                        <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                        {renderLinkedText(reply.text || '', `reply-${reply.id}`, [styles.detailCommentText, { color: c.textSecondary }])}
                         {renderCommentMedia(reply.media)}
                       </>
                     )}
@@ -1184,12 +1206,15 @@ export default function PostDetailModal({
                 draftReplyMediaByCommentId[comment.id],
                 () => onClearDraftReplyMedia(comment.id)
               )}
-              <TextInput
+              <MentionHashtagInput
                 style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                 value={draftReplies[comment.id] || ''}
                 onChangeText={(value) => onUpdateDraftReply(comment.id, value)}
                 placeholder={t('home.replyPlaceholder')}
                 placeholderTextColor={c.placeholder}
+                token={token}
+                c={c}
+                multiline
               />
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
                 <TouchableOpacity
@@ -1719,12 +1744,15 @@ export default function PostDetailModal({
                         draftCommentMediaByPostId[activePost.id],
                         () => onClearDraftCommentMedia(activePost.id)
                       )}
-                      <TextInput
+                      <MentionHashtagInput
                         style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                         value={draftComments[activePost.id] || ''}
                         onChangeText={(value) => onUpdateDraftComment(activePost.id, value)}
                         placeholder={t('home.commentPlaceholder')}
                         placeholderTextColor={c.placeholder}
+                        token={token}
+                        c={c}
+                        multiline
                       />
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
                         <TouchableOpacity

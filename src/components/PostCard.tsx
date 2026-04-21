@@ -409,6 +409,7 @@ type PostCardProps = {
   pinnedDisplayIndex?: number | null;
   pinnedDisplayLimit?: number;
   onNavigateProfile: (username: string) => void;
+  onNavigateHashtag?: (tag: string) => void;
   onNavigateCommunity: (communityName: string) => void;
   onFilterCommunityPostsByUser?: (username: string, communityName: string) => void;
   getPostText: (post: FeedPost) => string;
@@ -489,6 +490,7 @@ export default function PostCard({
   pinnedDisplayIndex = null,
   pinnedDisplayLimit = 5,
   onNavigateProfile,
+  onNavigateHashtag,
   onNavigateCommunity,
   onFilterCommunityPostsByUser,
   getPostText,
@@ -882,36 +884,52 @@ export default function PostCard({
   }
 
   function extractTextSegmentsWithLinks(text: string) {
-    const segments: Array<{ text: string; isLink: boolean; url?: string }> = [];
-    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+    type Segment =
+      | { text: string; isLink: false; isMention: false; isHashtag: false }
+      | { text: string; isLink: true; url: string; isMention: false; isHashtag: false }
+      | { text: string; isLink: false; isMention: true; username: string; isHashtag: false }
+      | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
+
+    const segments: Segment[] = [];
+    // Combined regex: URLs, @mentions, #hashtags
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
-    while ((match = urlRegex.exec(text)) !== null) {
-      const rawUrl = match[0];
+    while ((match = tokenRegex.exec(text)) !== null) {
       const start = match.index;
-      const end = start + rawUrl.length;
-      const trimmedUrl = rawUrl.replace(/[),.;!?]+$/g, '');
-      const trailing = rawUrl.slice(trimmedUrl.length);
 
       if (start > lastIndex) {
-        segments.push({ text: text.slice(lastIndex, start), isLink: false });
+        segments.push({ text: text.slice(lastIndex, start), isLink: false, isMention: false, isHashtag: false });
       }
 
-      segments.push({ text: trimmedUrl, isLink: true, url: trimmedUrl });
-
-      if (trailing) {
-        segments.push({ text: trailing, isLink: false });
+      if (match[1]) {
+        // URL
+        const rawUrl = match[1];
+        const trimmedUrl = rawUrl.replace(/[),.;!?]+$/g, '');
+        const trailing = rawUrl.slice(trimmedUrl.length);
+        segments.push({ text: trimmedUrl, isLink: true, url: trimmedUrl, isMention: false, isHashtag: false });
+        if (trailing) {
+          segments.push({ text: trailing, isLink: false, isMention: false, isHashtag: false });
+        }
+      } else if (match[2]) {
+        // @mention
+        const username = match[2].slice(1); // strip @
+        segments.push({ text: match[2], isLink: false, isMention: true, username, isHashtag: false });
+      } else if (match[3]) {
+        // #hashtag
+        const tag = match[3].slice(1); // strip #
+        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: true, tag });
       }
 
-      lastIndex = end;
+      lastIndex = start + match[0].length;
     }
 
     if (lastIndex < text.length) {
-      segments.push({ text: text.slice(lastIndex), isLink: false });
+      segments.push({ text: text.slice(lastIndex), isLink: false, isMention: false, isHashtag: false });
     }
 
-    return segments.length ? segments : [{ text, isLink: false }];
+    return segments.length ? segments : [{ text, isLink: false, isMention: false, isHashtag: false } as Segment];
   }
 
   const creatorUsername = post.creator?.username || '';
@@ -1535,7 +1553,18 @@ export default function PostCard({
 
               return (
                 <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
-                  {block.text}
+                  {extractTextSegmentsWithLinks(block.text || '').map((seg, segIdx) => {
+                    if (seg.isLink) return (
+                      <Text key={segIdx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>
+                    );
+                    if (seg.isMention) return (
+                      <Text key={segIdx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '600' }}>{seg.text}</Text>
+                    );
+                    if (seg.isHashtag) return (
+                      <Text key={segIdx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '500' } : undefined}>{seg.text}</Text>
+                    );
+                    return <Text key={segIdx}>{seg.text}</Text>;
+                  })}
                 </Text>
               );
             })}
@@ -1555,15 +1584,46 @@ export default function PostCard({
               expandedPostIds[post.id]
                 ? postText
                 : `${postText.slice(0, 240)}${postText.length > 240 ? '...' : ''}`
-            ).map((segment, idx) => (
-              <Text
-                key={`${variant}-${post.id}-text-segment-${idx}`}
-                onPress={segment.isLink ? () => onOpenLink(segment.url) : undefined}
-                style={segment.isLink ? [{ color: c.textLink, textDecorationLine: 'underline' } as any] : undefined}
-              >
-                {segment.text}
-              </Text>
-            ))}
+            ).map((segment, idx) => {
+              if (segment.isLink) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={() => onOpenLink(segment.url)}
+                    style={{ color: c.textLink, textDecorationLine: 'underline' } as any}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              if (segment.isMention) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={() => onNavigateProfile(segment.username)}
+                    style={{ color: c.primary ?? c.textLink, fontWeight: '600' }}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              if (segment.isHashtag) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={onNavigateHashtag ? () => onNavigateHashtag!(segment.tag) : undefined}
+                    style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '500' } : undefined}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              return (
+                <Text key={`${variant}-${post.id}-text-segment-${idx}`}>
+                  {segment.text}
+                </Text>
+              );
+            })}
           </Text>
           {allowExpandControl && postText.length > 240 ? (
             <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>

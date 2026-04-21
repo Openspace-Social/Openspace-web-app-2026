@@ -1132,15 +1132,16 @@ export const api = {
       body: JSON.stringify({ provider }),
     }).then(extractSuccessMessage),
 
-  getFeed: (token: string, feed: FeedType, count = 20, maxId?: number) => {
+  getFeed: (token: string, feed: FeedType, count = 20, maxId?: number, minId?: number) => {
     const maxIdParam = typeof maxId === 'number' ? `&max_id=${maxId}` : '';
+    const minIdParam = typeof minId === 'number' ? `&min_id=${minId}` : '';
     const path = feed === 'home'
-      ? `/api/posts/?count=${count}${maxIdParam}`
+      ? `/api/posts/?count=${count}${maxIdParam}${minIdParam}`
       : feed === 'trending'
-        ? `/api/posts/trending/new/?count=${count}${maxIdParam}`
+        ? `/api/posts/trending/new/?count=${count}${maxIdParam}${minIdParam}`
         : feed === 'public'
-          ? `/api/posts/top/?count=${count}${maxIdParam}`
-          : `/api/posts/top/?count=${count}&exclude_joined_communities=true${maxIdParam}`;
+          ? `/api/posts/top/?count=${count}${maxIdParam}${minIdParam}`
+          : `/api/posts/top/?count=${count}&exclude_joined_communities=true${maxIdParam}${minIdParam}`;
 
     return request<unknown>(path, {
       headers: { Authorization: `Token ${token}` },
