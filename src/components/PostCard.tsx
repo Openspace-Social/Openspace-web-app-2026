@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TextInput,
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment, UserProfile } from '../api/client';
 import UserHoverCard from './UserHoverCard';
+import MentionHashtagInput from './MentionHashtagInput';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
@@ -1558,10 +1559,10 @@ export default function PostCard({
                       <Text key={segIdx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>
                     );
                     if (seg.isMention) return (
-                      <Text key={segIdx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '600' }}>{seg.text}</Text>
+                      <Text key={segIdx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>
                     );
                     if (seg.isHashtag) return (
-                      <Text key={segIdx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '500' } : undefined}>{seg.text}</Text>
+                      <Text key={segIdx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '700' } : undefined}>{seg.text}</Text>
                     );
                     return <Text key={segIdx}>{seg.text}</Text>;
                   })}
@@ -1601,7 +1602,7 @@ export default function PostCard({
                   <Text
                     key={`${variant}-${post.id}-text-segment-${idx}`}
                     onPress={() => onNavigateProfile(segment.username)}
-                    style={{ color: c.primary ?? c.textLink, fontWeight: '600' }}
+                    style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}
                   >
                     {segment.text}
                   </Text>
@@ -1612,7 +1613,7 @@ export default function PostCard({
                   <Text
                     key={`${variant}-${post.id}-text-segment-${idx}`}
                     onPress={onNavigateHashtag ? () => onNavigateHashtag!(segment.tag) : undefined}
-                    style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '500' } : undefined}
+                    style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '700' } : undefined}
                   >
                     {segment.text}
                   </Text>
@@ -2084,12 +2085,15 @@ export default function PostCard({
                   </View>
                   {isEditingComment ? (
                     <View>
-                      <TextInput
+                      <MentionHashtagInput
                         style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                         value={commentEditDrafts[comment.id] ?? (comment.text || '')}
                         onChangeText={(value) => onUpdateEditCommentDraft(comment.id, value, false)}
                         placeholder={t('home.commentPlaceholder')}
                         placeholderTextColor={c.placeholder}
+                        token={token}
+                        c={c}
+                        multiline
                       />
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                         <TouchableOpacity
@@ -2116,7 +2120,14 @@ export default function PostCard({
                     </View>
                   ) : (
                     <>
-                      <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{comment.text || ''}</Text>
+                      <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>
+                        {extractTextSegmentsWithLinks(comment.text || '').map((seg, idx) => {
+                          if (seg.isLink) return <Text key={idx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>;
+                          if (seg.isMention) return <Text key={idx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;
+                          if (seg.isHashtag) return <Text key={idx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;
+                          return <Text key={idx}>{seg.text}</Text>;
+                        })}
+                      </Text>
                       {renderCommentMedia(comment.media)}
                     </>
                   )}
@@ -2271,12 +2282,15 @@ export default function PostCard({
                           </View>
                           {isEditingReply ? (
                             <View>
-                              <TextInput
+                              <MentionHashtagInput
                                 style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
                                 value={replyEditDrafts[reply.id] ?? (reply.text || '')}
                                 onChangeText={(value) => onUpdateEditCommentDraft(reply.id, value, true)}
                                 placeholder={t('home.replyPlaceholder')}
                                 placeholderTextColor={c.placeholder}
+                                token={token}
+                                c={c}
+                                multiline
                               />
                               <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                                 <TouchableOpacity
@@ -2303,7 +2317,14 @@ export default function PostCard({
                             </View>
                           ) : (
                             <>
-                              <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>{reply.text || ''}</Text>
+                              <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>
+                                {extractTextSegmentsWithLinks(reply.text || '').map((seg, idx) => {
+                                  if (seg.isLink) return <Text key={idx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>;
+                                  if (seg.isMention) return <Text key={idx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;
+                                  if (seg.isHashtag) return <Text key={idx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;
+                                  return <Text key={idx}>{seg.text}</Text>;
+                                })}
+                              </Text>
                               {renderCommentMedia(reply.media)}
                             </>
                           )}
@@ -2333,40 +2354,45 @@ export default function PostCard({
                       draftReplyMediaByCommentId[comment.id],
                       () => onClearDraftReplyMedia(comment.id)
                     )}
-                    <TextInput
+                    <MentionHashtagInput
                       style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
                       value={draftReplies[comment.id] || ''}
                       onChangeText={(value) => onUpdateDraftReply(comment.id, value)}
                       placeholder={t('home.replyPlaceholder')}
                       placeholderTextColor={c.placeholder}
+                      token={token}
+                      c={c}
+                      multiline
                     />
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity
+                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                          onPress={() => onPickDraftReplyImage(comment.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                            {t('home.photoAction', { defaultValue: 'Photo' })}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                          onPress={() => onSetDraftReplyGif(comment.id)}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                        </TouchableOpacity>
+                      </View>
                       <TouchableOpacity
-                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                        onPress={() => onPickDraftReplyImage(comment.id)}
+                        style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
+                        onPress={() => onSubmitReply(post.id, comment.id)}
                         activeOpacity={0.85}
                       >
-                        <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                          {t('home.photoAction', { defaultValue: 'Photo' })}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                        onPress={() => onSetDraftReplyGif(comment.id)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                        <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                        <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
                       </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
-                      onPress={() => onSubmitReply(post.id, comment.id)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
               ) : null}
@@ -2379,40 +2405,45 @@ export default function PostCard({
               draftCommentMediaByPostId[post.id],
               () => onClearDraftCommentMedia(post.id)
             )}
-            <TextInput
+            <MentionHashtagInput
               style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
               value={draftComments[post.id] || ''}
               onChangeText={(value) => onUpdateDraftComment(post.id, value)}
               placeholder={t('home.commentPlaceholder')}
               placeholderTextColor={c.placeholder}
+              token={token}
+              c={c}
+              multiline
             />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  onPress={() => onPickDraftCommentImage(post.id)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                    {t('home.photoAction', { defaultValue: 'Photo' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  onPress={() => onSetDraftCommentGif(post.id)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
-                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                onPress={() => onPickDraftCommentImage(post.id)}
+                style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                onPress={() => onSubmitComment(post.id)}
                 activeOpacity={0.85}
               >
-                <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                  {t('home.photoAction', { defaultValue: 'Photo' })}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                onPress={() => onSetDraftCommentGif(post.id)}
-                activeOpacity={0.85}
-              >
-                <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-              onPress={() => onSubmitComment(post.id)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-            </TouchableOpacity>
           </View>
         </View>
       ) : null}

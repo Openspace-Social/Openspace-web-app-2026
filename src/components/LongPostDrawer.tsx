@@ -980,6 +980,7 @@ export default function LongPostDrawer({
                       expandedHeight={lexicalHeightExpanded}
                       maxImages={maxImages}
                       onNotify={onNotify}
+                      token={token}
                     />
                   </View>
                 )}

@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -27,11 +28,13 @@ import {
   $getSelection,
   $isRangeSelection,
   $isRootOrShadowRoot,
+  $isTextNode,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   REDO_COMMAND,
   UNDO_COMMAND,
 } from 'lexical';
+import { api, SearchUserResult, SearchHashtagResult } from '../api/client';
 import {
   INSERT_LEXICAL_IMAGE_COMMAND,
   SET_LEXICAL_IMAGE_ALIGN_COMMAND,
@@ -73,7 +76,216 @@ type LexicalLongPostEditorProps = {
   expandedHeight?: boolean;
   maxImages?: number;
   onNotify?: (message: string) => void;
+  token?: string;
 };
+
+// ─── Mention / Hashtag autocomplete plugin ───────────────────────────────────
+
+type MHSuggestion = {
+  kind: 'user' | 'hashtag';
+  id: number;
+  label: string;   // "@username" or "#tag"
+  subLabel?: string; // display name or "N posts"
+  avatar?: string;
+};
+
+function MentionHashtagPlugin({ token }: { token?: string }) {
+  const [editor] = useLexicalComposerContext();
+
+  const [suggestions, setSuggestions] = React.useState<MHSuggestion[]>([]);
+  const [loading, setLoading]         = React.useState(false);
+  const [pos, setPos]                 = React.useState<{ x: number; y: number } | null>(null);
+  const triggerRef  = React.useRef<{ char: '@' | '#'; startOffset: number } | null>(null);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef   = React.useRef('');
+
+  const clear = React.useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    triggerRef.current = null;
+    latestRef.current  = '';
+    setSuggestions([]);
+    setLoading(false);
+    setPos(null);
+  }, []);
+
+  // ── Watch editor state for @ / # ──────────────────────────────────────────
+  React.useEffect(() => {
+    return editor.registerUpdateListener(() => {
+      if (!token) return;
+      editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) { clear(); return; }
+
+        const anchor     = selection.anchor;
+        const anchorNode = anchor.getNode();
+        if (!$isTextNode(anchorNode)) { clear(); return; }
+
+        const textBefore = anchorNode.getTextContent().slice(0, anchor.offset);
+        const match      = /(?:^|[\s\n])([@#])([A-Za-z0-9_]*)$/.exec(textBefore);
+        if (!match) { clear(); return; }
+
+        const char  = match[1] as '@' | '#';
+        const query = match[2];
+        const spaceLen = match[0].length - match[1].length - match[2].length;
+        const startOffset = match.index + spaceLen;
+
+        // Get caret viewport coords via native browser Selection API
+        const domSel = window.getSelection();
+        if (!domSel || domSel.rangeCount === 0) { clear(); return; }
+        const rect = domSel.getRangeAt(0).getBoundingClientRect();
+        const newPos = (rect.width > 0 || rect.height > 0)
+          ? { x: rect.left, y: rect.bottom }
+          : null;
+        if (!newPos) { clear(); return; }
+
+        triggerRef.current = { char, startOffset };
+        setPos(newPos);
+
+        if (query.length === 0) {
+          setSuggestions([]);
+          setLoading(false);
+          return;
+        }
+
+        latestRef.current = query;
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        setLoading(true);
+
+        debounceRef.current = setTimeout(async () => {
+          const expected = latestRef.current;
+          try {
+            if (char === '@') {
+              const users: SearchUserResult[] = await api.searchUsers(token, query, 6);
+              if (latestRef.current !== expected) return;
+              setSuggestions(users.map(u => ({
+                kind: 'user',
+                id: u.id,
+                label: `@${u.username ?? ''}`,
+                subLabel: u.profile?.name,
+                avatar: u.profile?.avatar,
+              })));
+            } else {
+              const tags: SearchHashtagResult[] = await api.searchHashtags(token, query, 6);
+              if (latestRef.current !== expected) return;
+              setSuggestions(tags.map(h => ({
+                kind: 'hashtag',
+                id: h.id,
+                label: `#${h.name ?? ''}`,
+                subLabel: h.posts_count ? `${h.posts_count.toLocaleString()} posts` : undefined,
+              })));
+            }
+          } catch {
+            if (latestRef.current === expected) setSuggestions([]);
+          } finally {
+            if (latestRef.current === expected) setLoading(false);
+          }
+        }, 280);
+      });
+    });
+  }, [editor, token, clear]);
+
+  // Dismiss on outside mousedown
+  React.useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      const popup  = document.getElementById('__mh_lexical_popup__');
+      if (popup && popup.contains(target)) return;
+      clear();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [clear]);
+
+  React.useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  // ── Insert selected suggestion ────────────────────────────────────────────
+  const select = React.useCallback((label: string) => {
+    const trig = triggerRef.current;
+    if (!trig) return;
+    editor.update(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
+      const anchor     = selection.anchor;
+      const anchorNode = anchor.getNode();
+      if (!$isTextNode(anchorNode)) return;
+      // Select from trigger start to current cursor, then replace
+      anchorNode.select(trig.startOffset, anchor.offset);
+      const sel2 = $getSelection();
+      if ($isRangeSelection(sel2)) sel2.insertText(label + ' ');
+    });
+    clear();
+  }, [editor, clear]);
+
+  // ── Render popup ──────────────────────────────────────────────────────────
+  const show = (suggestions.length > 0 || loading) && !!pos;
+  if (!show || !pos) return null;
+
+  const W = 240, MAX_H = 240, GAP = 6;
+  const sw   = window.innerWidth;
+  const sh   = window.innerHeight;
+  const left = Math.max(4, Math.min(pos.x, sw - W - 4));
+  const spaceBelow = sh - pos.y;
+  const top  = spaceBelow < MAX_H + GAP
+    ? Math.max(4, pos.y - GAP - MAX_H)
+    : pos.y + GAP;
+
+  return ReactDOM.createPortal(
+    <div
+      id="__mh_lexical_popup__"
+      onMouseDown={(e) => e.preventDefault()}
+      style={{
+        position: 'fixed', left, top,
+        width: W, maxHeight: MAX_H,
+        background: '#fff', border: '1px solid #e5e7eb',
+        borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+        zIndex: 2147483647, overflowY: 'auto',
+      }}
+    >
+      {loading && suggestions.length === 0 ? (
+        <div style={{ padding: '14px 12px', color: '#6b7280', fontSize: 13, textAlign: 'center' }}>
+          Loading…
+        </div>
+      ) : suggestions.map((s, idx) => (
+        <div
+          key={`${s.kind}-${s.id}`}
+          onMouseDown={(e) => { e.preventDefault(); select(s.label); }}
+          style={{
+            display: 'flex', alignItems: 'center',
+            padding: '9px 12px', cursor: 'pointer',
+            borderBottom: idx < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = ''; }}
+        >
+          {s.kind === 'user' ? (
+            s.avatar
+              ? <img src={s.avatar} alt="" style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8, objectFit: 'cover', flexShrink: 0 }} />
+              : <div style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8, background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                  {(s.label[1] ?? '?').toUpperCase()}
+                </div>
+          ) : (
+            <div style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366F1', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
+              #
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {s.kind === 'user' && s.subLabel ? (
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {s.subLabel}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 12, color: '#6b7280', lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.kind === 'user' ? s.label : (s.subLabel ? `${s.label} · ${s.subLabel}` : s.label)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function LoadInitialHtmlPlugin({ initialHtml }: { initialHtml: string }) {
   const [editor] = useLexicalComposerContext();
@@ -141,6 +353,16 @@ function ToolbarPlugin({
   const [linkEmbedOpen, setLinkEmbedOpen] = React.useState(false);
   const [videoOpen, setVideoOpen] = React.useState(false);
   const [tableOpen, setTableOpen] = React.useState(false);
+  /**
+   * pendingUpload holds the CURRENT blob (already rotated if the user clicked
+   * rotate) and its preview URL. The rotation is applied eagerly to the blob
+   * on every rotate click, so Upload always just sends blob as-is.
+   */
+  const [pendingUpload, setPendingUpload] = React.useState<{
+    blob: Blob & { name?: string; type?: string };
+    previewUrl: string;
+  } | null>(null);
+  const [rotating, setRotating] = React.useState(false);
   const [tableRows, setTableRows] = React.useState('3');
   const [tableCols, setTableCols] = React.useState('3');
   const [tableHeaders, setTableHeaders] = React.useState(true);
@@ -445,22 +667,70 @@ function ToolbarPlugin({
     input.accept = 'image/*';
     input.multiple = false;
 
-    input.onchange = async () => {
+    input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return;
-      try {
-        const urls = await onUploadImageFiles([file as Blob & { name?: string; type?: string }]);
-        if (urls?.[0]) {
-          editor.dispatchCommand(INSERT_LEXICAL_IMAGE_COMMAND, { src: urls[0], altText: '' });
-        }
-      } catch (error) {
-        console.error('[LexicalLongPostEditor] image upload failed', error);
-        onNotify?.('Could not upload image.');
-      }
+      const previewUrl = URL.createObjectURL(file);
+      setPendingUpload({
+        blob: file as Blob & { name?: string; type?: string },
+        previewUrl,
+      });
     };
 
     input.click();
-  }, [currentImageCount, editor, maxImages, onNotify, onUploadImageFiles]);
+  }, [currentImageCount, maxImages, onNotify, onUploadImageFiles]);
+
+  /**
+   * Eagerly applies canvas rotation to pendingUpload.blob and replaces the
+   * preview URL so what the user sees matches exactly what will be uploaded.
+   * Using a ref to always read the latest pendingUpload without stale-closure issues.
+   */
+  const pendingUploadRef = React.useRef(pendingUpload);
+  React.useEffect(() => {
+    pendingUploadRef.current = pendingUpload;
+  }, [pendingUpload]);
+
+  const applyRotation = React.useCallback(async (degrees: 90 | 270) => {
+    const current = pendingUploadRef.current;
+    if (!current || rotating) return;
+    setRotating(true);
+    try {
+      const { rotateImageBlob } = await import('../utils/imageRotation');
+      const rotated = await rotateImageBlob(current.blob, degrees);
+      // Preserve the original filename as an own property (type comes from canvas)
+      const name = (current.blob as any).name as string | undefined;
+      if (name) (rotated as any).name = name;
+      const newPreviewUrl = URL.createObjectURL(rotated);
+      // Revoke old preview only after new URL is ready
+      URL.revokeObjectURL(current.previewUrl);
+      setPendingUpload({
+        blob: rotated as Blob & { name?: string; type?: string },
+        previewUrl: newPreviewUrl,
+      });
+    } catch (e) {
+      console.error('[LexicalLongPostEditor] applyRotation failed', e);
+      onNotify?.('Could not rotate image.');
+    } finally {
+      setRotating(false);
+    }
+  }, [rotating, onNotify]);
+
+  /** Upload the blob exactly as it is — rotation has already been applied eagerly. */
+  const confirmPendingUpload = React.useCallback(async () => {
+    const current = pendingUploadRef.current;
+    if (!current || !onUploadImageFiles) return;
+    setPendingUpload(null);
+    URL.revokeObjectURL(current.previewUrl);
+    try {
+      const urls = await onUploadImageFiles([current.blob]);
+      if (urls?.[0]) {
+        editor.dispatchCommand(INSERT_LEXICAL_IMAGE_COMMAND, { src: urls[0], altText: '' });
+      }
+    } catch (error) {
+      console.error('[LexicalLongPostEditor] image upload failed', error);
+      onNotify?.('Could not upload image.');
+    }
+  }, [editor, onNotify, onUploadImageFiles]);
 
   const alignSelection = React.useCallback((align: 'left' | 'center' | 'right') => {
     const handled = editor.dispatchCommand(SET_LEXICAL_IMAGE_ALIGN_COMMAND, align);
@@ -714,6 +984,78 @@ function ToolbarPlugin({
           </div>
         </div>
       ) : null}
+      {pendingUpload
+        ? ReactDOM.createPortal(
+            <div style={rotationOverlayStyle}>
+              <div style={rotationModalStyle}>
+                <div style={rotationModalTitleStyle}>Rotate image before uploading</div>
+                <div style={rotationPreviewWrapStyle}>
+                  {/* Square frame — the previewUrl is already the rotated blob */}
+                  <div style={rotationPreviewFrameStyle}>
+                    {rotating ? (
+                      <div style={rotationSpinnerStyle}>…</div>
+                    ) : (
+                      <img
+                        key={pendingUpload.previewUrl}
+                        src={pendingUpload.previewUrl}
+                        alt="preview"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div style={rotationButtonRowStyle}>
+                  <button
+                    type="button"
+                    style={rotating ? rotationActionButtonDisabledStyle : rotationActionButtonStyle}
+                    disabled={rotating}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { void applyRotation(270); }}
+                  >
+                    ↺ Rotate Left
+                  </button>
+                  <button
+                    type="button"
+                    style={rotating ? rotationActionButtonDisabledStyle : rotationActionButtonStyle}
+                    disabled={rotating}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { void applyRotation(90); }}
+                  >
+                    ↻ Rotate Right
+                  </button>
+                </div>
+                <div style={linkActionsStyle}>
+                  <button
+                    type="button"
+                    style={linkGhostButtonStyle}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      URL.revokeObjectURL(pendingUpload.previewUrl);
+                      setPendingUpload(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    style={rotating ? { ...linkPrimaryButtonStyle, opacity: 0.5 } : linkPrimaryButtonStyle}
+                    disabled={rotating}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { void confirmPendingUpload(); }}
+                  >
+                    Upload
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -912,6 +1254,7 @@ export default function LexicalLongPostEditor({
   expandedHeight = false,
   maxImages = 5,
   onNotify,
+  token,
 }: LexicalLongPostEditorProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [toolbarHeight, setToolbarHeight] = React.useState(52);
@@ -994,6 +1337,7 @@ export default function LexicalLongPostEditor({
         `}
       </style>
       <LexicalComposer key={composerKey} initialConfig={initialConfig}>
+        <MentionHashtagPlugin token={token} />
         <LoadInitialHtmlPlugin initialHtml={value} />
         <LexicalImagesPlugin />
         <LexicalVideoEmbedsPlugin />
@@ -1323,4 +1667,90 @@ const placeholderStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   fontWeight: 400,
   pointerEvents: 'none',
+};
+
+// ─── Image rotation modal styles ─────────────────────────────────────────────
+
+const rotationOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0, 0, 0, 0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 2147483646,
+};
+
+const rotationModalStyle: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: 14,
+  padding: 20,
+  width: 300,
+  maxWidth: '90vw',
+  boxShadow: '0 12px 40px rgba(0, 0, 0, 0.28)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
+};
+
+const rotationModalTitleStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  color: '#0F172A',
+  textAlign: 'center',
+};
+
+const rotationPreviewWrapStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#F1F5F9',
+  borderRadius: 8,
+  padding: 10,
+};
+
+/**
+ * Square frame: rotating inside a square looks correct at any 90° step because
+ * the width and height are equal — no clipping and no layout shift.
+ */
+const rotationPreviewFrameStyle: React.CSSProperties = {
+  width: 220,
+  height: 220,
+  borderRadius: 8,
+  overflow: 'hidden',
+  flexShrink: 0,
+};
+
+const rotationButtonRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 10,
+  justifyContent: 'center',
+};
+
+const rotationActionButtonStyle: React.CSSProperties = {
+  border: '1px solid #CBD5E1',
+  borderRadius: 8,
+  background: '#F8FAFC',
+  color: '#334155',
+  fontSize: 13,
+  fontWeight: 700,
+  padding: '7px 14px',
+  cursor: 'pointer',
+};
+
+const rotationActionButtonDisabledStyle: React.CSSProperties = {
+  ...rotationActionButtonStyle,
+  opacity: 0.45,
+  cursor: 'not-allowed',
+};
+
+const rotationSpinnerStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 28,
+  color: '#94A3B8',
 };

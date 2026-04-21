@@ -9,6 +9,7 @@ type LexicalLongPostEditorProps = {
   expandedHeight?: boolean;
   maxImages?: number;
   onNotify?: (message: string) => void;
+  token?: string;
 };
 
 export default function LexicalLongPostEditor(_: LexicalLongPostEditorProps) {

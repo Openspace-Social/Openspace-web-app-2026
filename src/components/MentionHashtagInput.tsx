@@ -14,7 +14,7 @@
  *
  * NATIVE — transparent Modal (standard approach; no focus issues on iOS/Android).
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -22,6 +22,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -160,20 +161,39 @@ function getCaretViewportPos(
 }
 
 /**
- * Find the actual textarea/input DOM element from a React Native Web ref.
- * RN Web may wrap the element; findDOMNode + querySelector handles both cases.
+ * Find the actual textarea/input DOM element for a MentionHashtagInput.
+ *
+ * Strategy 1 (most reliable): `document.getElementById(inputId)` — the TextInput
+ *   is given a unique `id` prop so it can always be found directly, even when
+ *   rendered inside a React Native Modal (which uses its own internal React portal
+ *   that can break findDOMNode traversal).
+ *
+ * Strategy 2: direct ref access — works when RN Web forwards the ref to the
+ *   raw DOM element.
+ *
+ * Strategy 3: findDOMNode — legacy fallback for older RN Web versions.
+ *
+ * Strategy 4: querySelector inside container — last resort.
  */
 function getInputDOMEl(
+  inputId: string,
   inputRef: React.RefObject<any>,
   containerRef: React.RefObject<View>,
 ): HTMLTextAreaElement | HTMLInputElement | null {
   try {
-    // First try: inputRef directly (RN Web forwards ref to DOM element)
+    // Strategy 1: direct DOM lookup by id — immune to portal/Modal boundaries
+    if (typeof document !== 'undefined' && inputId) {
+      const el = document.getElementById(inputId);
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')) {
+        return el as HTMLTextAreaElement;
+      }
+    }
+    // Strategy 2: inputRef directly (RN Web forwards ref to DOM element)
     const direct = inputRef.current;
     if (direct && typeof direct.getBoundingClientRect === 'function') {
       return direct as HTMLTextAreaElement;
     }
-    // Second try: findDOMNode on the input ref
+    // Strategy 3: findDOMNode on the input ref
     if (_findDOMNode && direct) {
       const node = _findDOMNode(direct) as HTMLElement | null;
       if (node && (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT')) {
@@ -184,7 +204,7 @@ function getInputDOMEl(
         if (inner) return inner as HTMLTextAreaElement;
       }
     }
-    // Third try: search within container
+    // Strategy 4: search within container
     if (_findDOMNode && containerRef.current) {
       const container = _findDOMNode(containerRef.current) as HTMLElement | null;
       const inner = container?.querySelector?.('textarea, input');
@@ -226,6 +246,10 @@ export default function MentionHashtagInput({
   const containerRef   = useRef<View>(null);
   const textInputRef   = useRef<any>(null);
   const cursorRef      = useRef<number>(value.length);
+  // Stable unique id so we can always find the underlying <textarea>/<input>
+  // via document.getElementById — works even inside React Native Web Modals
+  // where findDOMNode cannot traverse the portal boundary.
+  const inputIdRef     = useRef<string>(`mhi-${Math.random().toString(36).slice(2, 10)}`);
   const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestQueryRef = useRef<string>('');
 
@@ -323,7 +347,7 @@ export default function MentionHashtagInput({
 
   function computePosition(text: string, caretPos: number) {
     if (Platform.OS === 'web') {
-      const domEl = getInputDOMEl(textInputRef, containerRef);
+      const domEl = getInputDOMEl(inputIdRef.current, textInputRef, containerRef);
       if (!domEl) return;
 
       const caret = getCaretViewportPos(domEl, caretPos);
@@ -391,11 +415,23 @@ export default function MentionHashtagInput({
   const spaceBelow = popupPos ? screenH - popupPos.y : 0;
   const openAbove  = !!popupPos && spaceBelow < LIST_MAX_H + GAP && popupPos.spaceAbove > spaceBelow;
 
-  const popupLeft   = popupPos
+  const popupLeft = popupPos
     ? Math.max(4, Math.min(popupPos.x, screenW - POPUP_W - 4))
     : 0;
+
+  // "below" anchor: top of popup = bottom-of-caret + gap (viewport pixels)
   const popupTop    = !openAbove && popupPos ? popupPos.y + GAP : undefined;
-  const popupBottom = openAbove  && popupPos ? screenH - popupPos.spaceAbove + GAP : undefined;
+
+  // "above" anchor (native) — uses `bottom` measured from screen bottom
+  const popupBottom = openAbove && popupPos ? screenH - popupPos.spaceAbove + GAP : undefined;
+
+  // "above" anchor (web) — the portal container is position:fixed at top:0/height:0,
+  // so `bottom` is meaningless there; convert to a `top` value instead.
+  // We want the popup's bottom edge at (spaceAbove − GAP) from viewport top,
+  // so top = spaceAbove − GAP − LIST_MAX_H (clamped ≥ 4).
+  const popupTopAbove = openAbove && popupPos
+    ? Math.max(4, popupPos.spaceAbove - GAP - LIST_MAX_H)
+    : undefined;
 
   // ─── suggestion rows (shared between web & native) ───────────────────────
 
@@ -483,10 +519,33 @@ export default function MentionHashtagInput({
 
   // ─── render ───────────────────────────────────────────────────────────────
 
+  // Pull layout-only properties out of `style` so the wrapper View takes the
+  // same dimensions/flex as callers expect.  Appearance props (border, color,
+  // background, padding…) stay on the TextInput only, avoiding double borders.
+  const containerLayoutStyle = useMemo(() => {
+    const flat: any = StyleSheet.flatten(style) ?? {};
+    const LAYOUT_KEYS = [
+      'flex', 'flexGrow', 'flexShrink', 'flexBasis',
+      'alignSelf', 'alignItems', 'justifyContent',
+      'width', 'minWidth', 'maxWidth',
+      'height', 'minHeight', 'maxHeight',
+      'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+      'marginHorizontal', 'marginVertical',
+    ];
+    const out: any = {};
+    for (const k of LAYOUT_KEYS) {
+      if (flat[k] !== undefined) out[k] = flat[k];
+    }
+    return out;
+  }, [style]);
+
   return (
-    <View ref={containerRef} collapsable={false}>
+    <View ref={containerRef} collapsable={false} style={containerLayoutStyle}>
       <TextInput
         ref={textInputRef}
+        // nativeID renders as the DOM `id` attribute on RN Web, giving us a
+        // reliable document.getElementById hook that works across Modal portals.
+        nativeID={inputIdRef.current}
         style={[{ color: textColor, backgroundColor: bgColor }, style]}
         value={value}
         onChangeText={handleChangeText}
@@ -512,9 +571,16 @@ export default function MentionHashtagInput({
                 {
                   position: 'absolute' as any,
                   left: popupLeft,
-                  ...(popupTop    !== undefined ? { top: popupTop }       : {}),
-                  ...(popupBottom !== undefined ? { bottom: popupBottom } : {}),
+                  // Portal container is position:fixed at top:0/height:0.
+                  // Open-below: anchor top edge just below the caret.
+                  // Open-above: anchor bottom edge just above the caret using
+                  //   CSS translateY(-100%) so the popup hugs the cursor
+                  //   regardless of how many results are shown.
+                  top: openAbove
+                    ? (popupPos ? popupPos.spaceAbove - GAP : 0)
+                    : (popupTop ?? 0),
                   ...({ boxShadow: '0 4px 16px rgba(0,0,0,0.13)' } as any),
+                  ...({ transform: openAbove ? 'translateY(-100%)' : undefined } as any),
                   zIndex: 99999,
                 },
               ]}

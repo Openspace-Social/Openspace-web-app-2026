@@ -1824,9 +1824,9 @@ export const api = {
     });
   },
 
-  getPostById: (token: string, postId: number) =>
-    request<unknown>(`/api/posts/${postId}/`, {
-      headers: { Authorization: `Token ${token}` },
+  getPostByUuid: (token: string | null | undefined, postUuid: string) =>
+    request<unknown>(`/api/posts/${postUuid}/`, {
+      headers: token ? { Authorization: `Token ${token}` } : {},
     }).then((payload) => {
       const normalized = normalizeMaybeWrappedPost(payload);
       if (!normalized) throw new Error('Post not found');

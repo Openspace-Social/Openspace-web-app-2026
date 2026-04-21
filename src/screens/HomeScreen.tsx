@@ -533,6 +533,8 @@ type ComposerMediaType = 'image' | 'video';
 type ComposerImageSelection = {
   file: Blob & { name?: string; type?: string };
   previewUri?: string;
+  /** Clockwise rotation in degrees applied before upload (0 = no rotation). */
+  rotation?: 0 | 90 | 180 | 270;
 };
 type ComposerVideoSelection = ComposerImageSelection;
 
@@ -1806,10 +1808,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setActiveFeed(route.feed);
       }
       const postInCurrentContext =
-        feedPosts.find((post) => post.id === route.postId) ||
-        communityRoutePosts.find((post) => post.id === route.postId) ||
-        myProfilePosts.find((post) => post.id === route.postId) ||
-        profilePosts.find((post) => post.id === route.postId) ||
+        feedPosts.find((post) => post.uuid === route.postUuid) ||
+        communityRoutePosts.find((post) => post.uuid === route.postUuid) ||
+        myProfilePosts.find((post) => post.uuid === route.postUuid) ||
+        profilePosts.find((post) => post.uuid === route.postUuid) ||
         null;
       if (postInCurrentContext) {
         setActivePost(postInCurrentContext);
@@ -1822,18 +1824,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }, [route, activeFeed, feedLoading, feedPostsFeed, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
   useEffect(() => {
-    const routePostId = route.screen === 'post' ? route.postId : null;
-    if (!routePostId) return;
+    const routePostUuid = route.screen === 'post' ? route.postUuid : null;
+    if (!routePostUuid) return;
 
-  const routedPostInMemory =
-      feedPosts.find((post) => post.id === routePostId) ||
-      communityRoutePosts.find((post) => post.id === routePostId) ||
-      myProfilePosts.find((post) => post.id === routePostId) ||
-      profilePosts.find((post) => post.id === routePostId) ||
+    const routedPostInMemory =
+      feedPosts.find((post) => post.uuid === routePostUuid) ||
+      communityRoutePosts.find((post) => post.uuid === routePostUuid) ||
+      myProfilePosts.find((post) => post.uuid === routePostUuid) ||
+      profilePosts.find((post) => post.uuid === routePostUuid) ||
       null;
 
     if (routedPostInMemory) {
-      if (activePost?.id !== routedPostInMemory.id) {
+      if (activePost?.uuid !== routedPostInMemory.uuid) {
         setActivePost(routedPostInMemory);
       }
       void loadCommentsForPost(routedPostInMemory);
@@ -1841,14 +1843,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       return;
     }
 
-    const postId = routePostId;
-    if (activePost?.id === routePostId) return;
+    if (activePost?.uuid === routePostUuid) return;
     let cancelled = false;
 
     async function fetchRoutedPost() {
       setPostRouteLoading(true);
       try {
-        const fetchedPost = await api.getPostById(token, postId);
+        const fetchedPost = await api.getPostByUuid(token, routePostUuid!);
         if (cancelled) return;
         setActivePost(fetchedPost);
         void loadCommentsForPost(fetchedPost);
@@ -1864,7 +1865,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     return () => {
       cancelled = true;
     };
-  }, [route, token, activePost?.id, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
+  }, [route, token, activePost?.uuid, feedPosts, communityRoutePosts, myProfilePosts, profilePosts]);
 
   // Match the server's own page size — the existing site uses count=10
   const FEED_PAGE_SIZE = 10;
@@ -2439,7 +2440,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const hydratedPairs = await Promise.all(
       limitedCandidates.map(async (post) => {
         try {
-          const full = await api.getPostById(token, post.id);
+          const full = await api.getPostByUuid(token, post.uuid!);
           const hasBlocks = Array.isArray(full.long_text_blocks) && full.long_text_blocks.length > 0;
           const hasRenderedHtml = typeof full.long_text_rendered_html === 'string' && !!full.long_text_rendered_html.trim();
           if (hasBlocks || hasRenderedHtml) {
@@ -2481,7 +2482,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const hydratedPairs = await Promise.all(
       limitedCandidates.map(async (post) => {
         try {
-          const full = await api.getPostById(token, post.id);
+          const full = await api.getPostByUuid(token, post.uuid!);
           fullPostHydratedIdsRef.current.add(post.id);
           return [post.id, full] as const;
         } catch {
@@ -2649,7 +2650,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   async function submitComment(postId: number) {
     const nextValue = (draftComments[postId] || '').trim();
     const media = draftCommentMediaByPostId[postId] || null;
-    if (!nextValue) return;
+    if (!nextValue && !media) return;
     const sourcePost = getSourcePost(postId);
     if (!sourcePost?.uuid) {
       setError(t('home.feedLoadError'));
@@ -2708,7 +2709,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const sourcePost = getSourcePost(postId);
     const nextValue = (draftReplies[commentId] || '').trim();
     const media = draftReplyMediaByCommentId[commentId] || null;
-    if (!sourcePost?.uuid || !nextValue) return;
+    if (!sourcePost?.uuid || (!nextValue && !media)) return;
 
     try {
       const createdReply = await api.createPostCommentReply(token, sourcePost.uuid, commentId, {
@@ -2863,7 +2864,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     );
     setActivePost(post);
     void loadCommentsForPost(post);
-    onNavigate({ screen: 'post', postId: post.id, feed: activeFeed });
+    onNavigate({ screen: 'post', postUuid: post.uuid || String(post.id), feed: activeFeed });
   }
 
   function closePostDetail() {
@@ -3371,7 +3372,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function handleSharePost(post: FeedPost) {
-    const webBase = process.env.EXPO_PUBLIC_WEB_BASE_URL || 'https://staging.openspace.social';
+    // On web, always derive the base from the current browser origin so the link
+    // works correctly in both local dev (localhost:8081) and any deployed domain.
+    const webBase =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? window.location.origin
+        : (process.env.EXPO_PUBLIC_WEB_BASE_URL || 'https://staging.openspace.social');
     const shareUrl = `${webBase.replace(/\/+$/, '')}/posts/${post.uuid || post.id}`;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -3942,9 +3948,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
-  function handleNotificationNavigatePost(postId: number) {
+  function handleNotificationNavigatePost(postId: number, postUuid?: string) {
     setNotifDrawerOpen(false);
-    onNavigate({ screen: 'post', postId });
+    onNavigate({ screen: 'post', postUuid: postUuid || String(postId) });
   }
 
   function handleNotificationNavigateProfile(username: string) {
@@ -4753,6 +4759,46 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     });
   }
 
+  function rotateComposerImage(index: number) {
+    if (composerSubmitting) return;
+    setComposerImages((prev) => {
+      const updated = [...prev];
+      const item = updated[index];
+      if (!item) return prev;
+      updated[index] = {
+        ...item,
+        rotation: (((item.rotation ?? 0) + 90) % 360) as 0 | 90 | 180 | 270,
+      };
+      return updated;
+    });
+  }
+
+  /**
+   * Returns the upload-ready blob for a composer image, applying any pending
+   * canvas rotation. Falls back to the original file if rotation fails.
+   */
+  async function getUploadBlob(
+    image: ComposerImageSelection,
+  ): Promise<Blob & { name?: string; type?: string }> {
+    if (!image.rotation) return image.file;
+    try {
+      const { rotateImageBlob } = await import('../utils/imageRotation');
+      const rotated = await rotateImageBlob(image.file as Blob, image.rotation as 90 | 180 | 270);
+      // canvas.toBlob() already sets the MIME type on the returned Blob.
+      // DO NOT use Object.assign to set `type` — Blob.type is a read-only Web IDL
+      // attribute (getter-only on the prototype), so assigning it in strict mode
+      // throws a TypeError and the catch block would silently fall back to the
+      // original unrotated file.  Just attach `name` as a plain own property.
+      const result = rotated as Blob & { name?: string; type?: string };
+      const originalName = (image.file as any).name as string | undefined;
+      if (originalName) (result as any).name = originalName;
+      return result;
+    } catch (e) {
+      console.error('[HomeScreen] getUploadBlob rotation failed, using original', e);
+      return image.file;
+    }
+  }
+
   async function loadSidebarData() {
     if (!token) return;
     setSidebarLoading(true);
@@ -4929,7 +4975,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         finalizedPost = await api.publishPost(token, composerDraftUuid);
         finalizedUuid = composerDraftUuid;
       } else if (hasImages && composerImages.length > 1) {
-        const draftPost = await createPrimaryPost(composerImages[0]?.file, true);
+        const draftPost = await createPrimaryPost(await getUploadBlob(composerImages[0]!), true);
 
         if (!draftPost.uuid) {
           throw new Error(t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
@@ -4939,7 +4985,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         for (let index = 1; index < composerImages.length; index += 1) {
           const image = composerImages[index];
           await api.addPostMedia(token, draftPost.uuid, {
-            file: image.file,
+            file: await getUploadBlob(image),
             order: index + 1,
           });
         }
@@ -4947,7 +4993,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           finalizedPost = await api.publishPost(token, draftPost.uuid);
         }
       } else {
-        const createdPost = await createPrimaryPost(composerImages[0]?.file, saveAsDraft);
+        const createdPost = await createPrimaryPost(
+          composerImages[0] ? await getUploadBlob(composerImages[0]) : undefined,
+          saveAsDraft,
+        );
         finalizedPost = createdPost;
         finalizedUuid = createdPost.uuid || finalizedUuid;
         if (saveAsDraft && composerPostType === 'LP') {
@@ -4977,9 +5026,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         }
 
         let verified = false;
-        if (typeof finalizedPost?.id === 'number' && Number.isFinite(finalizedPost.id)) {
+        if (finalizedPost?.uuid) {
           try {
-            await api.getPostById(token, finalizedPost.id);
+            await api.getPostByUuid(token, finalizedPost.uuid);
             verified = true;
           } catch {
             verified = false;
@@ -6214,7 +6263,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                             {image.previewUri ? (
                               <Image
                                 source={{ uri: image.previewUri }}
-                                style={styles.postComposerImageTilePreview}
+                                style={[
+                                  styles.postComposerImageTilePreview,
+                                  image.rotation
+                                    ? { transform: [{ rotate: `${image.rotation}deg` }] }
+                                    : undefined,
+                                ]}
                                 resizeMode="cover"
                               />
                             ) : (
@@ -6222,6 +6276,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                                 <MaterialCommunityIcons name="image" size={22} color={c.textSecondary} />
                               </View>
                             )}
+                            {/* Remove button — top-right */}
                             <TouchableOpacity
                               style={[styles.postComposerImageRemove, { backgroundColor: c.surface, borderColor: c.border }]}
                               activeOpacity={0.85}
@@ -6229,6 +6284,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                               onPress={() => removeComposerImage(index)}
                             >
                               <MaterialCommunityIcons name="close" size={14} color={c.textSecondary} />
+                            </TouchableOpacity>
+                            {/* Rotate button — bottom-left */}
+                            <TouchableOpacity
+                              style={[styles.postComposerImageRotate, { backgroundColor: c.surface, borderColor: c.border }]}
+                              activeOpacity={0.85}
+                              disabled={composerSubmitting}
+                              onPress={() => rotateComposerImage(index)}
+                            >
+                              <MaterialCommunityIcons name="rotate-right" size={14} color={c.textSecondary} />
                             </TouchableOpacity>
                           </View>
                         ))}
@@ -8693,6 +8757,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  postComposerImageRotate: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   postComposerToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -10944,12 +11019,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   commentReplyComposer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 6,
   },
   commentReplyInput: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
@@ -10962,14 +11035,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
   commentComposer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 6,
   },
   commentInput: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -10980,6 +11053,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   commentSendText: {
     color: '#fff',

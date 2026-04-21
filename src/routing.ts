@@ -4,7 +4,7 @@ export type AppRoute =
   | { screen: 'landing' }
   | { screen: 'feed'; feed: FeedType }
   | { screen: 'search'; query: string }
-  | { screen: 'post'; postId: number; feed?: FeedType }
+  | { screen: 'post'; postUuid: string; feed?: FeedType }
   | { screen: 'profile'; username: string }
   | { screen: 'community'; name: string }
   | { screen: 'hashtag'; name: string }
@@ -46,9 +46,8 @@ export function parsePathToRoute(pathname: string): AppRoute {
     if (first === 'settings') return { screen: 'settings' };
   }
 
-  if (parts.length === 2 && parts[0] === 'posts') {
-    const postId = Number(parts[1]);
-    if (Number.isFinite(postId) && postId > 0) return { screen: 'post', postId };
+  if (parts.length === 2 && parts[0] === 'posts' && parts[1]) {
+    return { screen: 'post', postUuid: parts[1] };
   }
 
   if (parts.length === 2 && parts[0] === 'search' && parts[1]) {
@@ -79,7 +78,7 @@ export function routeToPath(route: AppRoute): string {
     case 'search':
       return `/search/${encodeURIComponent(route.query)}`;
     case 'post':
-      return `/posts/${route.postId}`;
+      return `/posts/${route.postUuid}`;
     case 'profile':
       return `/u/${encodeURIComponent(route.username)}`;
     case 'community':
