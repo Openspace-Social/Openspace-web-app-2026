@@ -40,6 +40,9 @@ type Props = {
   isTimelineMuted?: boolean;
   muteLoading?: boolean;
   canManageCommunity?: boolean;
+  communityPinnedPosts?: FeedPost[];
+  communityPinnedPostsLoading?: boolean;
+  onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void>;
   onJoin: () => void;
   onLeave: () => void;
   onToggleNotifications?: () => void;
@@ -47,6 +50,7 @@ type Props = {
   onMuteTimeline?: (durationDays: number | null) => void;
   onUnmuteTimeline?: () => void;
   onOpenManageCommunity?: () => void;
+  onReportCommunity?: () => void;
   onLoadMoreMembers?: () => void;
   onClearCommunityPostsFilter?: () => void;
   onOpenProfile: (username: string) => void;
@@ -76,12 +80,16 @@ export default function CommunityProfileScreen({
   isTimelineMuted = false,
   muteLoading = false,
   canManageCommunity = false,
+  communityPinnedPosts = [],
+  communityPinnedPostsLoading = false,
+  onToggleCommunityPinPost,
   onJoin,
   onLeave,
   onToggleNotifications,
   onMuteTimeline,
   onUnmuteTimeline,
   onOpenManageCommunity,
+  onReportCommunity,
   onLoadMoreMembers,
   onClearCommunityPostsFilter,
   onOpenProfile,
@@ -130,8 +138,11 @@ export default function CommunityProfileScreen({
       </View>
 
       {/* Avatar + identity + join button */}
-      <View style={styles.profileIdentityRow}>
-        <View style={styles.profileIdentityLeft}>
+      {/* Column layout: row 1 = avatar + buttons, row 2 = title + meta */}
+      <View style={[styles.profileIdentityRow, { flexDirection: 'column', gap: 0, alignItems: 'stretch' }]}>
+
+        {/* Row 1: avatar (left) + action buttons (right) */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <View style={[styles.profileAvatarWrap, { borderColor: c.surface, backgroundColor: accentColor }]}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.profileAvatarImage} resizeMode="cover" />
@@ -140,30 +151,8 @@ export default function CommunityProfileScreen({
             )}
           </View>
 
-          <View style={styles.profileIdentityMeta}>
-            <Text style={[styles.profileDisplayName, { color: c.textPrimary }]}>{title}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-              <Text style={[styles.profileHandle, { color: c.textMuted }]}>{`c/${name}`}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <MaterialCommunityIcons name="account-group-outline" size={14} color={c.textMuted} />
-                <Text style={[styles.profileCountLabel, { color: c.textMuted }]}>
-                  {membersCount.toLocaleString()}
-                </Text>
-              </View>
-              {postsCount != null && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <MaterialCommunityIcons name="file-document-outline" size={14} color={c.textMuted} />
-                  <Text style={[styles.profileCountLabel, { color: c.textMuted }]}>
-                    {postsCount.toLocaleString()}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* Manage + Join / Leave buttons */}
-        <View style={{ paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Manage + Join / Leave buttons */}
+          <View style={{ paddingBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {canManageCommunity ? (
             <TouchableOpacity
               style={[
@@ -205,6 +194,20 @@ export default function CommunityProfileScreen({
               </Text>
             )}
           </TouchableOpacity>
+
+          {/* Report community — shown to non-managers */}
+          {!canManageCommunity && onReportCommunity ? (
+            <TouchableOpacity
+              style={[styles.profileFollowButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              onPress={onReportCommunity}
+            >
+              <MaterialCommunityIcons name="alert-circle-outline" size={14} color={c.textMuted} style={{ marginRight: 4 }} />
+              <Text style={[styles.profileFollowButtonText, { color: c.textMuted }]}>
+                {t('home.reportCommunityAction', { defaultValue: 'Report' })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Notification bell — only shown when joined */}
           {isJoined && onToggleNotifications ? (
@@ -283,7 +286,39 @@ export default function CommunityProfileScreen({
               )}
             </TouchableOpacity>
           ) : null}
+          </View>
         </View>
+
+        {/* Row 2: title + meta — full width below avatar/buttons */}
+        <View style={[styles.profileIdentityMeta, { paddingTop: 10 }]}>
+          <Text
+            style={[
+              styles.profileDisplayName,
+              { color: c.textPrimary },
+              title.length > 30 ? { fontSize: 28, lineHeight: 34 } :
+              title.length > 20 ? { fontSize: 36, lineHeight: 42 } : undefined,
+            ]}
+            numberOfLines={2}
+          >{title}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+            <Text style={[styles.profileHandle, { color: c.textMuted }]}>{`c/${name}`}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialCommunityIcons name="account-group-outline" size={14} color={c.textMuted} />
+              <Text style={[styles.profileCountLabel, { color: c.textMuted }]}>
+                {membersCount.toLocaleString()}
+              </Text>
+            </View>
+            {postsCount != null && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialCommunityIcons name="file-document-outline" size={14} color={c.textMuted} />
+                <Text style={[styles.profileCountLabel, { color: c.textMuted }]}>
+                  {postsCount.toLocaleString()}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
       </View>
     </>
   );
@@ -564,7 +599,7 @@ export default function CommunityProfileScreen({
   );
 
   // ── Pinned posts card ────────────────────────────────────────────────────────
-  const pinnedPostsCard = (
+  const pinnedPostsCard = (communityPinnedPosts.length > 0 || communityPinnedPostsLoading) ? (
     <View style={[styles.profileInfoCard, { borderColor: c.border, backgroundColor: c.inputBackground, marginBottom: 12 }]}>
       <View style={styles.profileInfoCardHeader}>
         <MaterialCommunityIcons name="pin-outline" size={16} color={c.textSecondary} />
@@ -572,11 +607,17 @@ export default function CommunityProfileScreen({
           {t('home.pinnedPostsTitle', { defaultValue: 'Pinned posts' })}
         </Text>
       </View>
-      <Text style={[{ fontSize: 13, marginTop: 2 }, { color: c.textMuted }]}>
-        {t('home.noPinnedPosts', { defaultValue: 'No pinned posts yet.' })}
-      </Text>
+      {communityPinnedPostsLoading ? (
+        <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 8 }} />
+      ) : (
+        communityPinnedPosts.map((post) => (
+          <View key={`pinned-${post.id}`} style={{ marginTop: 8 }}>
+            {renderPostCard(post, 'profile')}
+          </View>
+        ))
+      )}
     </View>
-  );
+  ) : null;
 
   // ── Posts section ────────────────────────────────────────────────────────────
   const postsSection = (

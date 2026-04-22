@@ -174,7 +174,7 @@ export default function CommunityManagementDrawer({
   }, [visible, community]);
 
   useEffect(() => {
-    const supportsUserSearchPanels = panel === 'members' || panel === 'administrators' || panel === 'ownershipTransfer' || panel === 'moderators' || panel === 'banned' || panel === 'invite' || panel === 'joinRequests';
+    const supportsUserSearchPanels = panel === 'administrators' || panel === 'ownershipTransfer' || panel === 'moderators' || panel === 'banned' || panel === 'invite' || panel === 'joinRequests';
     if (!visible || !supportsUserSearchPanels) {
       setUserSuggestions([]);
       setUserSuggestionsLoading(false);
@@ -502,13 +502,61 @@ export default function CommunityManagementDrawer({
   }
 
   function renderDetails() {
+    const fieldLabel = (label: string, hint?: string) => (
+      <View style={{ marginBottom: 2 }}>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: c.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          {label}
+        </Text>
+        {hint ? (
+          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }}>{hint}</Text>
+        ) : null}
+      </View>
+    );
+
+    const inputStyle = { borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.textPrimary, backgroundColor: c.inputBackground };
+    const multilineStyle = { ...inputStyle, minHeight: 88, textAlignVertical: 'top' as const };
+
     return (
-      <View style={{ padding: 16, gap: 10 }}>
-        <TextInput value={detailsTitle} onChangeText={setDetailsTitle} placeholder={t('community.title', { defaultValue: 'Title' })} placeholderTextColor={c.textMuted} style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.textPrimary, backgroundColor: c.inputBackground }} />
-        <TextInput value={detailsName} onChangeText={setDetailsName} autoCapitalize="none" placeholder={t('community.name', { defaultValue: 'Name' })} placeholderTextColor={c.textMuted} style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.textPrimary, backgroundColor: c.inputBackground }} />
-        <TextInput value={detailsColor} onChangeText={setDetailsColor} autoCapitalize="none" placeholder={t('community.color', { defaultValue: 'Color hex (e.g. #22C55E)' })} placeholderTextColor={c.textMuted} style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: c.textPrimary, backgroundColor: c.inputBackground }} />
-        <TextInput value={detailsDescription} onChangeText={setDetailsDescription} multiline numberOfLines={3} placeholder={t('community.description', { defaultValue: 'Description' })} placeholderTextColor={c.textMuted} style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 80, color: c.textPrimary, backgroundColor: c.inputBackground, textAlignVertical: 'top' }} />
-        <TextInput value={detailsRules} onChangeText={setDetailsRules} multiline numberOfLines={3} placeholder={t('community.rules', { defaultValue: 'Rules' })} placeholderTextColor={c.textMuted} style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 80, color: c.textPrimary, backgroundColor: c.inputBackground, textAlignVertical: 'top' }} />
+      <View style={{ padding: 16, gap: 12 }}>
+        <View style={{ gap: 4 }}>
+          {fieldLabel(
+            t('community.titleLabel', { defaultValue: 'Title' }),
+            t('community.titleHint', { defaultValue: 'The display name shown at the top of your community page.' }),
+          )}
+          <TextInput value={detailsTitle} onChangeText={setDetailsTitle} placeholder={t('community.titlePlaceholder', { defaultValue: 'e.g. Photography Enthusiasts' })} placeholderTextColor={c.textMuted} style={inputStyle} />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          {fieldLabel(
+            t('community.nameLabel', { defaultValue: 'Name' }),
+            t('community.nameHint', { defaultValue: 'The unique URL-safe identifier for your community (letters, numbers, hyphens). Used in links.' }),
+          )}
+          <TextInput value={detailsName} onChangeText={setDetailsName} autoCapitalize="none" autoCorrect={false} placeholder={t('community.namePlaceholder', { defaultValue: 'e.g. photography-enthusiasts' })} placeholderTextColor={c.textMuted} style={inputStyle} />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          {fieldLabel(
+            t('community.colorLabel', { defaultValue: 'Accent color' }),
+            t('community.colorHint', { defaultValue: 'A hex color used to brand your community header and highlights.' }),
+          )}
+          <TextInput value={detailsColor} onChangeText={setDetailsColor} autoCapitalize="none" autoCorrect={false} placeholder={t('community.colorPlaceholder', { defaultValue: 'e.g. #22C55E' })} placeholderTextColor={c.textMuted} style={inputStyle} />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          {fieldLabel(
+            t('community.descriptionLabel', { defaultValue: 'Description' }),
+            t('community.descriptionHint', { defaultValue: 'A short summary of what your community is about. Shown on the community profile.' }),
+          )}
+          <TextInput value={detailsDescription} onChangeText={setDetailsDescription} multiline numberOfLines={3} placeholder={t('community.descriptionPlaceholder', { defaultValue: 'Tell people what this community is about…' })} placeholderTextColor={c.textMuted} style={multilineStyle} />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          {fieldLabel(
+            t('community.rulesLabel', { defaultValue: 'Rules' }),
+            t('community.rulesHint', { defaultValue: 'Community guidelines members are expected to follow. Displayed on the community page.' }),
+          )}
+          <TextInput value={detailsRules} onChangeText={setDetailsRules} multiline numberOfLines={3} placeholder={t('community.rulesPlaceholder', { defaultValue: 'e.g. Be respectful. No spam. Stay on topic.' })} placeholderTextColor={c.textMuted} style={multilineStyle} />
+        </View>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
@@ -989,93 +1037,49 @@ export default function CommunityManagementDrawer({
   }
 
   function renderMembers() {
+    const query = usernameInput.trim().toLowerCase();
+    const filteredMembers = query
+      ? members.filter((row) => {
+          const username = (row.username || '').toLowerCase();
+          const name = (row.profile?.name || '').toLowerCase();
+          return username.includes(query) || name.includes(query);
+        })
+      : members;
+
     return (
       <>
-        <View style={{ padding: 16, gap: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
-          <TextInput
-            value={usernameInput}
-            onChangeText={setUsernameInput}
-            placeholder={t('community.manageUsernamePlaceholder', { defaultValue: 'Enter username' })}
-            placeholderTextColor={c.textMuted}
-            autoCapitalize="none"
-            style={{ borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: c.inputBackground, color: c.textPrimary }}
-          />
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setRemoveAlsoBan((prev) => !prev)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-          >
-            <MaterialCommunityIcons
-              name={removeAlsoBan ? 'checkbox-marked-outline' : 'checkbox-blank-outline'}
-              size={18}
-              color={removeAlsoBan ? c.primary : c.textMuted}
+        {/* Filter input */}
+        <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: c.inputBorder, borderRadius: 10, backgroundColor: c.inputBackground, paddingHorizontal: 10, gap: 8 }}>
+            <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
+            <TextInput
+              value={usernameInput}
+              onChangeText={setUsernameInput}
+              placeholder={t('community.memberSearchPlaceholder', { defaultValue: 'Search members…' })}
+              placeholderTextColor={c.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{ flex: 1, paddingVertical: 10, color: c.textPrimary }}
             />
-            <Text style={{ color: c.textSecondary, fontSize: 13, fontWeight: '600' }}>
-              {t('community.removeMemberAlsoBan', { defaultValue: 'Also ban user from this community' })}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            disabled={!usernameInput.trim() || busy}
-            onPress={() => void runRemoveMemberAction(usernameInput.trim().replace(/^@+/, ''), removeAlsoBan)}
-            style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: usernameInput.trim() && !busy ? c.primary : c.inputBackground }}
-          >
-            {busy ? <ActivityIndicator color="#fff" size="small" /> : (
-              <Text style={{ color: usernameInput.trim() && !busy ? '#fff' : c.textMuted, fontWeight: '700' }}>
-                {t('community.removeMemberAction', { defaultValue: 'Remove member' })}
-              </Text>
-            )}
-          </TouchableOpacity>
-          {userSuggestionsLoading ? (
-            <View style={{ paddingVertical: 6 }}>
-              <ActivityIndicator color={c.primary} size="small" />
-            </View>
-          ) : null}
-          {userSuggestions.length > 0 ? (
-            <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 10, overflow: 'hidden', backgroundColor: c.surface }}>
-              {userSuggestions.slice(0, 8).map((candidate) => {
-                const username = (candidate.username || '').trim();
-                if (!username) return null;
-                const candidateName = (candidate.profile?.name || '').trim();
-                const avatar = candidate.profile?.avatar || undefined;
-                const initial = (candidateName || username || '?')[0].toUpperCase();
-                return (
-                  <TouchableOpacity
-                    key={`member-candidate-${candidate.id}-${username}`}
-                    activeOpacity={0.82}
-                    onPress={() => {
-                      setUsernameInput(username);
-                      setUserSuggestions([]);
-                      setUserSuggestionsLoading(false);
-                    }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}
-                  >
-                    {avatar ? (
-                      <Image source={{ uri: avatar }} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.border }} />
-                    ) : (
-                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{initial}</Text>
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1} style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }}>
-                        {candidateName || `@${username}`}
-                      </Text>
-                      <Text numberOfLines={1} style={{ color: c.textMuted, fontSize: 12 }}>
-                        @{username}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : null}
+            {usernameInput.length > 0 ? (
+              <TouchableOpacity onPress={() => setUsernameInput('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <MaterialCommunityIcons name="close-circle" size={16} color={c.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
+
+        {/* Member list */}
         {members.length === 0 ? (
           <Text style={{ color: c.textMuted, padding: 16 }}>
             {t('community.noManageableMembers', { defaultValue: 'No removable members found.' })}
           </Text>
+        ) : filteredMembers.length === 0 ? (
+          <Text style={{ color: c.textMuted, padding: 16 }}>
+            {t('community.memberSearchNoResults', { defaultValue: 'No members match your search.' })}
+          </Text>
         ) : null}
-        {members.map((row) => renderUserRow(
+        {filteredMembers.map((row) => renderUserRow(
           row,
           () => {
             if (!row.username) return;

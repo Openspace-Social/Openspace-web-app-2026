@@ -158,6 +158,7 @@ export type UpdateAuthenticatedUserPayload = {
   followers_count_visible?: boolean;
   community_posts_visible?: boolean;
   visibility?: string;
+  translation_language_code?: string;
 };
 
 export type UpdateAuthenticatedUserSettingsPayload = {
@@ -258,6 +259,7 @@ export type FeedPost = {
   uuid?: string;
   text?: string;
   long_text?: string;
+  language?: { id: number; code: string; name: string };
   long_text_blocks?: unknown[];
   long_text_rendered_html?: string;
   long_text_version?: number;
@@ -266,6 +268,7 @@ export type FeedPost = {
   draft_expires_at?: string;
   is_pinned?: boolean;
   pinned_at?: string;
+  is_community_pinned?: boolean;
   comments_count?: number;
   reactions_emoji_counts?: Array<{
     count?: number;
@@ -436,6 +439,12 @@ export type ModerationCategory = {
   title: string;
   severity?: string;
   description?: string;
+};
+
+export type ModerationPenalty = {
+  id: number;
+  type: string;
+  expiration: string | null;
 };
 
 export type SearchUserResult = {
@@ -1000,6 +1009,13 @@ export const api = {
       method: 'PATCH',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify(payload),
+    }),
+
+  deleteAuthenticatedUser: (token: string, password: string) =>
+    request<string>('/api/auth/user/delete/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ password }),
     }),
 
   getNotificationSettings: (token: string) =>
@@ -2012,6 +2028,23 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }).then((post) => normalizePostPayload(post)),
 
+  pinCommunityPost: (token: string, communityName: string, postUuid: string) =>
+    request<FeedPost>(`/api/communities/${encodeURIComponent(communityName)}/posts/${encodeURIComponent(postUuid)}/pin/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }).then((post) => normalizePostPayload(post)),
+
+  unpinCommunityPost: (token: string, communityName: string, postUuid: string) =>
+    request<FeedPost>(`/api/communities/${encodeURIComponent(communityName)}/posts/${encodeURIComponent(postUuid)}/unpin/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }).then((post) => normalizePostPayload(post)),
+
+  getCommunityPinnedPosts: (token: string | null, communityName: string) =>
+    request<FeedPost[]>(`/api/communities/${encodeURIComponent(communityName)}/posts/pinned/`, {
+      headers: token ? { Authorization: `Token ${token}` } : {},
+    }).then((posts) => (Array.isArray(posts) ? posts.map(normalizePostPayload) : [])),
+
   getModerationCategories: (token: string) =>
     request<ModerationCategory[]>('/api/moderation/categories/', {
       headers: { Authorization: `Token ${token}` },
@@ -2093,6 +2126,18 @@ export const api = {
       method: 'DELETE',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  translatePost: (token: string, postUuid: string) =>
+    request<{ translated_text: string }>(`/api/posts/${encodeURIComponent(postUuid)}/translate/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  translatePostComment: (token: string, postUuid: string, commentId: number) =>
+    request<{ translated_text: string }>(
+      `/api/posts/${encodeURIComponent(postUuid)}/comments/${commentId}/translate/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } }
+    ),
 
   followUser: (token: string, username: string) =>
     request<unknown>('/api/follows/follow/', {
@@ -2557,5 +2602,31 @@ export const api = {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify({ category_id: categoryId, ...(description?.trim() ? { description: description.trim() } : {}) }),
+    }),
+
+  reportComment: (token: string, postUuid: string, commentId: number, categoryId: number, description?: string) =>
+    request<void>(`/api/posts/${encodeURIComponent(postUuid)}/comments/${commentId}/report/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ category_id: categoryId, ...(description?.trim() ? { description: description.trim() } : {}) }),
+    }),
+
+  reportCommunity: (token: string, communityName: string, categoryId: number, description?: string) =>
+    request<void>(`/api/communities/${encodeURIComponent(communityName)}/report/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ category_id: categoryId, ...(description?.trim() ? { description: description.trim() } : {}) }),
+    }),
+
+  reportHashtag: (token: string, hashtagName: string, categoryId: number, description?: string) =>
+    request<void>(`/api/hashtags/${encodeURIComponent(hashtagName)}/report/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ category_id: categoryId, ...(description?.trim() ? { description: description.trim() } : {}) }),
+    }),
+
+  getUserModerationPenalties: (token: string) =>
+    request<ModerationPenalty[]>('/api/moderation/user/penalties/', {
+      headers: { Authorization: `Token ${token}` },
     }),
 };

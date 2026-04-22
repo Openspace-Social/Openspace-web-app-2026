@@ -30,7 +30,6 @@ const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png'
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 
 type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
-type ProfileVisibility = 'P' | 'O' | 'T';
 type ActivityFilterKey = 'community' | 'public' | 'comments';
 
 type Props = {
@@ -66,6 +65,7 @@ type Props = {
   onUpdateProfile: (payload: UpdateAuthenticatedUserPayload) => Promise<void>;
   onUpdateProfileMedia: (payload: UpdateAuthenticatedUserMediaPayload) => Promise<void>;
   onNotice: (message: string) => void;
+  onOpenEditProfile: () => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
   isOwnProfile?: boolean;
   isProfileLoading?: boolean;
@@ -131,6 +131,7 @@ export default function MyProfileScreen({
   onUpdateProfile,
   onUpdateProfileMedia,
   onNotice,
+  onOpenEditProfile,
   renderPostCard,
   isOwnProfile = true,
   isProfileLoading = false,
@@ -184,17 +185,6 @@ export default function MyProfileScreen({
     return defaultVisible;
   }, []);
 
-  const [editProfileModalOpen, setEditProfileModalOpen] = React.useState(false);
-  const [detailsExpanded, setDetailsExpanded] = React.useState(false);
-  const [savingProfile, setSavingProfile] = React.useState(false);
-  const [editUsername, setEditUsername] = React.useState('');
-  const [editName, setEditName] = React.useState('');
-  const [editLocation, setEditLocation] = React.useState('');
-  const [editBio, setEditBio] = React.useState('');
-  const [editUrl, setEditUrl] = React.useState('');
-  const [editFollowersCountVisible, setEditFollowersCountVisible] = React.useState(true);
-  const [editCommunityPostsVisible, setEditCommunityPostsVisible] = React.useState(true);
-  const [editProfileVisibility, setEditProfileVisibility] = React.useState<ProfileVisibility>('P');
   const [avatarOptionsOpen, setAvatarOptionsOpen] = React.useState(false);
   const [avatarEditorOpen, setAvatarEditorOpen] = React.useState(false);
   const [avatarEditorUri, setAvatarEditorUri] = React.useState<string | null>(null);
@@ -269,21 +259,6 @@ export default function MyProfileScreen({
     ? resolveVisibility(user?.followers_count_visible, true)
     : hasResolvedFollowersCount;
 
-  const hydrateEditProfileState = React.useCallback(() => {
-    const nextVisibility: ProfileVisibility =
-      user?.visibility === 'O' || user?.visibility === 'T' || user?.visibility === 'P'
-        ? user.visibility
-        : 'P';
-    setEditUsername(user?.username || profileRouteUsername || '');
-    setEditName(user?.profile?.name || '');
-    setEditLocation(user?.profile?.location || '');
-    setEditBio(user?.profile?.bio || '');
-    setEditUrl(user?.profile?.url || '');
-    setEditFollowersCountVisible(resolveVisibility(user?.followers_count_visible, true));
-    setEditCommunityPostsVisible(resolveVisibility(user?.community_posts_visible, true));
-    setEditProfileVisibility(nextVisibility);
-  }, [profileRouteUsername, resolveVisibility, user]);
-
   React.useEffect(() => {
     setVisibleJoinedCommunities(9);
     setVisibleFollowings(9);
@@ -336,17 +311,6 @@ export default function MyProfileScreen({
     myFollowingsLoadingMore,
     onLoadMoreFollowings,
   ]);
-
-  function openEditProfileModal() {
-    hydrateEditProfileState();
-    setDetailsExpanded(false);
-    setEditProfileModalOpen(true);
-  }
-
-  function closeEditProfileModal() {
-    if (savingProfile) return;
-    setEditProfileModalOpen(false);
-  }
 
   function openAvatarOptions() {
     setAvatarOptionsOpen(true);
@@ -550,26 +514,6 @@ export default function MyProfileScreen({
       setCoverEditorOpen(false);
     } finally {
       setCoverSaving(false);
-    }
-  }
-
-  async function submitEditProfile() {
-    if (savingProfile) return;
-    setSavingProfile(true);
-    try {
-      await onUpdateProfile({
-        username: editUsername.trim() || undefined,
-        name: editName.trim() || undefined,
-        location: editLocation.trim() || undefined,
-        bio: editBio.trim() || undefined,
-        url: editUrl.trim() || undefined,
-        followers_count_visible: !!editFollowersCountVisible,
-        community_posts_visible: !!editCommunityPostsVisible,
-        visibility: editProfileVisibility,
-      });
-      setEditProfileModalOpen(false);
-    } finally {
-      setSavingProfile(false);
     }
   }
 
@@ -927,303 +871,33 @@ export default function MyProfileScreen({
         </Pressable>
       </Modal>
 
-      <Modal
-        visible={isOwnProfile && editProfileModalOpen}
-        animationType="fade"
-        transparent
-        onRequestClose={closeEditProfileModal}
-      >
-        <Pressable style={styles.profileEditModalBackdrop} onPress={closeEditProfileModal}>
-          <Pressable
-            style={[
-              styles.profileEditModalCard,
-              { backgroundColor: c.surface, borderColor: c.border },
-            ]}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <ScrollView
-              style={styles.profileEditModalScroll}
-              contentContainerStyle={styles.profileEditModalScrollContent}
-              showsVerticalScrollIndicator
+      <View style={{ position: 'relative' }}>
+        <View style={[styles.profileCoverWrap, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+          {coverDisplayUri ? (
+            <Image
+              source={{ uri: coverDisplayUri }}
+              style={styles.profileCoverImage}
+              resizeMode="cover"
+            />
+          ) : isProfileLoading ? (
+            <View
+              style={[
+                styles.profileCoverImage,
+                { backgroundColor: c.inputBackground, alignItems: 'center', justifyContent: 'center' },
+              ]}
             >
-              <TouchableOpacity
-                style={[styles.profileEditOptionRow, { borderColor: c.border }]}
-                activeOpacity={0.85}
-                onPress={() => setDetailsExpanded((prev) => !prev)}
-              >
-                <View style={styles.profileEditOptionIcon}>
-                  <MaterialCommunityIcons name="pencil-outline" size={21} color={c.textSecondary} />
-                </View>
-                <View style={styles.profileEditOptionTextWrap}>
-                  <Text style={[styles.profileEditOptionTitle, { color: c.textPrimary }]}>
-                    {t('home.profileEditDetailsTitle', { defaultValue: 'Details' })}
-                  </Text>
-                  <Text style={[styles.profileEditOptionSubtitle, { color: c.textSecondary }]}>
-                    {t('home.profileEditDetailsSubtitle', {
-                      defaultValue: 'Change your username, name, url, location, avatar or cover photo.',
-                    })}
-                  </Text>
-                </View>
-                <MaterialCommunityIcons
-                  name={detailsExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color={c.textMuted}
-                />
-              </TouchableOpacity>
-
-              {detailsExpanded ? (
-                <View style={[styles.profileEditDetailsGroup, { borderColor: c.border }]}>
-                  <View style={styles.profileEditField}>
-                    <Text style={[styles.profileEditFieldLabel, { color: c.textSecondary }]}>
-                      {t('auth.username', { defaultValue: 'Username' })}
-                    </Text>
-                    <TextInput
-                      value={editUsername}
-                      onChangeText={setEditUsername}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      style={[styles.profileEditInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      placeholderTextColor={c.textMuted}
-                      placeholder={t('auth.usernamePlaceholder', { defaultValue: 'Enter your username' })}
-                    />
-                  </View>
-                  <View style={styles.profileEditField}>
-                    <Text style={[styles.profileEditFieldLabel, { color: c.textSecondary }]}>
-                      {t('home.profileNameLabel', { defaultValue: 'Name' })}
-                    </Text>
-                    <TextInput
-                      value={editName}
-                      onChangeText={setEditName}
-                      style={[styles.profileEditInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      placeholderTextColor={c.textMuted}
-                      placeholder={t('home.profileNamePlaceholder', { defaultValue: 'Enter your name' })}
-                    />
-                  </View>
-                  <View style={styles.profileEditField}>
-                    <Text style={[styles.profileEditFieldLabel, { color: c.textSecondary }]}>
-                      {t('home.profileLocationLabel', { defaultValue: 'Location' })}
-                    </Text>
-                    <TextInput
-                      value={editLocation}
-                      onChangeText={setEditLocation}
-                      style={[styles.profileEditInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      placeholderTextColor={c.textMuted}
-                      placeholder={t('home.profileLocationPlaceholder', { defaultValue: 'Enter your location' })}
-                    />
-                  </View>
-                  <View style={styles.profileEditField}>
-                    <Text style={[styles.profileEditFieldLabel, { color: c.textSecondary }]}>
-                      {t('home.profileUrlLabel', { defaultValue: 'URL' })}
-                    </Text>
-                    <TextInput
-                      value={editUrl}
-                      onChangeText={setEditUrl}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      style={[styles.profileEditInput, { color: c.textPrimary, borderColor: c.border, backgroundColor: c.inputBackground }]}
-                      placeholderTextColor={c.textMuted}
-                      placeholder={t('home.profileUrlPlaceholder', { defaultValue: 'Enter your URL' })}
-                    />
-                  </View>
-                  <View style={styles.profileEditField}>
-                    <Text style={[styles.profileEditFieldLabel, { color: c.textSecondary }]}>
-                      {t('home.profileBioLabel', { defaultValue: 'Bio' })}
-                    </Text>
-                    <TextInput
-                      value={editBio}
-                      onChangeText={setEditBio}
-                      multiline
-                      numberOfLines={8}
-                      style={[
-                        styles.profileEditInput,
-                        styles.profileEditTextarea,
-                        { color: c.textPrimary, borderColor: c.border, backgroundColor: c.inputBackground },
-                      ]}
-                      placeholderTextColor={c.textMuted}
-                      placeholder={t('home.profileBioPlaceholder', { defaultValue: 'Tell people about yourself' })}
-                    />
-                  </View>
-                </View>
-              ) : null}
-
-              <View style={[styles.profileEditOptionRow, { borderColor: c.border }]}>
-                <View style={styles.profileEditOptionIcon}>
-                  <MaterialCommunityIcons name="account-group-outline" size={21} color={c.textSecondary} />
-                </View>
-                <View style={styles.profileEditOptionTextWrap}>
-                  <Text style={[styles.profileEditOptionTitle, { color: c.textPrimary }]}>
-                    {t('home.profileFollowersCountTitle', { defaultValue: 'Followers count' })}
-                  </Text>
-                  <Text style={[styles.profileEditOptionSubtitle, { color: c.textSecondary }]}>
-                    {t('home.profileFollowersCountSubtitle', {
-                      defaultValue: 'Display the number of people that follow you, on your profile.',
-                    })}
-                  </Text>
-                </View>
-                <Switch
-                  value={editFollowersCountVisible}
-                  onValueChange={setEditFollowersCountVisible}
-                  thumbColor="#ffffff"
-                  trackColor={{ false: '#b8c2d3', true: c.primary }}
-                />
-              </View>
-
-              <View style={[styles.profileEditOptionRow, { borderColor: c.border }]}>
-                <View style={styles.profileEditOptionIcon}>
-                  <MaterialCommunityIcons name="share-variant-outline" size={21} color={c.textSecondary} />
-                </View>
-                <View style={styles.profileEditOptionTextWrap}>
-                  <Text style={[styles.profileEditOptionTitle, { color: c.textPrimary }]}>
-                    {t('home.profileCommunityPostsTitle', { defaultValue: 'Community posts' })}
-                  </Text>
-                  <Text style={[styles.profileEditOptionSubtitle, { color: c.textSecondary }]}>
-                    {t('home.profileCommunityPostsSubtitle', {
-                      defaultValue: 'Display posts you share with public communities, on your profile.',
-                    })}
-                  </Text>
-                </View>
-                <Switch
-                  value={editCommunityPostsVisible}
-                  onValueChange={setEditCommunityPostsVisible}
-                  thumbColor="#ffffff"
-                  trackColor={{ false: '#b8c2d3', true: c.primary }}
-                />
-              </View>
-
-              <View style={styles.profileEditVisibilitySection}>
-                <Text style={[styles.profileEditVisibilityHeading, { color: c.textPrimary }]}>
-                  {t('home.profileVisibilityTitle', { defaultValue: 'Visibility' })}
-                </Text>
-                {[
-                  {
-                    value: 'P' as ProfileVisibility,
-                    icon: 'earth',
-                    title: t('home.profileVisibilityPublicTitle', { defaultValue: 'Public' }),
-                    subtitle: t('home.profileVisibilityPublicSubtitle', {
-                      defaultValue: 'Everyone on the internet can see your profile.',
-                    }),
-                  },
-                  {
-                    value: 'O' as ProfileVisibility,
-                    icon: 'account-group-outline',
-                    title: t('home.profileVisibilityOkunaTitle', { defaultValue: 'Openspace' }),
-                    subtitle: t('home.profileVisibilityOkunaSubtitle', {
-                      defaultValue: 'Only members of Openspace can see your profile.',
-                    }),
-                  },
-                  {
-                    value: 'T' as ProfileVisibility,
-                    icon: 'lock-outline',
-                    title: t('home.profileVisibilityPrivateTitle', { defaultValue: 'Private' }),
-                    subtitle: t('home.profileVisibilityPrivateSubtitle', {
-                      defaultValue: 'Only people you approve can see your profile.',
-                    }),
-                  },
-                ].map((option) => {
-                  const selected = editProfileVisibility === option.value;
-                  return (
-                    <Pressable
-                      key={`profile-visibility-${option.value}`}
-                      style={[
-                        styles.profileEditOptionRow,
-                        selected ? styles.profileEditOptionRowSelected : null,
-                        {
-                          borderColor: selected ? c.primary : c.border,
-                          backgroundColor: selected ? c.surface : 'transparent',
-                        },
-                      ]}
-                      onPress={() => setEditProfileVisibility(option.value)}
-                    >
-                      <View style={styles.profileEditOptionIcon}>
-                        <MaterialCommunityIcons name={option.icon as any} size={21} color={c.textSecondary} />
-                      </View>
-                      <View style={styles.profileEditOptionTextWrap}>
-                        <Text style={[styles.profileEditOptionTitle, { color: c.textPrimary }]}>
-                          {option.title}
-                        </Text>
-                        <Text style={[styles.profileEditOptionSubtitle, { color: c.textSecondary }]}>
-                          {option.subtitle}
-                        </Text>
-                      </View>
-                      <View style={styles.profileEditVisibilityCheckWrap}>
-                        <MaterialCommunityIcons
-                          name={selected ? 'radiobox-marked' : 'radiobox-blank'}
-                          size={26}
-                          color={selected ? c.primary : c.textMuted}
-                        />
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <View style={[styles.profileEditModalActions, { borderTopColor: c.border }]}>
-              <TouchableOpacity
-                style={[styles.profileEditModalButton, { backgroundColor: c.inputBackground, borderColor: c.border }]}
-                activeOpacity={0.85}
-                onPress={closeEditProfileModal}
-                disabled={savingProfile}
-              >
-                <Text style={[styles.profileEditModalButtonText, { color: c.textPrimary }]}>
-                  {t('home.cancelAction', { defaultValue: 'Cancel' })}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.profileEditModalButton, { backgroundColor: c.primary }]}
-                activeOpacity={0.85}
-                onPress={submitEditProfile}
-                disabled={savingProfile}
-              >
-                {savingProfile ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.profileEditModalButtonTextPrimary}>
-                    {t('home.saveAction', { defaultValue: 'Save' })}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              <ActivityIndicator color={c.primary} size="small" />
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          ) : (
+            <Image
+              source={DEFAULT_PROFILE_COVER}
+              style={styles.profileCoverImage}
+              resizeMode="cover"
+            />
+          )}
+        </View>
 
-      <View style={[styles.profileCoverWrap, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
-        {coverDisplayUri ? (
-          <Image
-            source={{ uri: coverDisplayUri }}
-            style={styles.profileCoverImage}
-            resizeMode="cover"
-          />
-        ) : isProfileLoading ? (
-          <View
-            style={[
-              styles.profileCoverImage,
-              { backgroundColor: c.inputBackground, alignItems: 'center', justifyContent: 'center' },
-            ]}
-          >
-            <ActivityIndicator color={c.primary} size="small" />
-          </View>
-        ) : (
-          <Image
-            source={DEFAULT_PROFILE_COVER}
-            style={styles.profileCoverImage}
-            resizeMode="cover"
-          />
-        )}
-        {isOwnProfile ? (
-          <Pressable
-            style={[styles.profileCoverAction, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={openCoverOptions}
-            hitSlop={8}
-          >
-            <MaterialCommunityIcons name="camera-outline" size={15} color={c.textSecondary} />
-            <Text style={[styles.profileCoverActionText, { color: c.textPrimary }]}>{t('home.profileEditCoverAction')}</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View style={[styles.profileIdentityRow, isCompactProfileLayout ? styles.profileIdentityRowCompact : null]}>
+        <View style={[styles.profileIdentityRow, isCompactProfileLayout ? styles.profileIdentityRowCompact : null]}>
         <View style={[styles.profileIdentityLeft, isCompactProfileLayout ? styles.profileIdentityLeftCompact : null]}>
           <View style={styles.profileAvatarActionWrap}>
             <View style={[styles.profileAvatarWrap, { borderColor: c.surface, backgroundColor: c.primary }]}>
@@ -1351,7 +1025,7 @@ export default function MyProfileScreen({
             <TouchableOpacity
               style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
               activeOpacity={0.85}
-              onPress={openEditProfileModal}
+              onPress={onOpenEditProfile}
             >
               <MaterialCommunityIcons name="pencil-outline" size={16} color={c.textSecondary} />
               <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>{t('home.profileEditProfileAction')}</Text>
@@ -1551,6 +1225,20 @@ export default function MyProfileScreen({
           onUnblock={() => onUnblockUser?.(user?.username || profileRouteUsername)}
           onReport={(catId, desc) => onReportUser?.(user?.username || profileRouteUsername, catId, desc)}
         />
+      </View>
+
+        {isOwnProfile ? (
+          <TouchableOpacity
+            style={[styles.profileCoverAction, { backgroundColor: c.surface, borderColor: c.border }]}
+            activeOpacity={0.85}
+            onPress={openCoverOptions}
+          >
+            <MaterialCommunityIcons name="camera-outline" size={16} color={c.textSecondary} />
+            <Text numberOfLines={1} style={[styles.profileCoverActionText, { color: c.textSecondary }]}>
+              {t('home.profileEditCoverAction')}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={[styles.profileTabsRow, { borderTopColor: c.border }]}>

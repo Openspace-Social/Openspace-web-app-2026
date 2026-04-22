@@ -62,6 +62,7 @@ import MutedCommunitiesScreen from './MutedCommunitiesScreen';
 import SettingsScreen from './SettingsScreen';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
+import EditProfileDrawer from '../components/EditProfileDrawer';
 import MentionHashtagInput from '../components/MentionHashtagInput';
 import { useAppToast } from '../toast/AppToastContext';
 import {
@@ -610,6 +611,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [communityRouteError, setCommunityRouteError] = useState('');
   const [communityRoutePosterFilterUsername, setCommunityRoutePosterFilterUsername] = useState<string | null>(null);
   const [communityInfo, setCommunityInfo] = useState<SearchCommunityResult | null>(null);
+  const [communityPinnedPosts, setCommunityPinnedPosts] = useState<FeedPost[]>([]);
+  const [communityPinnedPostsLoading, setCommunityPinnedPostsLoading] = useState(false);
   const [communityInfoLoading, setCommunityInfoLoading] = useState(false);
   const [communityJoinLoading, setCommunityJoinLoading] = useState(false);
   const [communityPendingJoinRequest, setCommunityPendingJoinRequest] = useState(false);
@@ -626,6 +629,19 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [communityMembersNextMaxId, setCommunityMembersNextMaxId] = useState<number | undefined>(undefined);
   const [communityManageDrawerOpen, setCommunityManageDrawerOpen] = useState(false);
   const [communityManageTarget, setCommunityManageTarget] = useState<SearchCommunityResult | null>(null);
+
+  // ── Edit profile drawer ───────────────────────────────────────────────────
+  const [editProfileDrawerOpen, setEditProfileDrawerOpen] = useState(false);
+  const [editProfileSaving, setEditProfileSaving] = useState(false);
+  const [editUsername, setEditUsername] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [editFollowersCountVisible, setEditFollowersCountVisible] = useState(true);
+  const [editCommunityPostsVisible, setEditCommunityPostsVisible] = useState(true);
+  const [editProfileVisibility, setEditProfileVisibility] = useState<'P' | 'O' | 'T'>('P');
+
   const [communityRouteRefreshKey, setCommunityRouteRefreshKey] = useState(0);
   const [manageCommunitiesRefreshKey, setManageCommunitiesRefreshKey] = useState(0);
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
@@ -700,6 +716,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [moderationCategories, setModerationCategories] = useState<ModerationCategory[]>([]);
   const [reportPostTarget, setReportPostTarget] = useState<FeedPost | null>(null);
   const [reportingPost, setReportingPost] = useState(false);
+  type ReportTarget =
+    | { kind: 'comment'; postUuid: string; commentId: number }
+    | { kind: 'community'; communityName: string; displayName?: string };
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [reportingItem, setReportingItem] = useState(false);
+  const [suspensionExpiry, setSuspensionExpiry] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
@@ -811,40 +833,37 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const blockedUsersDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const menuDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const menuDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  // Whether the user has a password set at all — drives "Set password" vs "Change password" title.
   const resolvedHasUsablePassword = React.useMemo(() => {
+    const usableRaw = user?.has_usable_password;
+    if (typeof usableRaw === 'boolean') return usableRaw;
+    if (typeof usableRaw === 'number') return usableRaw !== 0;
+    if (typeof usableRaw === 'string') {
+      const normalized = usableRaw.trim().toLowerCase();
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+      if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    }
+    // Safe fallback: prefer set-password flow if unknown.
+    return false;
+  }, [user?.has_usable_password]);
+
+  // Whether the change-password form must ask for the current password.
+  // Social auth users don't need to supply it even if they have one set,
+  // because the API deliberately omits this requirement for them.
+  const effectiveRequiresCurrentPassword = React.useMemo(() => {
     const requiresRaw = user?.requires_current_password;
     if (typeof requiresRaw === 'boolean') return requiresRaw;
     if (typeof requiresRaw === 'number') return requiresRaw !== 0;
     if (typeof requiresRaw === 'string') {
-      const normalizedRequires = requiresRaw.trim().toLowerCase();
-      if (normalizedRequires === 'false' || normalizedRequires === '0' || normalizedRequires === 'no') return false;
-      if (normalizedRequires === 'true' || normalizedRequires === '1' || normalizedRequires === 'yes') return true;
+      const normalized = requiresRaw.trim().toLowerCase();
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+      if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
     }
-
-    const usableRaw = user?.has_usable_password;
-    if (typeof usableRaw === 'boolean') {
-      return linkedIdentities.length > 0 ? false : usableRaw;
-    }
-    if (typeof usableRaw === 'number') {
-      return linkedIdentities.length > 0 ? false : usableRaw !== 0;
-    }
-    if (typeof usableRaw === 'string') {
-      const normalizedUsable = usableRaw.trim().toLowerCase();
-      if (normalizedUsable === 'false' || normalizedUsable === '0' || normalizedUsable === 'no') return false;
-      if (normalizedUsable === 'true' || normalizedUsable === '1' || normalizedUsable === 'yes') {
-        return linkedIdentities.length > 0 ? false : true;
-      }
-    }
-
-    // Safe fallback: prefer set-password flow if unknown.
-    return false;
-  }, [linkedIdentities.length, user?.has_usable_password, user?.requires_current_password]);
-
-  const effectiveRequiresCurrentPassword = React.useMemo(() => {
-    if (resolvedHasUsablePassword) return true;
+    // passwordInitializedOverride: set when the user sets a password in this session.
     if (passwordInitializedOverride) return true;
-    return false;
-  }, [passwordInitializedOverride, resolvedHasUsablePassword]);
+    // Fallback: if no API signal, require it whenever they have a password and no social identity.
+    return resolvedHasUsablePassword && linkedIdentities.length === 0;
+  }, [user?.requires_current_password, passwordInitializedOverride, resolvedHasUsablePassword, linkedIdentities.length]);
 
   useEffect(() => {
     const userId = user?.id;
@@ -1139,10 +1158,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     };
   }, [token]);
 
-  // Keep feedNewestIdRef in sync with the current top post
+  // Keep feedNewestIdRef in sync with the highest post ID currently loaded.
+  // We use the max ID across all posts (not just feedPosts[0]) because non-home
+  // feeds (trending, public, explore) are sorted by score/popularity — their top
+  // post is not necessarily the newest by ID. Using feedPosts[0].id on those feeds
+  // caused false-positive "new posts available" banners, since posts already in the
+  // list with higher IDs would be returned by the minId poll.
   useEffect(() => {
-    const id = feedPosts[0]?.id;
-    if (typeof id === 'number') feedNewestIdRef.current = id;
+    if (feedPosts.length === 0) return;
+    const maxId = feedPosts.reduce((max, p) => (p.id > max ? p.id : max), feedPosts[0].id);
+    if (typeof maxId === 'number') feedNewestIdRef.current = maxId;
   }, [feedPosts]);
 
   // Keep activeFeedRef in sync so the poller always sees the current feed
@@ -1694,6 +1719,20 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setModerationCategories([]);
       });
 
+    api.getUserModerationPenalties(token)
+      .then((penalties) => {
+        if (!active) return;
+        const now = new Date();
+        const active_penalty = (penalties || []).find(
+          (p) => p.expiration && new Date(p.expiration) > now
+        );
+        setSuspensionExpiry(active_penalty?.expiration ?? null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSuspensionExpiry(null);
+      });
+
     return () => {
       active = false;
     };
@@ -1999,16 +2038,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setCommunityMembersLoading(true);
       setCommunityRouteError('');
       try {
-        const [posts, info, owner, members] = await Promise.all([
+        const [posts, info, owner, members, pinnedPosts] = await Promise.all([
           api.getCommunityPosts(token, routeCommunityName, 20),
           api.getCommunity(token, routeCommunityName).catch(() => null),
           api.getCommunityOwner(token, routeCommunityName).catch(() => null),
           api.getCommunityMembers(token, routeCommunityName, 9).catch(() => []),
+          api.getCommunityPinnedPosts(token, routeCommunityName).catch(() => []),
         ]);
         if (!cancelled) {
           const safePosts = Array.isArray(posts) ? posts : [];
           const safeMembers = Array.isArray(members) ? (members as CommunityMember[]) : [];
           setCommunityRoutePosts(safePosts);
+          setCommunityPinnedPosts(Array.isArray(pinnedPosts) ? pinnedPosts : []);
           setCommunityInfo(info);
           setCommunityPendingJoinRequest(!!info?.is_pending_join_request);
           setCommunityTimelineMuted(!!info?.is_timeline_muted);
@@ -2038,6 +2079,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
 
     setCommunityInfo(null);
+    setCommunityPinnedPosts([]);
     setCommunityNotifEnabled(null);
     setCommunityOwner(null);
     setCommunityMembers([]);
@@ -3070,6 +3112,84 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
+  async function toggleCommunityPinPost(post: FeedPost) {
+    if (!post.uuid || !communityInfo?.name) {
+      setError(t('home.postPinUnavailable', { defaultValue: 'Unable to pin this post.' }));
+      return;
+    }
+    const communityName = communityInfo.name;
+    try {
+      const currentlyPinned = !!post.is_community_pinned;
+      const updated = currentlyPinned
+        ? await api.unpinCommunityPost(token, communityName, post.uuid)
+        : await api.pinCommunityPost(token, communityName, post.uuid);
+
+      const nextPinned =
+        typeof updated?.is_community_pinned === 'boolean' ? updated.is_community_pinned : !currentlyPinned;
+
+      // Patch the post in all feed lists so the badge updates immediately
+      applyPostPatch(post.id, (current) => ({
+        ...current,
+        is_community_pinned: nextPinned,
+      }));
+
+      // Update the community pinned posts sidebar list
+      setCommunityPinnedPosts((prev) => {
+        const without = prev.filter((item) => item.id !== post.id);
+        if (!nextPinned) return without;
+        return [{ ...post, is_community_pinned: true }, ...without];
+      });
+
+      setNotice(
+        nextPinned
+          ? t('home.communityPostPinnedSuccess', { defaultValue: 'Post pinned to community.' })
+          : t('home.communityPostUnpinnedSuccess', { defaultValue: 'Post unpinned from community.' }),
+      );
+    } catch (e: any) {
+      setError(e?.message || t('home.postPinFailed', { defaultValue: 'Failed to update pin.' }));
+      throw e;
+    }
+  }
+
+  function openEditProfileDrawer() {
+    const vis = user?.visibility === 'O' || user?.visibility === 'T' || user?.visibility === 'P'
+      ? user.visibility as 'P' | 'O' | 'T'
+      : 'P';
+    setEditUsername(user?.username || '');
+    setEditName(user?.profile?.name || '');
+    setEditLocation(user?.profile?.location || '');
+    setEditBio(user?.profile?.bio || '');
+    setEditUrl(user?.profile?.url || '');
+    setEditFollowersCountVisible(
+      user?.followers_count_visible === false ? false : true
+    );
+    setEditCommunityPostsVisible(
+      user?.community_posts_visible === false ? false : true
+    );
+    setEditProfileVisibility(vis);
+    setEditProfileDrawerOpen(true);
+  }
+
+  async function submitEditProfile() {
+    if (editProfileSaving) return;
+    setEditProfileSaving(true);
+    try {
+      await updateMyProfile({
+        username: editUsername.trim() || undefined,
+        name: editName.trim() || undefined,
+        location: editLocation.trim() || undefined,
+        bio: editBio.trim() || undefined,
+        url: editUrl.trim() || undefined,
+        followers_count_visible: !!editFollowersCountVisible,
+        community_posts_visible: !!editCommunityPostsVisible,
+        visibility: editProfileVisibility,
+      });
+      setEditProfileDrawerOpen(false);
+    } finally {
+      setEditProfileSaving(false);
+    }
+  }
+
   async function updateMyProfile(payload: UpdateAuthenticatedUserPayload) {
     const profilePayload = {
       ...(payload.name !== undefined ? { name: payload.name } : {}),
@@ -3299,6 +3419,37 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   function closeReportPostModal() {
     if (reportingPost) return;
     setReportPostTarget(null);
+  }
+
+  function openCommentReportModal(postUuid: string, commentId: number) {
+    setReportTarget({ kind: 'comment', postUuid, commentId });
+  }
+
+  function openCommunityReportModal(communityName: string, displayName?: string) {
+    setReportTarget({ kind: 'community', communityName, displayName });
+  }
+
+  function closeReportModal() {
+    if (reportingItem) return;
+    setReportTarget(null);
+  }
+
+  async function submitGenericReport(categoryId: number) {
+    if (!reportTarget) return;
+    setReportingItem(true);
+    try {
+      if (reportTarget.kind === 'comment') {
+        await api.reportComment(token, reportTarget.postUuid, reportTarget.commentId, categoryId);
+      } else if (reportTarget.kind === 'community') {
+        await api.reportCommunity(token, reportTarget.communityName, categoryId);
+      }
+      setNotice(t('home.reportSuccess', { defaultValue: 'Reported, thanks!' }));
+      setReportTarget(null);
+    } catch (e: any) {
+      setError(e?.message || t('home.reportFailed', { defaultValue: 'Could not submit report right now.' }));
+    } finally {
+      setReportingItem(false);
+    }
   }
 
   async function submitPostReport(categoryName: ReportablePostCategoryName) {
@@ -5274,7 +5425,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     post: FeedPost,
     variant: 'feed' | 'profile' = 'feed',
     pinnedPostsSource: FeedPost[] = myPinnedPosts,
-    options?: { allowExpandControl?: boolean }
+    options?: { allowExpandControl?: boolean; onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void> }
   ) {
     const PIN_LIMIT = 5;
     const pinnedIndex = pinnedPostsSource.findIndex((item) => item.id === post.id);
@@ -5337,6 +5488,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onSubmitComment={submitComment}
         onSubmitReply={submitReply}
         onOpenReportPostModal={openReportPostModal}
+        onReportComment={openCommentReportModal}
         onEditPost={editPost}
         onOpenLongPostEdit={openLongPostEdit}
         onDeletePost={deletePost}
@@ -5359,6 +5511,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         autoPlayMedia={autoPlayMedia}
         isPostDetailOpen={!!activePost}
         allowExpandControl={options?.allowExpandControl ?? true}
+        onToggleCommunityPinPost={options?.onToggleCommunityPinPost}
+        translationLanguageCode={(user as any)?.translation_language?.code}
       />
     );
   }
@@ -5921,6 +6075,31 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         token={token}
         inviterName={user?.profile?.name || user?.username}
         onClose={() => setInviteDrawerOpen(false)}
+      />
+
+      <EditProfileDrawer
+        visible={editProfileDrawerOpen}
+        onClose={() => setEditProfileDrawerOpen(false)}
+        c={c}
+        t={t}
+        editUsername={editUsername}
+        setEditUsername={setEditUsername}
+        editName={editName}
+        setEditName={setEditName}
+        editLocation={editLocation}
+        setEditLocation={setEditLocation}
+        editBio={editBio}
+        setEditBio={setEditBio}
+        editUrl={editUrl}
+        setEditUrl={setEditUrl}
+        editFollowersCountVisible={editFollowersCountVisible}
+        setEditFollowersCountVisible={setEditFollowersCountVisible}
+        editCommunityPostsVisible={editCommunityPostsVisible}
+        setEditCommunityPostsVisible={setEditCommunityPostsVisible}
+        editProfileVisibility={editProfileVisibility}
+        setEditProfileVisibility={setEditProfileVisibility}
+        savingProfile={editProfileSaving}
+        onSave={submitEditProfile}
       />
 
       <CommunityManagementDrawer
@@ -7290,6 +7469,87 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         </TouchableOpacity>
       </Modal>
 
+      {/* ── Generic report modal (comments, communities) ──────────── */}
+      <Modal
+        visible={!!reportTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={closeReportModal}
+      >
+        <TouchableOpacity style={styles.reactionListBackdrop} activeOpacity={1} onPress={closeReportModal}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={[styles.reportModalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <View style={styles.linkedModalHeader}>
+                <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                  {reportTarget?.kind === 'community'
+                    ? t('home.reportCommunityTitle', { defaultValue: 'Report community' })
+                    : t('home.reportCommentTitle', { defaultValue: 'Report comment' })}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                  onPress={closeReportModal}
+                  activeOpacity={0.85}
+                  disabled={reportingItem}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.reportModalSubtitle, { color: c.textMuted }]}>
+                {reportTarget?.kind === 'community'
+                  ? t('home.reportCommunityPrompt', { defaultValue: 'Why are you reporting this community?' })
+                  : t('home.reportCommentPrompt', { defaultValue: 'Why are you reporting this comment?' })}
+              </Text>
+
+              <ScrollView
+                style={styles.reportOptionScroll}
+                contentContainerStyle={styles.reportOptionList}
+                showsVerticalScrollIndicator
+              >
+                {moderationCategories.map((cat) => {
+                  const normalizedName = normalizeModerationLabel(cat.name);
+                  const normalizedTitle = normalizeModerationLabel(cat.title);
+                  const match = (s: string) => normalizedName.includes(s) || normalizedTitle.includes(s);
+                  let i18nKey: string | null = null;
+                  if (match('spam')) i18nKey = 'spam';
+                  else if (match('copyright') || match('trademark')) i18nKey = 'copyright';
+                  else if (match('platform abuse') || match('abuse')) i18nKey = 'abuse';
+                  else if (match('pornograph')) i18nKey = 'pornography';
+                  else if (match('guideline')) i18nKey = 'guidelines';
+                  else if (match('hatred') || match('bullying')) i18nKey = 'hatred';
+                  else if (match('self harm')) i18nKey = 'selfHarm';
+                  else if (match('violent') || match('gory')) i18nKey = 'violent';
+                  else if (match('child') || match('csam') || match('exploitation')) i18nKey = 'csam';
+                  else if (match('illegal') || match('drug')) i18nKey = 'illegal';
+                  else if (match('deceptive')) i18nKey = 'deceptive';
+                  else if (match('other')) i18nKey = 'other';
+                  const displayTitle = i18nKey
+                    ? t(`home.reportCategory.${i18nKey}.title`)
+                    : cat.title || cat.name;
+                  const displayDesc = i18nKey
+                    ? t(`home.reportCategory.${i18nKey}.description`)
+                    : cat.description || '';
+                  return (
+                    <TouchableOpacity
+                      key={`report-generic-${cat.id}`}
+                      style={[styles.reportOptionCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.85}
+                      onPress={() => void submitGenericReport(cat.id)}
+                      disabled={reportingItem}
+                    >
+                      <Text style={[styles.reportOptionTitle, { color: c.textPrimary }]}>{displayTitle}</Text>
+                      <Text style={[styles.reportOptionDescription, { color: c.textMuted }]}>{displayDesc}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {reportingItem ? <ActivityIndicator color={c.primary} size="small" /> : null}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* ── Change communities modal ─────────────────────────────── */}
       <Modal
         visible={!!moveCommunitiesPost}
@@ -7666,6 +7926,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onUpdateProfile={updateMyProfile}
                 onUpdateProfileMedia={updateMyProfileMedia}
                 onNotice={setNotice}
+                onOpenEditProfile={openEditProfileDrawer}
                 renderPostCard={(post, variant) => renderPostCard(post, variant, myPinnedPosts)}
                 isOwnProfile
                 isProfileLoading={false}
@@ -7764,6 +8025,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 isTimelineMuted={communityTimelineMuted}
                 muteLoading={communityMuteLoading}
                 canManageCommunity={canManageCurrentCommunity}
+                communityPinnedPosts={communityPinnedPosts}
+                communityPinnedPostsLoading={communityPinnedPostsLoading}
+                onToggleCommunityPinPost={canManageCurrentCommunity ? toggleCommunityPinPost : undefined}
                 onJoin={() => void handleJoinCommunity()}
                 onLeave={() => requestLeaveCommunity()}
                 onToggleNotifications={() => void handleToggleCommunityNotifications()}
@@ -7775,7 +8039,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   setCommunityManageDrawerOpen(true);
                 }}
                 onOpenProfile={(username) => onNavigate({ screen: 'profile', username })}
-                renderPostCard={renderPostCard}
+                onReportCommunity={communityInfo?.name ? () => openCommunityReportModal(communityInfo.name!, communityInfo.title) : undefined}
+                renderPostCard={(post, variant) =>
+                  renderPostCard(post, variant, myPinnedPosts, {
+                    onToggleCommunityPinPost: canManageCurrentCommunity ? toggleCommunityPinPost : undefined,
+                  })
+                }
               />
             ) : null}
 
@@ -7877,8 +8146,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               <SettingsScreen
                 c={c}
                 t={t}
+                token={token}
                 currentEmail={user?.email || ''}
-                hasUsablePassword={effectiveRequiresCurrentPassword}
+                hasUsablePassword={resolvedHasUsablePassword || passwordInitializedOverride}
+                requiresCurrentPassword={effectiveRequiresCurrentPassword}
                 autoPlayMedia={autoPlayMedia}
                 onToggleAutoPlayMedia={() => {
                   void handleToggleAutoPlayMedia();
@@ -7891,6 +8162,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onConfirmEmailChange={handleConfirmEmailChange}
                 onGetNotificationSettings={() => api.getNotificationSettings(token)}
                 onUpdateNotificationSettings={(patch) => api.updateNotificationSettings(token, patch)}
+                onDeleteAccount={() => onLogout()}
               />
             ) : null}
 
@@ -7931,6 +8203,26 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 renderPostCard={renderPostCard}
               />
             ) : null}
+
+          {!!suspensionExpiry && (
+            <View style={[styles.errorBox, { backgroundColor: `${c.errorText}18`, borderColor: c.errorText, flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+              <MaterialCommunityIcons name="account-lock-outline" size={20} color={c.errorText} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.errorText, { color: c.errorText, fontWeight: '600' }]}>
+                  {t('home.suspensionBannerTitle', { defaultValue: 'Your account is suspended' })}
+                </Text>
+                <Text style={[styles.errorText, { color: c.errorText, fontWeight: '400', marginTop: 2 }]}>
+                  {t('home.suspensionBannerExpiry', {
+                    defaultValue: `Suspension lifts: ${new Date(suspensionExpiry).toLocaleString()}`,
+                    expiry: new Date(suspensionExpiry).toLocaleString(),
+                  })}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSuspensionExpiry(null)} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close" size={18} color={c.errorText} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {!!error && (
             <View
@@ -9515,20 +9807,18 @@ const styles = StyleSheet.create({
   profileCoverAction: {
     position: 'absolute',
     right: 16,
-    bottom: 14,
+    top: 312,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    minWidth: 170,
-    minHeight: 38,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 6,
   },
   profileCoverActionText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   profileIdentityRow: {

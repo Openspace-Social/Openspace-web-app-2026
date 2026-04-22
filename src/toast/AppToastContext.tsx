@@ -94,24 +94,20 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
 
   const ctx = useMemo(() => ({ showToast }), [showToast]);
 
+  // Use strong, high-contrast colours regardless of theme — toasts must be
+  // immediately noticeable, especially errors shown over drawer overlays.
   const bg =
-    type === 'success'
-      ? colorMap.successBackground || '#166534'
-      : type === 'info'
-        ? '#1d4ed8'
-        : c.errorBackground || '#991b1b';
+    type === 'success' ? '#166534'
+    : type === 'info'  ? '#1d4ed8'
+    : '#991b1b';
   const border =
-    type === 'success'
-      ? colorMap.successBorder || '#86efac'
-      : type === 'info'
-        ? '#93c5fd'
-        : c.errorBorder || '#fca5a5';
+    type === 'success' ? '#86efac'
+    : type === 'info'  ? '#93c5fd'
+    : '#fca5a5';
   const fg =
-    type === 'success'
-      ? colorMap.successText || '#dcfce7'
-      : type === 'info'
-        ? '#eff6ff'
-        : c.errorText || '#fee2e2';
+    type === 'success' ? '#dcfce7'
+    : type === 'info'  ? '#eff6ff'
+    : '#fee2e2';
 
   const title =
     type === 'success'
@@ -169,6 +165,9 @@ export function useAppToast() {
 const styles = StyleSheet.create({
   modalRoot: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    pointerEvents: 'box-none' as const,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

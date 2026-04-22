@@ -400,6 +400,7 @@ type PostCardProps = {
   onSubmitComment: (postId: number) => void | Promise<void>;
   onSubmitReply: (postId: number, commentId: number) => void | Promise<void>;
   onOpenReportPostModal: (post: FeedPost) => void;
+  onReportComment?: (postUuid: string, commentId: number) => void;
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
   onOpenLongPostEdit?: (post: FeedPost) => void;
   onDeletePost: (post: FeedPost) => void | Promise<void>;
@@ -409,6 +410,7 @@ type PostCardProps = {
   pinnedPostsLimit?: number;
   pinnedDisplayIndex?: number | null;
   pinnedDisplayLimit?: number;
+  onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void>;
   onNavigateProfile: (username: string) => void;
   onNavigateHashtag?: (tag: string) => void;
   onNavigateCommunity: (communityName: string) => void;
@@ -421,6 +423,7 @@ type PostCardProps = {
   isPostDetailOpen?: boolean;
   allowExpandControl?: boolean;
   token?: string;
+  translationLanguageCode?: string;
   onFetchUserProfile?: (token: string, username: string) => Promise<UserProfile>;
 };
 
@@ -481,6 +484,7 @@ export default function PostCard({
   onSubmitComment,
   onSubmitReply,
   onOpenReportPostModal,
+  onReportComment,
   onEditPost,
   onOpenLongPostEdit,
   onDeletePost,
@@ -490,6 +494,7 @@ export default function PostCard({
   pinnedPostsLimit = 5,
   pinnedDisplayIndex = null,
   pinnedDisplayLimit = 5,
+  onToggleCommunityPinPost,
   onNavigateProfile,
   onNavigateHashtag,
   onNavigateCommunity,
@@ -502,9 +507,13 @@ export default function PostCard({
   isPostDetailOpen = false,
   allowExpandControl = true,
   token,
+  translationLanguageCode,
   onFetchUserProfile,
 }: PostCardProps) {
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
+  const [translatedText, setTranslatedText] = React.useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = React.useState(false);
+  const [translationError, setTranslationError] = React.useState(false);
   const [postMenuOpen, setPostMenuOpen] = React.useState(false);
   const [postDeleteConfirmOpen, setPostDeleteConfirmOpen] = React.useState(false);
   const [postEditing, setPostEditing] = React.useState(false);
@@ -1001,6 +1010,39 @@ export default function PostCard({
     }
   }
 
+  async function handleToggleCommunityPinPost() {
+    if (postPinLoading || !onToggleCommunityPinPost) return;
+    setPostPinLoading(true);
+    try {
+      await onToggleCommunityPinPost(post);
+      setPostMenuOpen(false);
+    } catch {
+      // errors are surfaced by parent
+    } finally {
+      setPostPinLoading(false);
+    }
+  }
+
+  async function handleTranslate() {
+    if (!token || !post.uuid || isTranslating) return;
+    setIsTranslating(true);
+    setTranslationError(false);
+    try {
+      const { api } = await import('../api/client');
+      const result = await api.translatePost(token, post.uuid);
+      setTranslatedText(result.translated_text);
+    } catch {
+      setTranslationError(true);
+    } finally {
+      setIsTranslating(false);
+    }
+  }
+
+  function handleShowOriginal() {
+    setTranslatedText(null);
+    setTranslationError(false);
+  }
+
   function openPostReportMenuAction() {
     setPostMenuOpen(false);
     onOpenReportPostModal(post);
@@ -1174,6 +1216,17 @@ export default function PostCard({
           disabled: false,
           onPress: openPostReportMenuAction,
         },
+        ...(onToggleCommunityPinPost ? [{
+          key: 'community-pin',
+          icon: (post.is_community_pinned ? 'pin-off-outline' : 'pin-outline') as const,
+          label: postPinLoading
+            ? '...'
+            : (post.is_community_pinned
+              ? t('home.communityUnpinAction', { defaultValue: 'Unpin from community' })
+              : t('home.communityPinAction', { defaultValue: 'Pin to community' })),
+          disabled: postPinLoading,
+          onPress: () => void handleToggleCommunityPinPost(),
+        }] : []),
         ...(filterByPosterAction ? [filterByPosterAction] : []),
       ];
   const postCardBg = toOpaqueColor(
@@ -1361,6 +1414,14 @@ export default function PostCard({
             <MaterialCommunityIcons name="pin" size={12} color={c.textLink} />
             <Text style={[styles.postPinnedBadgeText, { color: c.textLink }]}>
               {pinnedDisplayIndex !== null ? `${pinnedDisplayIndex}/${pinnedDisplayLimit}` : t('home.profilePinnedPostsTitle')}
+            </Text>
+          </View>
+        ) : null}
+        {post.is_community_pinned ? (
+          <View style={[styles.postPinnedBadge, { borderColor: c.border, backgroundColor: c.surface }]}>
+            <MaterialCommunityIcons name="pin" size={12} color={c.primary} />
+            <Text style={[styles.postPinnedBadgeText, { color: c.primary }]}>
+              {t('home.communityPinnedBadge', { defaultValue: 'Pinned' })}
             </Text>
           </View>
         ) : null}
@@ -1635,6 +1696,50 @@ export default function PostCard({
           ) : null}
         </View>
       ) : null}
+
+      {/* Translation — shown when post language differs from the user's translation language */}
+      {(() => {
+        const postLang = post.language?.code;
+        const hasText = !!(post.text || post.long_text);
+        const canTranslate = hasText && !!token && !!translationLanguageCode &&
+          !!postLang && postLang !== translationLanguageCode;
+        if (!canTranslate && !translatedText) return null;
+        return (
+          <View style={[styles.feedTextWrap, { marginTop: 4 }]}>
+            {translatedText ? (
+              <>
+                <Text style={[styles.feedText, { color: c.textSecondary, fontStyle: 'italic' }]}>
+                  {translatedText}
+                </Text>
+                <TouchableOpacity onPress={handleShowOriginal} activeOpacity={0.85} style={{ marginTop: 4 }}>
+                  <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                    {t('home.showOriginal', { defaultValue: 'Show original' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={() => void handleTranslate()}
+                activeOpacity={0.85}
+                disabled={isTranslating}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                {isTranslating ? (
+                  <ActivityIndicator size="small" color={c.textLink} />
+                ) : translationError ? (
+                  <Text style={[styles.seeMoreText, { color: (c as any).errorText ?? c.textMuted }]}>
+                    {t('home.translationError', { defaultValue: 'Translation failed — tap to retry' })}
+                  </Text>
+                ) : (
+                  <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                    {t('home.seeTranslation', { defaultValue: 'See translation' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })()}
 
       {showShortPostLinkPreview && resolvedShortLinkPreview ? (
         <View style={styles.feedTextWrap}>
@@ -2237,6 +2342,15 @@ export default function PostCard({
                       </Text>
                     </TouchableOpacity>
                   </>
+                ) : (!isOwnComment && !!token && !!onReportComment && !!post.uuid) ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => onReportComment(post.uuid!, comment.id)}
+                  >
+                    <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
+                      {t('home.reportCommentAction', { defaultValue: 'Report' })}
+                    </Text>
+                  </TouchableOpacity>
                 ) : null}
                 {repliesCount > 0 ? (
                   <TouchableOpacity activeOpacity={0.85} onPress={() => onToggleCommentReplies(post.id, comment.id)}>
@@ -2342,6 +2456,17 @@ export default function PostCard({
                           >
                             <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>
                               {commentMutationLoadingById[reply.id] ? '...' : t('home.deleteAction')}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (!isOwnReply && !!token && !!onReportComment && !!post.uuid) ? (
+                        <View style={[styles.detailCommentMetaRow, { marginTop: 4, marginLeft: 44 }]}>
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => onReportComment(post.uuid!, reply.id)}
+                          >
+                            <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
+                              {t('home.reportCommentAction', { defaultValue: 'Report' })}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -2555,7 +2680,10 @@ export default function PostCard({
                   disabled={postEditLoading}
                   onPress={() => void confirmDeletePost()}
                 >
-                  <Text style={styles.commentSendText}>{postEditLoading ? '...' : t('home.deleteAction')}</Text>
+                  {postEditLoading
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.commentSendText}>{t('home.deleteAction')}</Text>
+                  }
                 </TouchableOpacity>
               </View>
             </View>

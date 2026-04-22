@@ -18,12 +18,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import LanguagePicker from '../components/LanguagePicker';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 import type { UserNotificationSettings } from '../api/client';
+import { api } from '../api/client';
 
 type Props = {
   c: any;
   t: (key: string, options?: any) => string;
+  token?: string;
   currentEmail?: string;
   hasUsablePassword?: boolean;
+  requiresCurrentPassword?: boolean;
   autoPlayMedia: boolean;
   onToggleAutoPlayMedia: () => void;
   onOpenLinkedAccounts: () => void;
@@ -34,6 +37,7 @@ type Props = {
   onConfirmEmailChange: (tokenOrCode: string) => Promise<string>;
   onGetNotificationSettings: () => Promise<UserNotificationSettings>;
   onUpdateNotificationSettings: (patch: Partial<UserNotificationSettings>) => Promise<UserNotificationSettings>;
+  onDeleteAccount: () => void;
 };
 
 const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
@@ -46,8 +50,10 @@ type PendingEmailChangeState = {
 export default function SettingsScreen({
   c,
   t,
+  token,
   currentEmail,
   hasUsablePassword = true,
+  requiresCurrentPassword = hasUsablePassword,
   autoPlayMedia,
   onToggleAutoPlayMedia,
   onOpenLinkedAccounts,
@@ -58,9 +64,13 @@ export default function SettingsScreen({
   onConfirmEmailChange,
   onGetNotificationSettings,
   onUpdateNotificationSettings,
+  onDeleteAccount,
 }: Props) {
   const s = useStyles(c);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailStep, setEmailStep] = useState<'request' | 'confirm'>('request');
@@ -251,7 +261,7 @@ export default function SettingsScreen({
   }
 
   async function submitPasswordChange() {
-    if (!newPassword || !confirmPassword || (hasUsablePassword && !currentPassword)) {
+    if (!newPassword || !confirmPassword || (requiresCurrentPassword && !currentPassword)) {
       setPasswordError(t('settings.passwordAllFieldsRequired', { defaultValue: 'Please fill in all password fields.' }));
       return;
     }
@@ -267,7 +277,7 @@ export default function SettingsScreen({
     setPasswordSubmitting(true);
     setPasswordError('');
     try {
-      await onChangePassword(hasUsablePassword ? currentPassword : null, newPassword);
+      await onChangePassword(requiresCurrentPassword ? currentPassword : null, newPassword);
       setPasswordModalOpen(false);
       resetPasswordForm();
       onNotice(t('settings.passwordUpdated', {
@@ -336,7 +346,7 @@ export default function SettingsScreen({
           c={c}
           icon="translate"
           title={t('settings.language', { defaultValue: 'Language (English)' })}
-          right={<LanguagePicker />}
+          right={<LanguagePicker token={token} />}
           onPress={() => {}}
           disableChevron
         />
@@ -365,30 +375,87 @@ export default function SettingsScreen({
         />
       </View>
 
-      <SettingsRightDrawerModal visible={deleteConfirmOpen} c={c} onClose={() => setDeleteConfirmOpen(false)}>
+      <SettingsRightDrawerModal
+        visible={deleteConfirmOpen}
+        c={c}
+        onClose={() => {
+          if (!deleteSubmitting) {
+            setDeleteConfirmOpen(false);
+            setDeletePassword('');
+            setDeleteError('');
+          }
+        }}
+      >
         <Text style={[s.confirmTitle, { color: c.textPrimary }]}>
           {t('settings.deleteAccount', { defaultValue: 'Delete account' })}
         </Text>
         <Text style={[s.confirmText, { color: c.textSecondary }]}>
           {t('settings.deleteAccountConfirm', {
-            defaultValue: 'Are you sure? This action is permanent. Account deletion endpoint is not enabled yet.',
+            defaultValue: 'This is permanent and cannot be undone. All your posts, comments, and data will be deleted.',
           })}
         </Text>
+
+        <View style={s.fieldGroup}>
+          <Text style={[s.fieldLabel, { color: c.textSecondary }]}>
+            {t('settings.currentPassword', { defaultValue: 'Current password' })}
+          </Text>
+          <TextInput
+            value={deletePassword}
+            onChangeText={(v) => { setDeletePassword(v); setDeleteError(''); }}
+            secureTextEntry
+            autoCapitalize="none"
+            style={[s.fieldInput, { color: c.textPrimary, borderColor: deleteError ? c.errorText : c.border, backgroundColor: c.inputBackground }]}
+            placeholder={t('settings.currentPassword', { defaultValue: 'Current password' })}
+            placeholderTextColor={c.placeholder}
+            editable={!deleteSubmitting}
+          />
+        </View>
+
+        {deleteError ? (
+          <Text style={[s.errorText, { color: c.errorText }]}>{deleteError}</Text>
+        ) : null}
+
         <View style={s.confirmActions}>
           <TouchableOpacity
             style={[s.confirmBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-            onPress={() => setDeleteConfirmOpen(false)}
+            onPress={() => {
+              setDeleteConfirmOpen(false);
+              setDeletePassword('');
+              setDeleteError('');
+            }}
+            disabled={deleteSubmitting}
           >
             <Text style={[s.confirmBtnText, { color: c.textPrimary }]}>{t('home.cancelAction', { defaultValue: 'Cancel' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.confirmBtn, { borderColor: c.errorText, backgroundColor: `${c.errorText}22` }]}
-            onPress={() => {
-              setDeleteConfirmOpen(false);
-              onNotice(t('settings.deleteAccountSoon', { defaultValue: 'Delete account flow coming soon.' }));
+            disabled={deleteSubmitting || !deletePassword}
+            onPress={async () => {
+              if (!token || !deletePassword) return;
+              setDeleteSubmitting(true);
+              setDeleteError('');
+              try {
+                await api.deleteAuthenticatedUser(token, deletePassword);
+                setDeleteConfirmOpen(false);
+                setDeletePassword('');
+                onDeleteAccount();
+              } catch (err: any) {
+                const status = err?.status ?? err?.response?.status;
+                if (status === 401 || status === 400) {
+                  setDeleteError(t('settings.deleteAccountWrongPassword', { defaultValue: 'Incorrect password. Please try again.' }));
+                } else {
+                  setDeleteError(t('settings.deleteAccountError', { defaultValue: 'Something went wrong. Please try again.' }));
+                }
+              } finally {
+                setDeleteSubmitting(false);
+              }
             }}
           >
-            <Text style={[s.confirmBtnText, { color: c.errorText }]}>{t('settings.deleteAccount', { defaultValue: 'Delete account' })}</Text>
+            {deleteSubmitting ? (
+              <ActivityIndicator size="small" color={c.errorText} />
+            ) : (
+              <Text style={[s.confirmBtnText, { color: c.errorText }]}>{t('settings.deleteAccount', { defaultValue: 'Delete account' })}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </SettingsRightDrawerModal>
@@ -400,7 +467,7 @@ export default function SettingsScreen({
             : t('settings.setPassword', { defaultValue: 'Set Password' })}
         </Text>
 
-        {hasUsablePassword ? (
+        {requiresCurrentPassword ? (
           <View style={s.fieldGroup}>
             <Text style={[s.fieldLabel, { color: c.textSecondary }]}>
               {t('settings.currentPassword', { defaultValue: 'Current password' })}

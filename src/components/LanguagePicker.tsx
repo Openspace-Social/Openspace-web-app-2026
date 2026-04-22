@@ -12,14 +12,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES } from '../i18n/languages';
 import { useTheme } from '../theme/ThemeContext';
+import { api } from '../api/client';
 
 const LANGUAGE_KEY = '@openspace/language';
 
 interface LanguagePickerProps {
   compact?: boolean;
+  token?: string;
 }
 
-export default function LanguagePicker({ compact = false }: LanguagePickerProps) {
+export default function LanguagePicker({ compact = false, token }: LanguagePickerProps) {
   const { i18n, t } = useTranslation();
   const { theme } = useTheme();
   const c = theme.colors;
@@ -31,6 +33,12 @@ export default function LanguagePicker({ compact = false }: LanguagePickerProps)
     i18n.changeLanguage(code);
     AsyncStorage.setItem(LANGUAGE_KEY, code);
     setOpen(false);
+    // Keep translation_language in sync with the chosen app language
+    if (token) {
+      api.updateAuthenticatedUser(token, { translation_language_code: code }).catch(() => {
+        // Silently ignore — translation language sync is best-effort
+      });
+    }
   }
 
   return (
