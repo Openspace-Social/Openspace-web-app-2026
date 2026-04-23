@@ -826,6 +826,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const fullPostHydratedIdsRef = useRef<Set<number>>(new Set());
   const fullPostHydrationInFlightRef = useRef<Set<number>>(new Set());
   const authFailureHandledRef = useRef(false);
+  const profileUserCacheRef = useRef<Map<string, { data: any; ts: number }>>(new Map());
   const processedChangeEmailTokenRef = useRef<string | null>(null);
   const linkedAccountsDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const linkedAccountsDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
@@ -1523,7 +1524,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function loadProfileJoinedCommunitiesPage(username: string, offset = 0) {
-    const communities = await api.getUserCommunities(token, username, 'most_active');
+    const communities = await api.getUserCommunities(token, username);
     const safeCommunities = Array.isArray(communities) ? communities : [];
     const hasMore = false;
     return { communities: safeCommunities, hasMore };
@@ -1533,7 +1534,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     if (route.screen !== 'profile' || !route.username) return;
     let active = true;
     const username = route.username;
-    setProfileUserLoading(true);
+
+    // --- Stage 0: instantly seed header from 30-second in-memory cache ---
+    const cached = profileUserCacheRef.current.get(username);
+    if (cached && Date.now() - cached.ts < 30_000) {
+      setProfileUser(cached.data);
+      setProfileUserLoading(false);
+    } else {
+      setProfileUserLoading(true);
+    }
+
     setProfilePostsLoading(true);
     setProfileCommentsLoading(true);
     setProfilePinnedPostsLoading(true);
@@ -1544,19 +1554,56 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setProfileJoinedCommunitiesHasMore(true);
     setProfileFollowingsHasMore(true);
 
+    // --- Stage 1 (critical path): user + posts — renders the profile immediately ---
     Promise.allSettled([
       api.getUserByUsername(token, username),
       api.getUserPosts(token, username, 10),
+    ])
+      .then(([userResult, postsResult]) => {
+        if (!active) return;
+        const nextUser: any = userResult.status === 'fulfilled' ? userResult.value : null;
+        const nextPosts = postsResult.status === 'fulfilled' ? postsResult.value : [];
+        const safeProfilePosts = Array.isArray(nextPosts) ? nextPosts : [];
+
+        // Update and store in cache so the next visit is instant
+        if (nextUser) {
+          profileUserCacheRef.current.set(username, { data: nextUser, ts: Date.now() });
+        }
+        setProfileUser(nextUser);
+        // Seed follow state from the profile object
+        if (nextUser?.username && typeof nextUser?.is_following === 'boolean') {
+          setFollowStateByUsername((prev) => ({ ...prev, [nextUser.username]: nextUser.is_following }));
+        }
+        setProfilePosts(safeProfilePosts);
+        setProfileUserLoading(false);
+        setProfilePostsLoading(false);
+
+        // Defer long-post hydration so the profile UI paints before extra requests fire
+        setTimeout(() => {
+          void hydrateLongPostsForRichRendering(safeProfilePosts).then((hydrated) => {
+            if (!active) return;
+            setProfilePosts(hydrated);
+          });
+        }, 0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfileUser(null);
+        setProfilePosts([]);
+        setProfileUserLoading(false);
+        setProfilePostsLoading(false);
+      });
+
+    // --- Stage 2 (background): everything else loads while user already sees the profile ---
+    Promise.allSettled([
       api.getUserComments(token, username, 10),
       api.getPinnedPosts(token, username, 10),
       loadProfileJoinedCommunitiesPage(username, 0),
       loadProfileFollowingsPage(username),
-      api.getCircles(token),
-      api.getLists(token),
+      userCircles.length === 0 ? api.getCircles(token) : Promise.resolve(userCircles),
+      userLists.length === 0   ? api.getLists(token)   : Promise.resolve(userLists),
     ])
       .then(([
-        userResult,
-        postsResult,
         commentsResult,
         pinnedResult,
         communitiesResult,
@@ -1565,12 +1612,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         listsResult,
       ]) => {
         if (!active) return;
-        const nextUser: any = userResult.status === 'fulfilled' ? userResult.value : null;
-        const nextPosts = postsResult.status === 'fulfilled' ? postsResult.value : [];
         const nextComments = commentsResult.status === 'fulfilled' ? commentsResult.value : [];
         const nextPinned = pinnedResult.status === 'fulfilled' ? pinnedResult.value : [];
         const nextCommunities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : { communities: [], hasMore: false };
         const nextFollowings = followingsResult.status === 'fulfilled' ? followingsResult.value : { followings: [], hasMore: false };
+
         if (circlesResult.status === 'fulfilled' && Array.isArray(circlesResult.value)) {
           setUserCircles(circlesResult.value);
         }
@@ -1578,25 +1624,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           setUserLists(listsResult.value);
         }
 
-        setProfileUser(nextUser);
-        // Seed the follow state from the profile user object so the button renders correctly
-        if (nextUser?.username && typeof nextUser?.is_following === 'boolean') {
-          setFollowStateByUsername((prev) => ({ ...prev, [nextUser.username]: nextUser.is_following }));
-        }
-        const safeProfilePosts = Array.isArray(nextPosts) ? nextPosts : [];
         const safeProfileComments = Array.isArray(nextComments) ? nextComments : [];
         const safeProfilePinned = Array.isArray(nextPinned) ? nextPinned : [];
-        setProfilePosts(safeProfilePosts);
         setProfileComments(safeProfileComments);
         setProfilePinnedPosts(safeProfilePinned);
-        void hydrateLongPostsForRichRendering(safeProfilePosts).then((hydrated) => {
-          if (!active) return;
-          setProfilePosts(hydrated);
-        });
-        void hydrateLongPostsForRichRendering(safeProfilePinned).then((hydrated) => {
-          if (!active) return;
-          setProfilePinnedPosts(hydrated);
-        });
         setProfileJoinedCommunities(Array.isArray(nextCommunities.communities) ? nextCommunities.communities : []);
         setProfileJoinedCommunitiesOffset(Array.isArray(nextCommunities.communities) ? nextCommunities.communities.length : 0);
         setProfileJoinedCommunitiesHasMore(!!nextCommunities.hasMore);
@@ -1606,11 +1637,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           : undefined;
         setProfileFollowingsMaxId(typeof lastFollowingId === 'number' ? lastFollowingId : undefined);
         setProfileFollowingsHasMore(!!nextFollowings.hasMore);
+
+        // Defer pinned-post hydration too
+        setTimeout(() => {
+          void hydrateLongPostsForRichRendering(safeProfilePinned).then((hydrated) => {
+            if (!active) return;
+            setProfilePinnedPosts(hydrated);
+          });
+        }, 0);
       })
       .catch(() => {
         if (!active) return;
-        setProfileUser(null);
-        setProfilePosts([]);
         setProfileComments([]);
         setProfilePinnedPosts([]);
         setProfileJoinedCommunities([]);
@@ -1620,8 +1657,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       })
       .finally(() => {
         if (!active) return;
-        setProfileUserLoading(false);
-        setProfilePostsLoading(false);
         setProfileCommentsLoading(false);
         setProfilePinnedPostsLoading(false);
         setProfileJoinedCommunitiesLoading(false);
@@ -6868,6 +6903,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onToggleCommentReplies={toggleCommentReplies}
         onSharePost={handleSharePost}
         onRepostPost={handleRepostPost}
+        onReportPost={openReportPostModal}
+        onReportComment={openCommentReportModal}
         onOpenSharedPost={openPostDetail}
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}

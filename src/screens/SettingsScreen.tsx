@@ -389,75 +389,116 @@ export default function SettingsScreen({
         <Text style={[s.confirmTitle, { color: c.textPrimary }]}>
           {t('settings.deleteAccount', { defaultValue: 'Delete account' })}
         </Text>
-        <Text style={[s.confirmText, { color: c.textSecondary }]}>
-          {t('settings.deleteAccountConfirm', {
-            defaultValue: 'This is permanent and cannot be undone. All your posts, comments, and data will be deleted.',
-          })}
-        </Text>
 
-        <View style={s.fieldGroup}>
-          <Text style={[s.fieldLabel, { color: c.textSecondary }]}>
-            {t('settings.currentPassword', { defaultValue: 'Current password' })}
-          </Text>
-          <TextInput
-            value={deletePassword}
-            onChangeText={(v) => { setDeletePassword(v); setDeleteError(''); }}
-            secureTextEntry
-            autoCapitalize="none"
-            style={[s.fieldInput, { color: c.textPrimary, borderColor: deleteError ? c.errorText : c.border, backgroundColor: c.inputBackground }]}
-            placeholder={t('settings.currentPassword', { defaultValue: 'Current password' })}
-            placeholderTextColor={c.placeholder}
-            editable={!deleteSubmitting}
-          />
-        </View>
+        {!hasUsablePassword ? (
+          // Social auth users who have not yet set a password cannot confirm deletion.
+          // Show a clear prompt directing them to set a password first.
+          <>
+            <Text style={[s.confirmText, { color: c.textSecondary }]}>
+              {t('settings.deleteAccountNeedsPassword', {
+                defaultValue: 'To delete your account you first need to set a password. Use the Set Password option in Settings, then return here.',
+              })}
+            </Text>
+            <View style={s.confirmActions}>
+              <TouchableOpacity
+                style={[s.confirmBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+              >
+                <Text style={[s.confirmBtnText, { color: c.textPrimary }]}>{t('home.cancelAction', { defaultValue: 'Cancel' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.confirmBtn, { borderColor: c.primary, backgroundColor: `${c.primary}22` }]}
+                onPress={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeletePassword('');
+                  setDeleteError('');
+                  openPasswordModal();
+                }}
+              >
+                <Text style={[s.confirmBtnText, { color: c.primary }]}>
+                  {t('settings.setPassword', { defaultValue: 'Set Password' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          // Normal flow: user has a password — ask them to confirm with it before deleting.
+          <>
+            <Text style={[s.confirmText, { color: c.textSecondary }]}>
+              {t('settings.deleteAccountConfirm', {
+                defaultValue: 'This is permanent and cannot be undone. All your posts, comments, and data will be deleted.',
+              })}
+            </Text>
 
-        {deleteError ? (
-          <Text style={[s.errorText, { color: c.errorText }]}>{deleteError}</Text>
-        ) : null}
+            <View style={s.fieldGroup}>
+              <Text style={[s.fieldLabel, { color: c.textSecondary }]}>
+                {t('settings.currentPassword', { defaultValue: 'Current password' })}
+              </Text>
+              <TextInput
+                value={deletePassword}
+                onChangeText={(v) => { setDeletePassword(v); setDeleteError(''); }}
+                secureTextEntry
+                autoCapitalize="none"
+                style={[s.fieldInput, { color: c.textPrimary, borderColor: deleteError ? c.errorText : c.border, backgroundColor: c.inputBackground }]}
+                placeholder={t('settings.currentPassword', { defaultValue: 'Current password' })}
+                placeholderTextColor={c.placeholder}
+                editable={!deleteSubmitting}
+              />
+            </View>
 
-        <View style={s.confirmActions}>
-          <TouchableOpacity
-            style={[s.confirmBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-            onPress={() => {
-              setDeleteConfirmOpen(false);
-              setDeletePassword('');
-              setDeleteError('');
-            }}
-            disabled={deleteSubmitting}
-          >
-            <Text style={[s.confirmBtnText, { color: c.textPrimary }]}>{t('home.cancelAction', { defaultValue: 'Cancel' })}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.confirmBtn, { borderColor: c.errorText, backgroundColor: `${c.errorText}22` }]}
-            disabled={deleteSubmitting || !deletePassword}
-            onPress={async () => {
-              if (!token || !deletePassword) return;
-              setDeleteSubmitting(true);
-              setDeleteError('');
-              try {
-                await api.deleteAuthenticatedUser(token, deletePassword);
-                setDeleteConfirmOpen(false);
-                setDeletePassword('');
-                onDeleteAccount();
-              } catch (err: any) {
-                const status = err?.status ?? err?.response?.status;
-                if (status === 401 || status === 400) {
-                  setDeleteError(t('settings.deleteAccountWrongPassword', { defaultValue: 'Incorrect password. Please try again.' }));
-                } else {
-                  setDeleteError(t('settings.deleteAccountError', { defaultValue: 'Something went wrong. Please try again.' }));
-                }
-              } finally {
-                setDeleteSubmitting(false);
-              }
-            }}
-          >
-            {deleteSubmitting ? (
-              <ActivityIndicator size="small" color={c.errorText} />
-            ) : (
-              <Text style={[s.confirmBtnText, { color: c.errorText }]}>{t('settings.deleteAccount', { defaultValue: 'Delete account' })}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            {deleteError ? (
+              <Text style={[s.errorText, { color: c.errorText }]}>{deleteError}</Text>
+            ) : null}
+
+            <View style={s.confirmActions}>
+              <TouchableOpacity
+                style={[s.confirmBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+                disabled={deleteSubmitting}
+              >
+                <Text style={[s.confirmBtnText, { color: c.textPrimary }]}>{t('home.cancelAction', { defaultValue: 'Cancel' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.confirmBtn, { borderColor: c.errorText, backgroundColor: `${c.errorText}22` }]}
+                disabled={deleteSubmitting || !deletePassword}
+                onPress={async () => {
+                  if (!token || !deletePassword) return;
+                  setDeleteSubmitting(true);
+                  setDeleteError('');
+                  try {
+                    await api.deleteAuthenticatedUser(token, deletePassword);
+                    setDeleteConfirmOpen(false);
+                    setDeletePassword('');
+                    onDeleteAccount();
+                  } catch (err: any) {
+                    const status = err?.status ?? err?.response?.status;
+                    if (status === 401 || status === 400) {
+                      setDeleteError(t('settings.deleteAccountWrongPassword', { defaultValue: 'Incorrect password. Please try again.' }));
+                    } else {
+                      setDeleteError(t('settings.deleteAccountError', { defaultValue: 'Something went wrong. Please try again.' }));
+                    }
+                  } finally {
+                    setDeleteSubmitting(false);
+                  }
+                }}
+              >
+                {deleteSubmitting ? (
+                  <ActivityIndicator size="small" color={c.errorText} />
+                ) : (
+                  <Text style={[s.confirmBtnText, { color: c.errorText }]}>{t('settings.deleteAccount', { defaultValue: 'Delete account' })}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </SettingsRightDrawerModal>
 
       <SettingsRightDrawerModal visible={passwordModalOpen} c={c} onClose={() => setPasswordModalOpen(false)}>

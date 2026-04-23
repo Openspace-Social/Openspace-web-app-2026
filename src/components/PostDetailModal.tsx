@@ -257,6 +257,8 @@ type Props = {
   onToggleCommentReplies: (postId: number, commentId: number) => void;
   onSharePost: (post: FeedPost) => void;
   onRepostPost?: (post: FeedPost) => void;
+  onReportPost?: (post: FeedPost) => void;
+  onReportComment?: (postUuid: string, commentId: number) => void;
   onOpenSharedPost?: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
@@ -323,6 +325,8 @@ export default function PostDetailModal({
   onToggleCommentReplies,
   onSharePost,
   onRepostPost,
+  onReportPost,
+  onReportComment,
   onOpenSharedPost,
   onOpenLink,
   onUpdateDraftComment,
@@ -1102,6 +1106,12 @@ export default function PostDetailModal({
                 </Text>
               </TouchableOpacity>
             </>
+          ) : (!isOwnComment && !!onReportComment && !!activePost?.uuid) ? (
+            <TouchableOpacity activeOpacity={0.85} onPress={() => onReportComment(activePost.uuid!, comment.id)}>
+              <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
+                {t('home.reportCommentAction', { defaultValue: 'Report' })}
+              </Text>
+            </TouchableOpacity>
           ) : null}
           {repliesCount > 0 ? (
             <TouchableOpacity activeOpacity={0.85} onPress={() => onToggleCommentReplies(postId, comment.id)}>
@@ -1200,6 +1210,14 @@ export default function PostDetailModal({
                     >
                         <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>
                         {commentMutationLoadingById[reply.id] ? '...' : t('home.deleteAction')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (!isOwnReply && !!onReportComment && !!activePost?.uuid) ? (
+                  <View style={[styles.detailCommentMetaRow, { marginTop: 4, marginLeft: 44 }]}>
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => onReportComment(activePost.uuid!, reply.id)}>
+                      <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
+                        {t('home.reportCommentAction', { defaultValue: 'Report' })}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1432,6 +1450,17 @@ export default function PostDetailModal({
           <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
           <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
         </TouchableOpacity>
+
+        {onReportPost && currentUsername && post.creator?.username !== currentUsername ? (
+          <TouchableOpacity
+            style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+            onPress={() => onReportPost(post)}
+            activeOpacity={0.85}
+          >
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={c.textSecondary} />
+            <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.reportPostAction', { defaultValue: 'Report' })}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
