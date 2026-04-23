@@ -259,6 +259,7 @@ type Props = {
   onRepostPost?: (post: FeedPost) => void;
   onReportPost?: (post: FeedPost) => void;
   onReportComment?: (postUuid: string, commentId: number) => void;
+  overlayModal?: React.ReactNode;
   onOpenSharedPost?: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
   onUpdateDraftComment: (postId: number, value: string) => void;
@@ -327,6 +328,7 @@ export default function PostDetailModal({
   onRepostPost,
   onReportPost,
   onReportComment,
+  overlayModal,
   onOpenSharedPost,
   onOpenLink,
   onUpdateDraftComment,
@@ -1938,6 +1940,7 @@ export default function PostDetailModal({
         </View>
       )}
       </View>
+      {overlayModal}
     </Modal>
   );
 }

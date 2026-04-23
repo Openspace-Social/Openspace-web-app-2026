@@ -6905,6 +6905,79 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onRepostPost={handleRepostPost}
         onReportPost={openReportPostModal}
         onReportComment={openCommentReportModal}
+        overlayModal={reportTarget?.kind === 'comment' ? (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            onRequestClose={closeReportModal}
+          >
+            <TouchableOpacity style={styles.reactionListBackdrop} activeOpacity={1} onPress={closeReportModal}>
+              <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+                <View style={[styles.reportModalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  <View style={styles.linkedModalHeader}>
+                    <Text style={[styles.linkedTitle, { color: c.textPrimary }]}>
+                      {t('home.reportCommentTitle', { defaultValue: 'Report comment' })}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                      onPress={closeReportModal}
+                      activeOpacity={0.85}
+                      disabled={reportingItem}
+                    >
+                      <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={[styles.reportModalSubtitle, { color: c.textMuted }]}>
+                    {t('home.reportCommentPrompt', { defaultValue: 'Why are you reporting this comment?' })}
+                  </Text>
+
+                  <ScrollView
+                    style={styles.reportOptionScroll}
+                    contentContainerStyle={styles.reportOptionList}
+                    showsVerticalScrollIndicator
+                  >
+                    {moderationCategories.map((cat) => {
+                      const normalizedName = normalizeModerationLabel(cat.name);
+                      const normalizedTitle = normalizeModerationLabel(cat.title);
+                      const match = (s: string) => normalizedName.includes(s) || normalizedTitle.includes(s);
+                      let i18nKey: string | null = null;
+                      if (match('spam')) i18nKey = 'spam';
+                      else if (match('copyright') || match('trademark')) i18nKey = 'copyright';
+                      else if (match('platform abuse') || match('abuse')) i18nKey = 'abuse';
+                      else if (match('pornograph')) i18nKey = 'pornography';
+                      else if (match('guideline')) i18nKey = 'guidelines';
+                      else if (match('hatred') || match('bullying')) i18nKey = 'hatred';
+                      else if (match('self harm')) i18nKey = 'selfHarm';
+                      else if (match('violent') || match('gory')) i18nKey = 'violent';
+                      else if (match('child') || match('csam') || match('exploitation')) i18nKey = 'csam';
+                      else if (match('illegal') || match('drug')) i18nKey = 'illegal';
+                      else if (match('deceptive')) i18nKey = 'deceptive';
+                      else if (match('other')) i18nKey = 'other';
+                      const displayTitle = i18nKey ? t(`home.reportCategory.${i18nKey}.title`) : cat.title || cat.name;
+                      const displayDesc = i18nKey ? t(`home.reportCategory.${i18nKey}.description`) : cat.description || '';
+                      return (
+                        <TouchableOpacity
+                          key={`report-comment-detail-${cat.id}`}
+                          style={[styles.reportOptionCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          activeOpacity={0.85}
+                          onPress={() => void submitGenericReport(cat.id)}
+                          disabled={reportingItem}
+                        >
+                          <Text style={[styles.reportOptionTitle, { color: c.textPrimary }]}>{displayTitle}</Text>
+                          <Text style={[styles.reportOptionDescription, { color: c.textMuted }]}>{displayDesc}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {reportingItem ? <ActivityIndicator color={c.primary} size="small" /> : null}
+                </View>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        ) : undefined}
         onOpenSharedPost={openPostDetail}
         onOpenLink={openLink}
         onUpdateDraftComment={updateDraftComment}
