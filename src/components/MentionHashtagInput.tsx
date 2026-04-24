@@ -219,7 +219,7 @@ function getInputDOMEl(
 // ─── component ────────────────────────────────────────────────────────────────
 
 export default function MentionHashtagInput({
-  value = '',
+  value,
   onChangeText,
   token,
   style,
@@ -237,6 +237,13 @@ export default function MentionHashtagInput({
 }: MentionHashtagInputProps) {
   const { height: screenH, width: screenW } = useWindowDimensions();
 
+  // Allow the input to be used uncontrolled (no `value` prop) so callers
+  // that manage text via refs don't crash. When controlled, `value` wins;
+  // when uncontrolled, we shadow the current text internally.
+  const isControlled = typeof value === 'string';
+  const [uncontrolledText, setUncontrolledText] = useState('');
+  const currentText = isControlled ? (value as string) : uncontrolledText;
+
   const [suggestions,    setSuggestions]    = useState<Suggestion[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [activeTrigger,  setActiveTrigger]  = useState<ActiveTrigger | null>(null);
@@ -245,7 +252,7 @@ export default function MentionHashtagInput({
 
   const containerRef   = useRef<View>(null);
   const textInputRef   = useRef<any>(null);
-  const cursorRef      = useRef<number>(value.length);
+  const cursorRef      = useRef<number>(currentText.length);
   // Stable unique id so we can always find the underlying <textarea>/<input>
   // via document.getElementById — works even inside React Native Web Modals
   // where findDOMNode cannot traverse the portal boundary.
@@ -369,9 +376,10 @@ export default function MentionHashtagInput({
 
   function handleChangeText(text: string) {
     onChangeText(text);
+    if (!isControlled) setUncontrolledText(text);
     if (!token) return;
 
-    const pos = text.length >= value.length
+    const pos = text.length >= currentText.length
       ? text.length
       : Math.min(cursorRef.current, text.length);
 
@@ -401,7 +409,9 @@ export default function MentionHashtagInput({
   function selectSuggestion(s: Suggestion) {
     if (!activeTrigger) return;
     const rep = s.kind === 'user' ? `@${s.username}` : `#${s.name}`;
-    onChangeText(applyInsertion(value, activeTrigger.startIndex, cursorRef.current, rep));
+    const next = applyInsertion(currentText, activeTrigger.startIndex, cursorRef.current, rep);
+    onChangeText(next);
+    if (!isControlled) setUncontrolledText(next);
     clearSuggestions();
   }
 
@@ -547,7 +557,7 @@ export default function MentionHashtagInput({
         // reliable document.getElementById hook that works across Modal portals.
         nativeID={inputIdRef.current}
         style={[{ color: textColor, backgroundColor: bgColor }, style]}
-        value={value}
+        {...(isControlled ? { value: value as string } : { defaultValue: '' })}
         onChangeText={handleChangeText}
         onSelectionChange={handleSelectionChange}
         placeholder={placeholder}
