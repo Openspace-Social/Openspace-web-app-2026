@@ -269,6 +269,7 @@ export type FeedPost = {
   is_pinned?: boolean;
   pinned_at?: string;
   is_community_pinned?: boolean;
+  is_closed?: boolean;
   comments_count?: number;
   reactions_emoji_counts?: Array<{
     count?: number;
@@ -541,8 +542,51 @@ export type CommunityModeratedObject = {
     name?: string;
     title?: string;
     description?: string;
+    severity?: 'C' | 'H' | 'M' | 'L';
   };
   content_object?: any;
+};
+
+export type GlobalModeratedObject = {
+  id: number;
+  object_type: 'P' | 'PC' | 'C' | 'U' | 'H';
+  object_id: number;
+  verified: boolean;
+  status: 'P' | 'A' | 'R';
+  description?: string;
+  reports_count: number;
+  category?: {
+    id: number;
+    name: string;
+    title: string;
+    description?: string;
+    severity?: 'C' | 'H' | 'M' | 'L';
+  };
+  content_object?: {
+    // Post
+    id?: number;
+    text?: string;
+    creator?: { id?: number; username?: string; profile?: { avatar?: string; name?: string } };
+    community?: { id?: number; name?: string; title?: string };
+    // PostComment
+    commenter?: { id?: number; username?: string; profile?: { avatar?: string; name?: string } };
+    post?: { id?: number; text?: string; uuid?: string };
+    post_id?: number;
+    // Community
+    name?: string;
+    title?: string;
+    avatar?: string;
+    // User (public profile)
+    username?: string;
+    profile?: { name?: string; avatar?: string };
+  };
+};
+
+export type ModeratedObjectReport = {
+  id: number;
+  category: { id: number; name: string; title: string; description?: string; severity?: string };
+  description?: string;
+  reporter: { id: number; username: string; profile: { name?: string; avatar?: string } };
 };
 
 // ─── Notification types ───────────────────────────────────────────────────────
@@ -563,7 +607,8 @@ export type NotificationType =
   | 'CNP'  // community new post
   | 'UNP'  // user new post
   | 'CB'   // community ban
-  | 'PRE'; // post repost
+  | 'PRE'  // post repost
+  | 'MT';  // moderation task
 
 type NotifUser = {
   id?: number;
@@ -629,7 +674,9 @@ export type NotificationContentObject =
   // CB
   | { community?: { id?: number; name?: string; avatar?: string; color?: string }; banned_by?: NotifUser }
   // CNP / UNP
-  | { post?: NotifPost };
+  | { post?: NotifPost }
+  // MT
+  | { object_type?: string; community_name?: string; community_title?: string; category_title?: string };
 
 export type AppNotification = {
   id: number;
@@ -1562,6 +1609,12 @@ export const api = {
     }).then((posts) => (Array.isArray(posts) ? posts : []).map((post) => normalizePostPayload(post)));
   },
 
+  closePost: (token: string, postUuid: string) =>
+    request<FeedPost>(`/api/posts/${encodeURIComponent(postUuid)}/close/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }).then((post) => normalizePostPayload(post)),
+
   openPost: (token: string, postUuid: string) =>
     request<FeedPost>(`/api/posts/${encodeURIComponent(postUuid)}/open/`, {
       method: 'POST',
@@ -1831,10 +1884,13 @@ export const api = {
       },
     ),
 
-  getCommunityModerationReports: (token: string, communityName: string, count = 20, maxId?: number) => {
+  getCommunityModerationReports: (token: string, communityName: string, count = 20, maxId?: number, statuses?: string[]) => {
     const params = new URLSearchParams();
     params.set('count', String(Math.min(Math.max(count, 1), 20)));
     if (typeof maxId === 'number' && Number.isFinite(maxId)) params.set('max_id', String(maxId));
+    if (Array.isArray(statuses) && statuses.length > 0) {
+      statuses.forEach((s) => params.append('statuses', s));
+    }
     return request<CommunityModeratedObject[]>(`/api/communities/${encodeURIComponent(communityName)}/moderated-objects/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     });
@@ -1849,10 +1905,11 @@ export const api = {
       return normalizePostPayload(normalized);
     }),
 
-  getPostComments: (token: string, postUuid: string, countMax = 20) => {
+  getPostComments: (token: string, postUuid: string, countMax = 20, minId?: number) => {
     const params = new URLSearchParams();
-    params.set('count_max', String(countMax));
-    params.set('sort', 'DESC');
+    params.set('count_max', String(Math.min(countMax, 20)));
+    params.set('sort', 'ASC');
+    if (minId != null) params.set('min_id', String(minId));
     return request<PostComment[]>(`/api/posts/${postUuid}/comments/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     }).then((comments) => (Array.isArray(comments) ? comments : []).map((comment) => normalizePostCommentPayload(comment)));
@@ -1924,10 +1981,11 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }),
 
-  getPostCommentReplies: (token: string, postUuid: string, postCommentId: number, countMax = 20) => {
+  getPostCommentReplies: (token: string, postUuid: string, postCommentId: number, countMax = 20, minId?: number) => {
     const params = new URLSearchParams();
-    params.set('count_max', String(countMax));
-    params.set('sort', 'DESC');
+    params.set('count_max', String(Math.min(countMax, 20)));
+    params.set('sort', 'ASC');
+    if (minId != null) params.set('min_id', String(minId));
     return request<PostComment[]>(`/api/posts/${postUuid}/comments/${postCommentId}/replies/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     }).then((replies) => (Array.isArray(replies) ? replies : []).map((reply) => normalizePostCommentPayload(reply)));
@@ -2629,4 +2687,45 @@ export const api = {
     request<ModerationPenalty[]>('/api/moderation/user/penalties/', {
       headers: { Authorization: `Token ${token}` },
     }),
+
+  getGlobalModeratedObjects: (
+    token: string,
+    params?: { count?: number; maxId?: number; statuses?: string[]; types?: string[]; verified?: boolean }
+  ) => {
+    const p = new URLSearchParams();
+    p.set('count', String(Math.min(Math.max(params?.count ?? 10, 1), 20)));
+    if (params?.maxId) p.set('max_id', String(params.maxId));
+    if (params?.statuses?.length) params.statuses.forEach((s) => p.append('statuses', s));
+    if (params?.types?.length) params.types.forEach((t) => p.append('types', t));
+    if (params?.verified !== undefined) p.set('verified', params.verified ? 'true' : 'false');
+    return request<GlobalModeratedObject[]>(`/api/moderation/moderated-objects/global/?${p.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
+
+  approveModeratedObject: (token: string, id: number) =>
+    request<unknown>(`/api/moderation/moderated-objects/${id}/approve/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  rejectModeratedObject: (token: string, id: number) =>
+    request<unknown>(`/api/moderation/moderated-objects/${id}/reject/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  verifyModeratedObject: (token: string, id: number) =>
+    request<unknown>(`/api/moderation/moderated-objects/${id}/verify/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getModeratedObjectReports: (token: string, id: number, count = 20, maxId?: number) => {
+    const p = new URLSearchParams({ count: String(Math.min(count, 20)) });
+    if (maxId) p.set('max_id', String(maxId));
+    return request<ModeratedObjectReport[]>(`/api/moderation/moderated-objects/${id}/reports/?${p.toString()}`, {
+      headers: { Authorization: `Token ${token}` },
+    });
+  },
 };

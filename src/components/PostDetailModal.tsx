@@ -229,15 +229,17 @@ type Props = {
   currentUsername?: string;
   currentUserAvatar?: string;
   localComments: Record<number, PostComment[]>;
+  commentsHasMoreByPost: Record<number, boolean>;
+  commentsLoadingMoreByPost: Record<number, boolean>;
+  onLoadMoreComments: (post: FeedPost) => void;
   commentRepliesById: Record<number, PostComment[]>;
+  repliesHasMoreByComment: Record<number, boolean>;
+  repliesLoadingMoreByComment: Record<number, boolean>;
+  onLoadMoreReplies: (postUuid: string, commentId: number) => void;
   commentRepliesExpanded: Record<number, boolean>;
   commentRepliesLoadingById: Record<number, boolean>;
-  draftComments: Record<number, string>;
-  draftReplies: Record<number, string>;
   draftCommentMediaByPostId: Record<number, CommentDraftMedia | null>;
   draftReplyMediaByCommentId: Record<number, CommentDraftMedia | null>;
-  commentEditDrafts: Record<number, string>;
-  replyEditDrafts: Record<number, string>;
   editingCommentById: Record<number, boolean>;
   editingReplyById: Record<number, boolean>;
   commentMutationLoadingById: Record<number, boolean>;
@@ -262,8 +264,6 @@ type Props = {
   overlayModal?: React.ReactNode;
   onOpenSharedPost?: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
-  onUpdateDraftComment: (postId: number, value: string) => void;
-  onUpdateDraftReply: (commentId: number, value: string) => void;
   onPickDraftCommentImage: (postId: number) => void;
   onPickDraftReplyImage: (commentId: number) => void;
   onSetDraftCommentGif: (postId: number) => void;
@@ -272,11 +272,10 @@ type Props = {
   onClearDraftReplyMedia: (commentId: number) => void;
   onStartEditingComment: (commentId: number, currentText: string, isReply: boolean) => void;
   onCancelEditingComment: (commentId: number, isReply: boolean) => void;
-  onUpdateEditCommentDraft: (commentId: number, value: string, isReply: boolean) => void;
-  onSaveEditedComment: (postId: number, commentId: number, isReply: boolean, parentCommentId?: number) => void | Promise<void>;
+  onSaveEditedComment: (postId: number, commentId: number, isReply: boolean, text: string, parentCommentId?: number) => void | Promise<void>;
   onDeleteComment: (postId: number, commentId: number, isReply: boolean, parentCommentId?: number) => void | Promise<void>;
-  onSubmitComment: (postId: number) => void | Promise<void>;
-  onSubmitReply: (postId: number, commentId: number) => void | Promise<void>;
+  onSubmitComment: (postId: number, text: string) => void | Promise<void>;
+  onSubmitReply: (postId: number, commentId: number, text: string) => void | Promise<void>;
   onNavigateProfile: (username: string) => void;
   onNavigateHashtag?: (tag: string) => void;
   token?: string;
@@ -298,15 +297,17 @@ export default function PostDetailModal({
   currentUsername,
   currentUserAvatar,
   localComments,
+  commentsHasMoreByPost,
+  commentsLoadingMoreByPost,
+  onLoadMoreComments,
   commentRepliesById,
+  repliesHasMoreByComment,
+  repliesLoadingMoreByComment,
+  onLoadMoreReplies,
   commentRepliesExpanded,
   commentRepliesLoadingById,
-  draftComments,
-  draftReplies,
   draftCommentMediaByPostId,
   draftReplyMediaByCommentId,
-  commentEditDrafts,
-  replyEditDrafts,
   editingCommentById,
   editingReplyById,
   commentMutationLoadingById,
@@ -331,8 +332,6 @@ export default function PostDetailModal({
   overlayModal,
   onOpenSharedPost,
   onOpenLink,
-  onUpdateDraftComment,
-  onUpdateDraftReply,
   onPickDraftCommentImage,
   onPickDraftReplyImage,
   onSetDraftCommentGif,
@@ -341,7 +340,6 @@ export default function PostDetailModal({
   onClearDraftReplyMedia,
   onStartEditingComment,
   onCancelEditingComment,
-  onUpdateEditCommentDraft,
   onSaveEditedComment,
   onDeleteComment,
   onSubmitComment,
@@ -358,6 +356,17 @@ export default function PostDetailModal({
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postReactionPickerOpen, setPostReactionPickerOpen] = React.useState(false);
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
+  // Local draft state — isolated so typing never causes the parent tree to re-render
+  const [localCommentDraft, setLocalCommentDraft] = React.useState('');
+  const [localReplyDrafts, setLocalReplyDrafts] = React.useState<Record<number, string>>({});
+  const [localCommentEditDrafts, setLocalCommentEditDrafts] = React.useState<Record<number, string>>({});
+  const [localReplyEditDrafts, setLocalReplyEditDrafts] = React.useState<Record<number, string>>({});
+  // Clear comment draft when switching to a different post
+  const prevPostIdRef = React.useRef<number | null>(null);
+  if (activePost && activePost.id !== prevPostIdRef.current) {
+    prevPostIdRef.current = activePost.id;
+    if (localCommentDraft !== '') setLocalCommentDraft('');
+  }
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postReactionHostRef = React.useRef<any>(null);
   const detailVideoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -934,8 +943,12 @@ export default function PostDetailModal({
   function renderCommentThread(postId: number) {
     const comments = localComments[postId] || [];
     if (comments.length === 0) return null;
+    const hasMore = !!commentsHasMoreByPost[postId];
+    const loadingMore = !!commentsLoadingMoreByPost[postId];
 
-    return comments.map((comment, index) => {
+    return (
+      <>
+        {comments.map((comment, index) => {
       const isOwnComment = !!currentUsername && comment.commenter?.username === currentUsername;
       const isEditingComment = !!editingCommentById[comment.id];
       const repliesCount = Math.max(comment.replies_count || 0, (commentRepliesById[comment.id] || []).length);
@@ -965,8 +978,8 @@ export default function PostDetailModal({
               <View>
                 <MentionHashtagInput
                   style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                  value={commentEditDrafts[comment.id] ?? (comment.text || '')}
-                  onChangeText={(value) => onUpdateEditCommentDraft(comment.id, value, false)}
+                  value={localCommentEditDrafts[comment.id] ?? (comment.text || '')}
+                  onChangeText={(value) => setLocalCommentEditDrafts((prev) => ({ ...prev, [comment.id]: value }))}
                   placeholder={t('home.commentPlaceholder')}
                   placeholderTextColor={c.placeholder}
                   token={token}
@@ -978,7 +991,10 @@ export default function PostDetailModal({
                     style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                     disabled={!!commentMutationLoadingById[comment.id]}
                     activeOpacity={0.85}
-                    onPress={() => onSaveEditedComment(postId, comment.id, false)}
+                    onPress={() => {
+                      void onSaveEditedComment(postId, comment.id, false, localCommentEditDrafts[comment.id] ?? (comment.text || ''));
+                      setLocalCommentEditDrafts((prev) => { const n = { ...prev }; delete n[comment.id]; return n; });
+                    }}
                   >
                     <Text style={styles.commentSendText}>
                       {commentMutationLoadingById[comment.id] ? '...' : t('home.saveAction')}
@@ -1161,8 +1177,8 @@ export default function PostDetailModal({
                       <View>
                         <MentionHashtagInput
                           style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                          value={replyEditDrafts[reply.id] ?? (reply.text || '')}
-                          onChangeText={(value) => onUpdateEditCommentDraft(reply.id, value, true)}
+                          value={localReplyEditDrafts[reply.id] ?? (reply.text || '')}
+                          onChangeText={(value) => setLocalReplyEditDrafts((prev) => ({ ...prev, [reply.id]: value }))}
                           placeholder={t('home.replyPlaceholder')}
                           placeholderTextColor={c.placeholder}
                           token={token}
@@ -1174,7 +1190,10 @@ export default function PostDetailModal({
                             style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                             disabled={!!commentMutationLoadingById[reply.id]}
                             activeOpacity={0.85}
-                            onPress={() => onSaveEditedComment(postId, reply.id, true, comment.id)}
+                            onPress={() => {
+                              void onSaveEditedComment(postId, reply.id, true, localReplyEditDrafts[reply.id] ?? (reply.text || ''), comment.id);
+                              setLocalReplyEditDrafts((prev) => { const n = { ...prev }; delete n[reply.id]; return n; });
+                            }}
                           >
                             <Text style={styles.commentSendText}>
                               {commentMutationLoadingById[reply.id] ? '...' : t('home.saveAction')}
@@ -1227,6 +1246,22 @@ export default function PostDetailModal({
               </View>
               );
             })}
+            {repliesHasMoreByComment[comment.id] ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={!!repliesLoadingMoreByComment[comment.id]}
+                onPress={() => activePost?.uuid && onLoadMoreReplies(activePost.uuid, comment.id)}
+                style={{ paddingVertical: 8, paddingHorizontal: 4, alignSelf: 'flex-start' }}
+              >
+                {repliesLoadingMoreByComment[comment.id] ? (
+                  <ActivityIndicator size="small" color={c.primary} />
+                ) : (
+                  <Text style={{ fontSize: 13, color: c.textLink, fontWeight: '600' }}>
+                    {t('home.loadMoreReplies', { defaultValue: 'Load more replies…' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
             <View style={styles.commentReplyComposer}>
               {renderDraftMediaPreview(
                 draftReplyMediaByCommentId[comment.id],
@@ -1234,8 +1269,8 @@ export default function PostDetailModal({
               )}
               <MentionHashtagInput
                 style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                value={draftReplies[comment.id] || ''}
-                onChangeText={(value) => onUpdateDraftReply(comment.id, value)}
+                value={localReplyDrafts[comment.id] || ''}
+                onChangeText={(value) => setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: value }))}
                 placeholder={t('home.replyPlaceholder')}
                 placeholderTextColor={c.placeholder}
                 token={token}
@@ -1265,7 +1300,10 @@ export default function PostDetailModal({
                 </View>
                 <TouchableOpacity
                   style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
-                  onPress={() => onSubmitReply(postId, comment.id)}
+                  onPress={() => {
+                    void onSubmitReply(postId, comment.id, localReplyDrafts[comment.id] || '');
+                    setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: '' }));
+                  }}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
@@ -1276,7 +1314,25 @@ export default function PostDetailModal({
         ) : null}
       </View>
       );
-    });
+        })}
+        {hasMore ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={loadingMore}
+            onPress={() => activePost && onLoadMoreComments(activePost)}
+            style={{ paddingVertical: 12, paddingHorizontal: 16, alignSelf: 'flex-start' }}
+          >
+            {loadingMore ? (
+              <ActivityIndicator size="small" color={c.primary} />
+            ) : (
+              <Text style={{ fontSize: 13, color: c.textLink, fontWeight: '600' }}>
+                {t('home.loadMoreComments', { defaultValue: 'Load more comments…' })}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
+      </>
+    );
   }
 
   function renderSharedPostInset(post: FeedPost) {
@@ -1776,53 +1832,62 @@ export default function PostDetailModal({
                 {renderDetailPanelTabs(activePost)}
 
                 {detailPanel === 'comments' ? (
-                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}> 
+                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
                     {renderCommentThread(activePost.id)}
-                    <View style={styles.commentComposer}>
-                      {renderDraftMediaPreview(
-                        draftCommentMediaByPostId[activePost.id],
-                        () => onClearDraftCommentMedia(activePost.id)
-                      )}
-                      <MentionHashtagInput
-                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={draftComments[activePost.id] || ''}
-                        onChangeText={(value) => onUpdateDraftComment(activePost.id, value)}
-                        placeholder={t('home.commentPlaceholder')}
-                        placeholderTextColor={c.placeholder}
-                        token={token}
-                        c={c}
-                        multiline
-                      />
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {activePost.is_closed ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, opacity: 0.6 }}>
+                        <MaterialCommunityIcons name="lock" size={14} color={c.textMuted} />
+                        <Text style={{ fontSize: 13, color: c.textMuted }}>
+                          {t('home.postLockedCommentNotice', { defaultValue: 'This post is locked. No new comments can be added.' })}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.commentComposer}>
+                        {renderDraftMediaPreview(
+                          draftCommentMediaByPostId[activePost.id],
+                          () => onClearDraftCommentMedia(activePost.id)
+                        )}
+                        <MentionHashtagInput
+                          style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                          value={localCommentDraft}
+                          onChangeText={setLocalCommentDraft}
+                          placeholder={t('home.commentPlaceholder')}
+                          placeholderTextColor={c.placeholder}
+                          token={token}
+                          c={c}
+                          multiline
+                        />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                              onPress={() => onPickDraftCommentImage(activePost.id)}
+                              activeOpacity={0.85}
+                            >
+                              <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                              <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                                {t('home.photoAction', { defaultValue: 'Photo' })}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                              onPress={() => onSetDraftCommentGif(activePost.id)}
+                              activeOpacity={0.85}
+                            >
+                              <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                              <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                            </TouchableOpacity>
+                          </View>
                           <TouchableOpacity
-                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                            onPress={() => onPickDraftCommentImage(activePost.id)}
+                            style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                            onPress={() => { void onSubmitComment(activePost.id, localCommentDraft); setLocalCommentDraft(''); }}
                             activeOpacity={0.85}
                           >
-                            <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                              {t('home.photoAction', { defaultValue: 'Photo' })}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                            onPress={() => onSetDraftCommentGif(activePost.id)}
-                            activeOpacity={0.85}
-                          >
-                            <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                            <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
                           </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                          style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                          onPress={() => onSubmitComment(activePost.id)}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                        </TouchableOpacity>
                       </View>
-                    </View>
+                    )}
                   </View>
                 ) : (
                   renderReactionsPanel(activePost)
@@ -1883,53 +1948,64 @@ export default function PostDetailModal({
               </ScrollView>
 
               {detailPanel === 'comments' ? (
-                <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
-                  <View style={styles.commentComposer}>
-                    {renderDraftMediaPreview(
-                      draftCommentMediaByPostId[activePost.id],
-                      () => onClearDraftCommentMedia(activePost.id)
-                    )}
-                    <MentionHashtagInput
-                      style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                      value={draftComments[activePost.id] || ''}
-                      onChangeText={(value) => onUpdateDraftComment(activePost.id, value)}
-                      placeholder={t('home.commentPlaceholder')}
-                      placeholderTextColor={c.placeholder}
-                      token={token}
-                      c={c}
-                      multiline
-                    />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        <TouchableOpacity
-                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                          onPress={() => onPickDraftCommentImage(activePost.id)}
-                          activeOpacity={0.85}
-                        >
-                          <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                            {t('home.photoAction', { defaultValue: 'Photo' })}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                          onPress={() => onSetDraftCommentGif(activePost.id)}
-                          activeOpacity={0.85}
-                        >
-                          <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                          <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                        onPress={() => onSubmitComment(activePost.id)}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                      </TouchableOpacity>
+                activePost.is_closed ? (
+                  <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, opacity: 0.6 }}>
+                      <MaterialCommunityIcons name="lock" size={14} color={c.textMuted} />
+                      <Text style={{ fontSize: 13, color: c.textMuted }}>
+                        {t('home.postLockedCommentNotice', { defaultValue: 'This post is locked. No new comments can be added.' })}
+                      </Text>
                     </View>
                   </View>
-                </View>
+                ) : (
+                  <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
+                    <View style={styles.commentComposer}>
+                      {renderDraftMediaPreview(
+                        draftCommentMediaByPostId[activePost.id],
+                        () => onClearDraftCommentMedia(activePost.id)
+                      )}
+                      <MentionHashtagInput
+                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                        value={localCommentDraft}
+                        onChangeText={setLocalCommentDraft}
+                        placeholder={t('home.commentPlaceholder')}
+                        placeholderTextColor={c.placeholder}
+                        token={token}
+                        c={c}
+                        multiline
+                      />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TouchableOpacity
+                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                            onPress={() => onPickDraftCommentImage(activePost.id)}
+                            activeOpacity={0.85}
+                          >
+                            <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                              {t('home.photoAction', { defaultValue: 'Photo' })}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                            onPress={() => onSetDraftCommentGif(activePost.id)}
+                            activeOpacity={0.85}
+                          >
+                            <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.commentSendButton, { backgroundColor: c.primary }]}
+                          onPress={() => { void onSubmitComment(activePost.id, localCommentDraft); setLocalCommentDraft(''); }}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                )
               ) : null}
             </View>
           </View>

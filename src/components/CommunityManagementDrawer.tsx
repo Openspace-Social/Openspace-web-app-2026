@@ -21,6 +21,7 @@ import {
   CommunityModeratedObject,
   CommunityOwnershipTransfer,
   FeedPost,
+  ModeratedObjectReport,
   SearchUserResult,
   SearchCommunityResult,
 } from '../api/client';
@@ -128,6 +129,14 @@ export default function CommunityManagementDrawer({
     onConfirm: () => void;
   } | null>(null);
   const [reports, setReports] = useState<CommunityModeratedObject[]>([]);
+  const [reportsStatus, setReportsStatus] = useState<'P' | 'A' | 'R'>('P');
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsActionLoading, setReportsActionLoading] = useState<number | null>(null);
+  const [reportsDetailItem, setReportsDetailItem] = useState<CommunityModeratedObject | null>(null);
+  const [reportsDetailReports, setReportsDetailReports] = useState<ModeratedObjectReport[]>([]);
+  const [reportsDetailReportsLoading, setReportsDetailReportsLoading] = useState(false);
+  const [reportsPendingCount, setReportsPendingCount] = useState(0);
+  const reportsDetailTranslateX = useRef(new Animated.Value(drawerWidth)).current;
   const [closedPosts, setClosedPosts] = useState<FeedPost[]>([]);
   const [removeAlsoBan, setRemoveAlsoBan] = useState(false);
   const userSuggestionsSeqRef = useRef(0);
@@ -171,7 +180,27 @@ export default function CommunityManagementDrawer({
     setDetailsDescription(community?.description || '');
     setDetailsRules(community?.rules || '');
     setDetailsColor(community?.color || '');
+    setReportsStatus('P');
+    setReportsDetailItem(null);
   }, [visible, community]);
+
+  // Animate the reports detail sub-panel
+  useEffect(() => {
+    if (reportsDetailItem) {
+      reportsDetailTranslateX.setValue(drawerWidth);
+      Animated.timing(reportsDetailTranslateX, { toValue: 0, duration: 260, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(reportsDetailTranslateX, { toValue: drawerWidth, duration: 260, useNativeDriver: true }).start();
+    }
+  }, [reportsDetailItem, reportsDetailTranslateX, drawerWidth]);
+
+  // Keep pending count badge up to date whenever the drawer is opened
+  useEffect(() => {
+    if (!visible || !communityName || !canManage) return;
+    api.getCommunityModerationReports(token, communityName, 20, undefined, ['P'])
+      .then((rows) => setReportsPendingCount(Array.isArray(rows) ? rows.length : 0))
+      .catch(() => {});
+  }, [visible, communityName, token, canManage]);
 
   useEffect(() => {
     const supportsUserSearchPanels = panel === 'administrators' || panel === 'ownershipTransfer' || panel === 'moderators' || panel === 'banned' || panel === 'invite' || panel === 'joinRequests';
@@ -245,8 +274,10 @@ export default function CommunityManagementDrawer({
           const rows = await api.getCommunityBannedUsers(token, communityName, 20);
           setBanned(rows);
         } else if (panel === 'reports') {
-          const rows = await api.getCommunityModerationReports(token, communityName, 20);
+          setReportsLoading(true);
+          const rows = await api.getCommunityModerationReports(token, communityName, 20, undefined, [reportsStatus]);
           setReports(Array.isArray(rows) ? rows : []);
+          setReportsLoading(false);
         } else if (panel === 'closed') {
           const rows = await api.getClosedCommunityPosts(token, communityName, 20);
           setClosedPosts(Array.isArray(rows) ? rows : []);
@@ -257,7 +288,7 @@ export default function CommunityManagementDrawer({
     }
 
     void loadPanel();
-  }, [panel, visible, communityName, token, canManage, onError, t]);
+  }, [panel, visible, communityName, token, canManage, reportsStatus, onError, t]);
 
   async function runAction(action: () => Promise<unknown>, successMessage: string) {
     if (busy) return;
@@ -314,6 +345,7 @@ export default function CommunityManagementDrawer({
     nextPanel: Panel,
     danger = false,
     badgeLabel?: string,
+    badgeCount?: number,
   ) {
     return (
       <TouchableOpacity
@@ -326,7 +358,11 @@ export default function CommunityManagementDrawer({
           <Text style={{ fontSize: 16, fontWeight: '700', color: danger ? c.errorText : c.textPrimary }}>{label}</Text>
           <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 2 }}>{sublabel}</Text>
         </View>
-        {badgeLabel ? (
+        {badgeCount != null && badgeCount > 0 ? (
+          <View style={{ backgroundColor: '#dc2626', borderRadius: 999, minWidth: 20, height: 20, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{badgeCount > 99 ? '99+' : String(badgeCount)}</Text>
+          </View>
+        ) : badgeLabel ? (
           <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: c.inputBackground, borderWidth: 1, borderColor: c.border }}>
             <Text style={{ color: c.primary, fontWeight: '800', fontSize: 11 }}>{badgeLabel}</Text>
           </View>
@@ -491,7 +527,7 @@ export default function CommunityManagementDrawer({
           false,
           joinRequests.length > 0 ? String(joinRequests.length) : undefined,
         ) : null}
-        {renderMenuItem('clipboard-text-search-outline', t('community.manageReports', { defaultValue: 'Moderation reports' }), t('community.manageReportsSub', { defaultValue: 'Review the community moderation reports.' }), 'reports')}
+        {renderMenuItem('clipboard-text-search-outline', t('community.manageReports', { defaultValue: 'Moderation reports' }), t('community.manageReportsSub', { defaultValue: 'Review the community moderation reports.' }), 'reports', false, undefined, reportsPendingCount > 0 ? reportsPendingCount : undefined)}
         {renderMenuItem('cancel', t('community.manageBannedUsers', { defaultValue: 'Banned users' }), t('community.manageBannedUsersSub', { defaultValue: 'See, add and remove banned users.' }), 'banned')}
         {renderMenuItem('lock-outline', t('community.manageClosedPosts', { defaultValue: 'Closed posts' }), t('community.manageClosedPostsSub', { defaultValue: 'See and manage closed posts.' }), 'closed')}
         {renderMenuItem('email-fast-outline', t('community.manageInvitePeople', { defaultValue: 'Invite people' }), t('community.manageInvitePeopleSub', { defaultValue: 'Invite your connections and followers.' }), 'invite')}
@@ -1115,23 +1151,280 @@ export default function CommunityManagementDrawer({
     );
   }
 
-  function renderReports() {
-    if (reports.length === 0) {
-      return <Text style={{ color: c.textMuted, padding: 16 }}>{t('community.noReports', { defaultValue: 'No moderation reports found.' })}</Text>;
+  async function openReportDetail(item: CommunityModeratedObject) {
+    setReportsDetailItem(item);
+    setReportsDetailReports([]);
+    if (item.id == null) return;
+    setReportsDetailReportsLoading(true);
+    try {
+      const fetched = await api.getModeratedObjectReports(token, item.id);
+      setReportsDetailReports(Array.isArray(fetched) ? fetched : []);
+    } catch {
+      // show what we have
+    } finally {
+      setReportsDetailReportsLoading(false);
     }
-    return reports.map((item) => (
-      <View key={`report-${item.id}`} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
-        <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 14 }}>
-          {`#${item.id} • ${item.object_type || 'OBJ'} • ${item.status || 'unknown'}`}
-        </Text>
-        <Text style={{ color: c.textSecondary, fontSize: 13, marginTop: 4 }}>
-          {(item.category?.title || item.category?.name || 'Category') + ` • ${item.reports_count || 0} reports`}
-        </Text>
-        {item.description ? (
-          <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 4 }} numberOfLines={2}>{item.description}</Text>
-        ) : null}
-      </View>
-    ));
+  }
+
+  async function handleReportAction(id: number, action: 'approve' | 'reject' | 'verify') {
+    setReportsActionLoading(id);
+    try {
+      if (action === 'approve') await api.approveModeratedObject(token, id);
+      else if (action === 'reject') await api.rejectModeratedObject(token, id);
+      else await api.verifyModeratedObject(token, id);
+      setReports((prev) => prev.filter((item) => item.id !== id));
+      setReportsDetailItem(null);
+      // Refresh pending count
+      if (reportsStatus === 'P' || action === 'approve' || action === 'reject') {
+        api.getCommunityModerationReports(token, communityName, 20, undefined, ['P'])
+          .then((rows) => setReportsPendingCount(Array.isArray(rows) ? rows.length : 0))
+          .catch(() => {});
+      }
+    } catch (e: any) {
+      onError(e?.message || t('home.moderationActionFailed', { defaultValue: 'Action failed. Try again.' }));
+    } finally {
+      setReportsActionLoading(null);
+    }
+  }
+
+  function renderReports() {
+    const severityColor = (severity?: string) =>
+      severity === 'C' ? '#dc2626'
+      : severity === 'H' ? '#ea580c'
+      : severity === 'M' ? '#ca8a04'
+      : '#16a34a';
+
+    return (
+      <>
+        {/* Status tabs */}
+        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.border }}>
+          {(['P', 'A', 'R'] as const).map((s) => {
+            const label = s === 'P' ? t('home.modTasksPending', { defaultValue: 'Pending' })
+              : s === 'A' ? t('home.modTasksApproved', { defaultValue: 'Approved' })
+              : t('home.modTasksRejected', { defaultValue: 'Rejected' });
+            const active = reportsStatus === s;
+            return (
+              <TouchableOpacity
+                key={s}
+                style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: active ? c.primary : 'transparent' }}
+                onPress={() => {
+                  setReportsStatus(s);
+                  setReports([]);
+                  setReportsDetailItem(null);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: active ? c.primary : c.textMuted }}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* List */}
+        {reportsLoading ? (
+          <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 24 }} />
+        ) : reports.length === 0 ? (
+          <Text style={{ color: c.textMuted, padding: 16, textAlign: 'center', marginTop: 16 }}>
+            {t('home.modTasksEmpty', { defaultValue: 'No items in this queue.' })}
+          </Text>
+        ) : reports.map((item) => {
+          if (item.id == null) return null;
+          const typeLabel = item.object_type === 'P' ? 'Post'
+            : item.object_type === 'PC' ? 'Comment'
+            : item.object_type === 'C' ? 'Community'
+            : item.object_type === 'U' ? 'User'
+            : 'Hashtag';
+          const co = item.content_object;
+          const authorUsername = co?.creator?.username || co?.commenter?.username || co?.username || '';
+          const contentText = co?.text || co?.name || co?.title || '';
+          const sc = severityColor(item.category?.severity as any);
+          const isActioning = reportsActionLoading === item.id;
+
+          return (
+            <TouchableOpacity
+              key={item.id}
+              activeOpacity={0.75}
+              onPress={() => void openReportDetail(item)}
+              style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}
+            >
+              {/* Header row */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <View style={{ backgroundColor: sc, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{typeLabel}</Text>
+                </View>
+                {item.category ? (
+                  <Text style={{ fontSize: 12, color: c.textMuted, flex: 1 }} numberOfLines={1}>{item.category.title || item.category.name}</Text>
+                ) : <View style={{ flex: 1 }} />}
+                <Text style={{ fontSize: 12, color: c.textMuted }}>{item.reports_count} report{item.reports_count !== 1 ? 's' : ''}</Text>
+              </View>
+
+              {/* Author + content preview */}
+              {authorUsername ? (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: c.textSecondary, marginBottom: 2 }}>@{authorUsername}</Text>
+              ) : null}
+              {contentText ? (
+                <Text style={{ fontSize: 13, color: c.textSecondary, lineHeight: 18 }} numberOfLines={2}>{contentText}</Text>
+              ) : null}
+
+              {/* Actions */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                {isActioning ? (
+                  <ActivityIndicator color={c.primary} size="small" />
+                ) : item.status === 'P' ? (
+                  <>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#16a34a', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                      activeOpacity={0.85}
+                      onPress={(e) => { e.stopPropagation?.(); void handleReportAction(item.id!, 'approve'); }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksApproveBtn', { defaultValue: 'Approve' })}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#dc2626', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                      activeOpacity={0.85}
+                      onPress={(e) => { e.stopPropagation?.(); void handleReportAction(item.id!, 'reject'); }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksRejectBtn', { defaultValue: 'Reject' })}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : item.status === 'A' && !item.verified ? (
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#7c3aed', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                    activeOpacity={0.85}
+                    onPress={(e) => { e.stopPropagation?.(); void handleReportAction(item.id!, 'verify'); }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksVerifyBtn', { defaultValue: 'Verify & Penalise' })}</Text>
+                  </TouchableOpacity>
+                ) : item.verified ? (
+                  <Text style={{ fontSize: 12, color: '#16a34a', fontWeight: '600' }}>✓ {t('home.modTasksVerified', { defaultValue: 'Verified' })}</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </>
+    );
+  }
+
+  function renderReportsDetail() {
+    const item = reportsDetailItem;
+    if (!item) return null;
+    const co = item.content_object;
+    const typeLabel = item.object_type === 'P' ? 'Post'
+      : item.object_type === 'PC' ? 'Comment'
+      : item.object_type === 'C' ? 'Community'
+      : item.object_type === 'U' ? 'User'
+      : 'Hashtag';
+    const authorUsername = co?.creator?.username || co?.commenter?.username || co?.username || '';
+    const contentText = co?.text || co?.name || co?.title || '';
+    const parentPostText = co?.post?.text;
+    const severityColor = item.category?.severity === 'C' ? '#dc2626'
+      : item.category?.severity === 'H' ? '#ea580c'
+      : item.category?.severity === 'M' ? '#ca8a04'
+      : '#16a34a';
+    const isActioning = reportsActionLoading === item.id;
+
+    return (
+      <>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border }}>
+          <TouchableOpacity onPress={() => setReportsDetailItem(null)} activeOpacity={0.75}>
+            <MaterialCommunityIcons name="arrow-left" size={20} color={c.textSecondary} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: c.textPrimary, flex: 1 }}>
+            {t('home.modTasksDetailTitle', { defaultValue: 'Report details' })}
+          </Text>
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
+          {/* Content section */}
+          <View style={{ backgroundColor: c.inputBackground, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: c.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <View style={{ backgroundColor: severityColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{typeLabel}</Text>
+              </View>
+              {item.category ? (
+                <Text style={{ fontSize: 13, color: c.textMuted }}>{item.category.title || item.category.name}</Text>
+              ) : null}
+            </View>
+            {authorUsername ? (
+              <Text style={{ fontSize: 13, fontWeight: '700', color: c.textSecondary, marginBottom: 4 }}>@{authorUsername}</Text>
+            ) : null}
+            {parentPostText ? (
+              <View style={{ borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: 10, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 2 }}>{t('home.modTasksDetailInReplyTo', { defaultValue: 'On post:' })}</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted }} numberOfLines={2}>{parentPostText}</Text>
+              </View>
+            ) : null}
+            {contentText ? (
+              <Text style={{ fontSize: 14, color: c.textPrimary, lineHeight: 20 }}>{contentText}</Text>
+            ) : null}
+          </View>
+
+          {/* Reports section */}
+          <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {t('home.modTasksDetailReportsTitle', { defaultValue: 'Reports ({{count}})', count: item.reports_count ?? 0 })}
+          </Text>
+
+          {reportsDetailReportsLoading ? (
+            <ActivityIndicator color={c.primary} size="small" />
+          ) : reportsDetailReports.map((report) => (
+            <View key={report.id} style={{ borderBottomWidth: 1, borderBottomColor: c.border, paddingBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {report.reporter.profile?.avatar ? (
+                    <Image source={{ uri: report.reporter.profile.avatar }} style={{ width: 28, height: 28, borderRadius: 14 }} resizeMode="cover" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{(report.reporter.username?.[0] || '?').toUpperCase()}</Text>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: c.textSecondary }}>@{report.reporter.username}</Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ fontSize: 11, color: c.textMuted }}>{report.category.title || report.category.name}</Text>
+              </View>
+              {report.description ? (
+                <Text style={{ fontSize: 13, color: c.textSecondary, marginLeft: 36, lineHeight: 18 }}>{report.description}</Text>
+              ) : null}
+            </View>
+          ))}
+
+          {/* Action buttons */}
+          {!item.verified ? (
+            <View style={{ flexDirection: 'row', gap: 10, paddingTop: 4, paddingBottom: 8 }}>
+              {isActioning ? (
+                <ActivityIndicator color={c.primary} size="small" />
+              ) : item.status === 'P' ? (
+                <>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: '#16a34a', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                    activeOpacity={0.85}
+                    onPress={() => item.id != null && void handleReportAction(item.id, 'approve')}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksApproveBtn', { defaultValue: 'Approve' })}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: '#dc2626', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                    activeOpacity={0.85}
+                    onPress={() => item.id != null && void handleReportAction(item.id, 'reject')}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksRejectBtn', { defaultValue: 'Reject' })}</Text>
+                  </TouchableOpacity>
+                </>
+              ) : item.status === 'A' ? (
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#7c3aed', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                  activeOpacity={0.85}
+                  onPress={() => item.id != null && void handleReportAction(item.id, 'verify')}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksVerifyBtn', { defaultValue: 'Verify & Penalise' })}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>✓ {t('home.modTasksVerified', { defaultValue: 'Verified' })}</Text>
+          )}
+        </ScrollView>
+      </>
+    );
   }
 
   function renderClosedPosts() {
@@ -1241,6 +1534,16 @@ export default function CommunityManagementDrawer({
           {panel === 'unfavorite' ? renderUnfavorite() : null}
           {panel === 'delete' ? renderDelete() : null}
         </ScrollView>
+
+        {/* Report detail sub-panel — slides in over the reports list */}
+        <Animated.View style={{
+          position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+          backgroundColor: c.surface,
+          transform: [{ translateX: reportsDetailTranslateX }],
+          zIndex: 10,
+        }}>
+          {renderReportsDetail()}
+        </Animated.View>
       </Animated.View>
       {transferConfirm ? (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, zIndex: 50 }}>

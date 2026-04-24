@@ -43,6 +43,7 @@ type Props = {
   onDeclineCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
   onAcceptCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
   onDeclineCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
+  onOpenModerationTasks?: () => void;
 };
 
 export default function NotificationDrawer({
@@ -70,6 +71,7 @@ export default function NotificationDrawer({
   onDeclineCommunityAdminInvite,
   onAcceptCommunityOwnershipTransfer,
   onDeclineCommunityOwnershipTransfer,
+  onOpenModerationTasks,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(DRAWER_MAX_WIDTH, screenWidth * 0.88);
@@ -339,6 +341,7 @@ export default function NotificationDrawer({
                 onDeclineCommunityAdminInvite={onDeclineCommunityAdminInvite}
                 onAcceptCommunityOwnershipTransfer={onAcceptCommunityOwnershipTransfer}
                 onDeclineCommunityOwnershipTransfer={onDeclineCommunityOwnershipTransfer}
+                onOpenModerationTasks={onOpenModerationTasks}
               />
             ))}
             {loadingMore && (
@@ -409,6 +412,7 @@ type RowProps = {
   onDeclineCommunityAdminInvite: (inviteId: number, communityName: string) => Promise<void>;
   onAcceptCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
   onDeclineCommunityOwnershipTransfer: (inviteId: number, communityName: string) => Promise<void>;
+  onOpenModerationTasks?: () => void;
 };
 
 function NotificationRow({
@@ -426,10 +430,11 @@ function NotificationRow({
   onDeclineCommunityAdminInvite,
   onAcceptCommunityOwnershipTransfer,
   onDeclineCommunityOwnershipTransfer,
+  onOpenModerationTasks,
 }: RowProps) {
   const obj = notif.content_object as any;
   const { icon, iconColor, actor, actorAvatar, body, postThumbnail, postPreviewText, onPress } =
-    resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity);
+    resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity, onOpenModerationTasks);
 
   const initial = (actor?.[0] || '?').toUpperCase();
   const isCR = notif.notification_type === 'CR';
@@ -851,6 +856,7 @@ function resolveNotification(
   onNavigateProfile: (u: string) => void,
   onNavigatePost: (id: number, uuid?: string) => void,
   onNavigateCommunity: (name: string) => void,
+  onOpenModerationTasks?: () => void,
 ) {
   const someone = t('home.notificationSomeone');
 
@@ -1091,6 +1097,33 @@ function resolveNotification(
         postThumbnail: repost?.media_thumbnail || null,
         postPreviewText: truncate(repost?.text, 120) || null,
         onPress: () => repost?.id && onNavigatePost(repost.id, repost.uuid),
+      };
+    }
+    case 'MT': {
+      const objectType: string = obj?.object_type || '';
+      const communityName: string = obj?.community_name || '';
+      const categoryTitle: string = obj?.category_title || '';
+      const typeLabel = objectType === 'P' ? t('home.notificationMTPost', { defaultValue: 'post' })
+        : objectType === 'PC' ? t('home.notificationMTComment', { defaultValue: 'comment' })
+        : t('home.notificationMTContent', { defaultValue: 'content' });
+      const body = communityName
+        ? t('home.notificationTypeModerationTask', {
+            type: typeLabel,
+            community: communityName,
+            category: categoryTitle,
+            defaultValue: 'A {{type}} in c/{{community}} was reported · {{category}}',
+          })
+        : t('home.notificationTypeModerationTaskGlobal', {
+            type: typeLabel,
+            category: categoryTitle,
+            defaultValue: 'A {{type}} was reported · {{category}}',
+          });
+      return {
+        icon: 'shield-alert-outline', iconColor: '#dc2626',
+        actor: communityName || undefined, actorAvatar: undefined,
+        body,
+        postThumbnail: null, postPreviewText: null,
+        onPress: onOpenModerationTasks,
       };
     }
     default:

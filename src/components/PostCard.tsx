@@ -356,12 +356,8 @@ type PostCardProps = {
   commentRepliesById: Record<number, PostComment[]>;
   commentRepliesExpanded: Record<number, boolean>;
   commentRepliesLoadingById: Record<number, boolean>;
-  draftComments: Record<number, string>;
-  draftReplies: Record<number, string>;
   draftCommentMediaByPostId: Record<number, CommentDraftMedia | null>;
   draftReplyMediaByCommentId: Record<number, CommentDraftMedia | null>;
-  commentEditDrafts: Record<number, string>;
-  replyEditDrafts: Record<number, string>;
   editingCommentById: Record<number, boolean>;
   editingReplyById: Record<number, boolean>;
   commentMutationLoadingById: Record<number, boolean>;
@@ -384,8 +380,6 @@ type PostCardProps = {
   onSharePost: (post: FeedPost) => void;
   onRepostPost: (post: FeedPost) => void;
   onOpenLink: (url?: string) => void;
-  onUpdateDraftComment: (postId: number, value: string) => void;
-  onUpdateDraftReply: (commentId: number, value: string) => void;
   onPickDraftCommentImage: (postId: number) => void;
   onPickDraftReplyImage: (commentId: number) => void;
   onSetDraftCommentGif: (postId: number) => void;
@@ -394,11 +388,10 @@ type PostCardProps = {
   onClearDraftReplyMedia: (commentId: number) => void;
   onStartEditingComment: (commentId: number, currentText: string, isReply: boolean) => void;
   onCancelEditingComment: (commentId: number, isReply: boolean) => void;
-  onUpdateEditCommentDraft: (commentId: number, value: string, isReply: boolean) => void;
-  onSaveEditedComment: (postId: number, commentId: number, isReply: boolean, parentCommentId?: number) => void | Promise<void>;
+  onSaveEditedComment: (postId: number, commentId: number, isReply: boolean, text: string, parentCommentId?: number) => void | Promise<void>;
   onDeleteComment: (postId: number, commentId: number, isReply: boolean, parentCommentId?: number) => void | Promise<void>;
-  onSubmitComment: (postId: number) => void | Promise<void>;
-  onSubmitReply: (postId: number, commentId: number) => void | Promise<void>;
+  onSubmitComment: (postId: number, text: string) => void | Promise<void>;
+  onSubmitReply: (postId: number, commentId: number, text: string) => void | Promise<void>;
   onOpenReportPostModal: (post: FeedPost) => void;
   onReportComment?: (postUuid: string, commentId: number) => void;
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
@@ -411,6 +404,7 @@ type PostCardProps = {
   pinnedDisplayIndex?: number | null;
   pinnedDisplayLimit?: number;
   onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void>;
+  onToggleClosePost?: (post: FeedPost) => void | Promise<void>;
   onNavigateProfile: (username: string) => void;
   onNavigateHashtag?: (tag: string) => void;
   onNavigateCommunity: (communityName: string) => void;
@@ -440,12 +434,8 @@ export default function PostCard({
   commentRepliesById,
   commentRepliesExpanded,
   commentRepliesLoadingById,
-  draftComments,
-  draftReplies,
   draftCommentMediaByPostId,
   draftReplyMediaByCommentId,
-  commentEditDrafts,
-  replyEditDrafts,
   editingCommentById,
   editingReplyById,
   commentMutationLoadingById,
@@ -468,8 +458,6 @@ export default function PostCard({
   onSharePost,
   onRepostPost,
   onOpenLink,
-  onUpdateDraftComment,
-  onUpdateDraftReply,
   onPickDraftCommentImage,
   onPickDraftReplyImage,
   onSetDraftCommentGif,
@@ -478,7 +466,6 @@ export default function PostCard({
   onClearDraftReplyMedia,
   onStartEditingComment,
   onCancelEditingComment,
-  onUpdateEditCommentDraft,
   onSaveEditedComment,
   onDeleteComment,
   onSubmitComment,
@@ -495,6 +482,7 @@ export default function PostCard({
   pinnedDisplayIndex = null,
   pinnedDisplayLimit = 5,
   onToggleCommunityPinPost,
+  onToggleClosePost,
   onNavigateProfile,
   onNavigateHashtag,
   onNavigateCommunity,
@@ -520,6 +508,12 @@ export default function PostCard({
   const [postEditDraft, setPostEditDraft] = React.useState(getPostText(post));
   const [postEditLoading, setPostEditLoading] = React.useState(false);
   const [postPinLoading, setPostPinLoading] = React.useState(false);
+  const [postCloseLoading, setPostCloseLoading] = React.useState(false);
+  // Local draft state — isolated so typing never re-renders other feed posts
+  const [localCommentDraft, setLocalCommentDraft] = React.useState('');
+  const [localReplyDrafts, setLocalReplyDrafts] = React.useState<Record<number, string>>({});
+  const [localCommentEditDrafts, setLocalCommentEditDrafts] = React.useState<Record<number, string>>({});
+  const [localReplyEditDrafts, setLocalReplyEditDrafts] = React.useState<Record<number, string>>({});
   const [showSharedCommunities, setShowSharedCommunities] = React.useState(false);
   const [inlineVideoEnded, setInlineVideoEnded] = React.useState(false);
   const [inlineManualPlaybackStarted, setInlineManualPlaybackStarted] = React.useState(false);
@@ -1023,6 +1017,19 @@ export default function PostCard({
     }
   }
 
+  async function handleToggleClosePost() {
+    if (postCloseLoading || !onToggleClosePost) return;
+    setPostCloseLoading(true);
+    try {
+      await onToggleClosePost(post);
+      setPostMenuOpen(false);
+    } catch {
+      // errors are surfaced by parent
+    } finally {
+      setPostCloseLoading(false);
+    }
+  }
+
   async function handleTranslate() {
     if (!token || !post.uuid || isTranslating) return;
     setIsTranslating(true);
@@ -1206,6 +1213,17 @@ export default function PostCard({
           disabled: false,
           onPress: () => { setPostMenuOpen(false); onMovePostCommunities(post); },
         }] : []),
+        ...(onToggleClosePost ? [{
+          key: 'close-post',
+          icon: (post.is_closed ? 'lock-open-outline' : 'lock-outline') as const,
+          label: postCloseLoading
+            ? '...'
+            : (post.is_closed
+              ? t('home.openPostAction', { defaultValue: 'Unlock post' })
+              : t('home.closePostAction', { defaultValue: 'Lock post' })),
+          disabled: postCloseLoading,
+          onPress: () => void handleToggleClosePost(),
+        }] : []),
         ...(filterByPosterAction ? [filterByPosterAction] : []),
       ]
     : [
@@ -1226,6 +1244,17 @@ export default function PostCard({
               : t('home.communityPinAction', { defaultValue: 'Pin to community' })),
           disabled: postPinLoading,
           onPress: () => void handleToggleCommunityPinPost(),
+        }] : []),
+        ...(onToggleClosePost ? [{
+          key: 'close-post',
+          icon: (post.is_closed ? 'lock-open-outline' : 'lock-outline') as const,
+          label: postCloseLoading
+            ? '...'
+            : (post.is_closed
+              ? t('home.openPostAction', { defaultValue: 'Unlock post' })
+              : t('home.closePostAction', { defaultValue: 'Lock post' })),
+          disabled: postCloseLoading,
+          onPress: () => void handleToggleClosePost(),
         }] : []),
         ...(filterByPosterAction ? [filterByPosterAction] : []),
       ];
@@ -1422,6 +1451,14 @@ export default function PostCard({
             <MaterialCommunityIcons name="pin" size={12} color={c.primary} />
             <Text style={[styles.postPinnedBadgeText, { color: c.primary }]}>
               {t('home.communityPinnedBadge', { defaultValue: 'Pinned' })}
+            </Text>
+          </View>
+        ) : null}
+        {post.is_closed ? (
+          <View style={[styles.postPinnedBadge, { borderColor: c.border, backgroundColor: c.surface }]}>
+            <MaterialCommunityIcons name="lock" size={12} color={c.textMuted} />
+            <Text style={[styles.postPinnedBadgeText, { color: c.textMuted }]}>
+              {t('home.postLockedBadge', { defaultValue: 'Locked' })}
             </Text>
           </View>
         ) : null}
@@ -2162,6 +2199,15 @@ export default function PostCard({
           <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
           <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground, paddingHorizontal: 10 }]}
+          onPress={() => onOpenPostDetail(post)}
+          activeOpacity={0.85}
+          accessibilityLabel={t('home.expandPostAction', { defaultValue: 'Expand post' })}
+        >
+          <MaterialCommunityIcons name="arrow-expand" size={15} color={c.textMuted} />
+        </TouchableOpacity>
       </View>
 
       {commentBoxPostIds[post.id] ? (
@@ -2192,8 +2238,8 @@ export default function PostCard({
                     <View>
                       <MentionHashtagInput
                         style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={commentEditDrafts[comment.id] ?? (comment.text || '')}
-                        onChangeText={(value) => onUpdateEditCommentDraft(comment.id, value, false)}
+                        value={localCommentEditDrafts[comment.id] ?? (comment.text || '')}
+                        onChangeText={(value) => setLocalCommentEditDrafts((prev) => ({ ...prev, [comment.id]: value }))}
                         placeholder={t('home.commentPlaceholder')}
                         placeholderTextColor={c.placeholder}
                         token={token}
@@ -2205,7 +2251,10 @@ export default function PostCard({
                           style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                           disabled={!!commentMutationLoadingById[comment.id]}
                           activeOpacity={0.85}
-                          onPress={() => onSaveEditedComment(post.id, comment.id, false)}
+                          onPress={() => {
+                            void onSaveEditedComment(post.id, comment.id, false, localCommentEditDrafts[comment.id] ?? (comment.text || ''));
+                            setLocalCommentEditDrafts((prev) => { const n = { ...prev }; delete n[comment.id]; return n; });
+                          }}
                         >
                           <Text style={styles.commentSendText}>
                             {commentMutationLoadingById[comment.id] ? '...' : t('home.saveAction')}
@@ -2398,8 +2447,8 @@ export default function PostCard({
                             <View>
                               <MentionHashtagInput
                                 style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                                value={replyEditDrafts[reply.id] ?? (reply.text || '')}
-                                onChangeText={(value) => onUpdateEditCommentDraft(reply.id, value, true)}
+                                value={localReplyEditDrafts[reply.id] ?? (reply.text || '')}
+                                onChangeText={(value) => setLocalReplyEditDrafts((prev) => ({ ...prev, [reply.id]: value }))}
                                 placeholder={t('home.replyPlaceholder')}
                                 placeholderTextColor={c.placeholder}
                                 token={token}
@@ -2411,7 +2460,10 @@ export default function PostCard({
                                   style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                                   disabled={!!commentMutationLoadingById[reply.id]}
                                   activeOpacity={0.85}
-                                  onPress={() => onSaveEditedComment(post.id, reply.id, true, comment.id)}
+                                  onPress={() => {
+                                    void onSaveEditedComment(post.id, reply.id, true, localReplyEditDrafts[reply.id] ?? (reply.text || ''), comment.id);
+                                    setLocalReplyEditDrafts((prev) => { const n = { ...prev }; delete n[reply.id]; return n; });
+                                  }}
                                 >
                                   <Text style={styles.commentSendText}>
                                     {commentMutationLoadingById[reply.id] ? '...' : t('home.saveAction')}
@@ -2481,8 +2533,8 @@ export default function PostCard({
                     )}
                     <MentionHashtagInput
                       style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                      value={draftReplies[comment.id] || ''}
-                      onChangeText={(value) => onUpdateDraftReply(comment.id, value)}
+                      value={localReplyDrafts[comment.id] || ''}
+                      onChangeText={(value) => setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: value }))}
                       placeholder={t('home.replyPlaceholder')}
                       placeholderTextColor={c.placeholder}
                       token={token}
@@ -2512,7 +2564,10 @@ export default function PostCard({
                       </View>
                       <TouchableOpacity
                         style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
-                        onPress={() => onSubmitReply(post.id, comment.id)}
+                        onPress={() => {
+                          void onSubmitReply(post.id, comment.id, localReplyDrafts[comment.id] || '');
+                          setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: '' }));
+                        }}
                         activeOpacity={0.85}
                       >
                         <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
@@ -2532,8 +2587,8 @@ export default function PostCard({
             )}
             <MentionHashtagInput
               style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-              value={draftComments[post.id] || ''}
-              onChangeText={(value) => onUpdateDraftComment(post.id, value)}
+              value={localCommentDraft}
+              onChangeText={setLocalCommentDraft}
               placeholder={t('home.commentPlaceholder')}
               placeholderTextColor={c.placeholder}
               token={token}
@@ -2563,7 +2618,7 @@ export default function PostCard({
               </View>
               <TouchableOpacity
                 style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                onPress={() => onSubmitComment(post.id)}
+                onPress={() => { void onSubmitComment(post.id, localCommentDraft); setLocalCommentDraft(''); }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>

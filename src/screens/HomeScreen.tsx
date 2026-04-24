@@ -29,8 +29,11 @@ import {
   FeedPost,
   FeedType,
   FollowingUserResult,
+  GlobalModeratedObject,
   ListResult,
   ModerationCategory,
+  ModerationPenalty,
+  ModeratedObjectReport,
   PostComment,
   ProfileCommentActivity,
   SearchCommunityResult,
@@ -691,19 +694,21 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [postDetailInitialMediaTimeSec, setPostDetailInitialMediaTimeSec] = useState<number | null>(null);
   const [expandedPostIds, setExpandedPostIds] = useState<Record<number, boolean>>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Record<number, boolean>>({});
-  const [draftComments, setDraftComments] = useState<Record<number, string>>({});
-  const [draftReplies, setDraftReplies] = useState<Record<number, string>>({});
   const [draftCommentMediaByPostId, setDraftCommentMediaByPostId] = useState<Record<number, CommentDraftMedia | null>>({});
   const [draftReplyMediaByCommentId, setDraftReplyMediaByCommentId] = useState<Record<number, CommentDraftMedia | null>>({});
-  const [commentEditDrafts, setCommentEditDrafts] = useState<Record<number, string>>({});
-  const [replyEditDrafts, setReplyEditDrafts] = useState<Record<number, string>>({});
   const [editingCommentById, setEditingCommentById] = useState<Record<number, boolean>>({});
   const [editingReplyById, setEditingReplyById] = useState<Record<number, boolean>>({});
   const [commentMutationLoadingById, setCommentMutationLoadingById] = useState<Record<number, boolean>>({});
   const [localComments, setLocalComments] = useState<Record<number, PostComment[]>>({});
+  const [commentsHasMoreByPost, setCommentsHasMoreByPost] = useState<Record<number, boolean>>({});
+  const [commentsMaxIdByPost, setCommentsMaxIdByPost] = useState<Record<number, number>>({});
+  const [commentsLoadingMoreByPost, setCommentsLoadingMoreByPost] = useState<Record<number, boolean>>({});
   const [commentRepliesById, setCommentRepliesById] = useState<Record<number, PostComment[]>>({});
   const [commentRepliesExpanded, setCommentRepliesExpanded] = useState<Record<number, boolean>>({});
   const [commentRepliesLoadingById, setCommentRepliesLoadingById] = useState<Record<number, boolean>>({});
+  const [repliesHasMoreByComment, setRepliesHasMoreByComment] = useState<Record<number, boolean>>({});
+  const [repliesMaxIdByComment, setRepliesMaxIdByComment] = useState<Record<number, number>>({});
+  const [repliesLoadingMoreByComment, setRepliesLoadingMoreByComment] = useState<Record<number, boolean>>({});
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [reactionPickerPostId, setReactionPickerPostId] = useState<number | null>(null);
   const [reactionPickerLoading, setReactionPickerLoading] = useState(false);
@@ -726,8 +731,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const composerTextRef = useRef('');
-  const [composerText, setComposerText] = useState('');
   const [composerTextLength, setComposerTextLength] = useState(0);
+  const composerTextLengthDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [composerLinkPreview, setComposerLinkPreview] = useState<ShortPostLinkPreview | null>(null);
   const [composerLinkPreviewLoading, setComposerLinkPreviewLoading] = useState(false);
   const [composerInputKey, setComposerInputKey] = useState(0);
@@ -781,6 +786,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [moveCommunitiesLoading, setMoveCommunitiesLoading] = useState(false);
   const [moveCommunitiesSubmitting, setMoveCommunitiesSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchCurrentTextRef = useRef('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<any>(null);
+  const [searchExternalResetKey, setSearchExternalResetKey] = useState(0);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -798,6 +807,19 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [blockedUsersDrawerOpen, setBlockedUsersDrawerOpen] = useState(false);
   const [linkedAccountsDrawerMounted, setLinkedAccountsDrawerMounted] = useState(false);
   const [blockedUsersDrawerMounted, setBlockedUsersDrawerMounted] = useState(false);
+  const [moderationTasksOpen, setModerationTasksOpen] = useState(false);
+  const [moderationTasksDrawerMounted, setModerationTasksDrawerMounted] = useState(false);
+  const [moderationTasksStatus, setModerationTasksStatus] = useState<'P' | 'A' | 'R'>('P');
+  const [moderationTasksItems, setModerationTasksItems] = useState<GlobalModeratedObject[]>([]);
+  const [moderationTasksLoading, setModerationTasksLoading] = useState(false);
+  const [moderationTasksActionLoading, setModerationTasksActionLoading] = useState<number | null>(null);
+  const [moderationTasksDetailItem, setModerationTasksDetailItem] = useState<GlobalModeratedObject | null>(null);
+  const [moderationTasksDetailReports, setModerationTasksDetailReports] = useState<ModeratedObjectReport[]>([]);
+  const [moderationTasksDetailReportsLoading, setModerationTasksDetailReportsLoading] = useState(false);
+  const [moderationPenaltiesOpen, setModerationPenaltiesOpen] = useState(false);
+  const [moderationPenaltiesDrawerMounted, setModerationPenaltiesDrawerMounted] = useState(false);
+  const [userPenalties, setUserPenalties] = useState<ModerationPenalty[]>([]);
+  const [userPenaltiesLoading, setUserPenaltiesLoading] = useState(false);
   const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
   const [externalLinkModalOpen, setExternalLinkModalOpen] = useState(false);
   const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
@@ -834,6 +856,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const blockedUsersDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const menuDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const menuDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const moderationTasksDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const moderationTasksDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const moderationPenaltiesDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const moderationPenaltiesDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const moderationTasksDetailTranslateX = useRef(new Animated.Value(0)).current;
   // Whether the user has a password set at all — drives "Set password" vs "Change password" title.
   const resolvedHasUsablePassword = React.useMemo(() => {
     const usableRaw = user?.has_usable_password;
@@ -1311,6 +1338,47 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }, [blockedUsersDrawerOpen, blockedUsersDrawerBackdropOpacity, blockedUsersDrawerTranslateX, sideDrawerWidth]);
 
   useEffect(() => {
+    if (moderationTasksOpen) {
+      setModerationTasksDrawerMounted(true);
+      moderationTasksDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(moderationTasksDrawerTranslateX, { toValue: 0, duration: 280, useNativeDriver: true }),
+        Animated.timing(moderationTasksDrawerBackdropOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(moderationTasksDrawerTranslateX, { toValue: sideDrawerWidth, duration: 280, useNativeDriver: true }),
+        Animated.timing(moderationTasksDrawerBackdropOpacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+      ]).start(() => setModerationTasksDrawerMounted(false));
+    }
+  }, [moderationTasksOpen, moderationTasksDrawerBackdropOpacity, moderationTasksDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (moderationPenaltiesOpen) {
+      setModerationPenaltiesDrawerMounted(true);
+      moderationPenaltiesDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(moderationPenaltiesDrawerTranslateX, { toValue: 0, duration: 280, useNativeDriver: true }),
+        Animated.timing(moderationPenaltiesDrawerBackdropOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(moderationPenaltiesDrawerTranslateX, { toValue: sideDrawerWidth, duration: 280, useNativeDriver: true }),
+        Animated.timing(moderationPenaltiesDrawerBackdropOpacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+      ]).start(() => setModerationPenaltiesDrawerMounted(false));
+    }
+  }, [moderationPenaltiesOpen, moderationPenaltiesDrawerBackdropOpacity, moderationPenaltiesDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (moderationTasksDetailItem) {
+      moderationTasksDetailTranslateX.setValue(sideDrawerWidth);
+      Animated.timing(moderationTasksDetailTranslateX, { toValue: 0, duration: 260, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(moderationTasksDetailTranslateX, { toValue: sideDrawerWidth, duration: 260, useNativeDriver: true }).start();
+    }
+  }, [moderationTasksDetailItem, moderationTasksDetailTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search || '');
     const changeEmailToken = (params.get('change_email_token') || '').trim();
@@ -1724,7 +1792,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         const persistedQuery = (parsed?.query || '').trim();
         if (persistedQuery.length < 2) return;
 
+        searchCurrentTextRef.current = persistedQuery;
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         setSearchQuery(persistedQuery);
+        setSearchExternalResetKey((prev) => prev + 1);
         setSearchResultsActive(true);
         setSearchResultsQuery(persistedQuery);
         await loadSearchResults(persistedQuery, 20, setSearchResultsLoading, committedSearchRequestSeqRef);
@@ -1868,6 +1939,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     if (route.screen === 'search') {
       const routedQuery = (route.query || '').trim();
       if (routedQuery.length >= 2) {
+        searchCurrentTextRef.current = routedQuery;
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        setSearchExternalResetKey((prev) => prev + 1);
         setSearchQuery(routedQuery);
         setSearchResultsActive(true);
         setSearchResultsQuery(routedQuery);
@@ -2610,8 +2684,29 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     try {
       const comments = await api.getPostComments(token, post.uuid, 20);
       setLocalComments((prev) => ({ ...prev, [post.id]: comments }));
+      const maxId = comments.length > 0 ? Math.max(...comments.map((c) => c.id)) : 0;
+      setCommentsMaxIdByPost((prev) => ({ ...prev, [post.id]: maxId }));
+      setCommentsHasMoreByPost((prev) => ({ ...prev, [post.id]: comments.length >= 20 }));
     } catch {
       // Do not block the post UI if comment loading fails.
+    }
+  }
+
+  async function loadMoreCommentsForPost(post: FeedPost) {
+    if (!post.uuid) return;
+    const minId = commentsMaxIdByPost[post.id];
+    if (!minId) return;
+    setCommentsLoadingMoreByPost((prev) => ({ ...prev, [post.id]: true }));
+    try {
+      const more = await api.getPostComments(token, post.uuid, 20, minId);
+      setLocalComments((prev) => ({ ...prev, [post.id]: [...(prev[post.id] || []), ...more] }));
+      const newMaxId = more.length > 0 ? Math.max(...more.map((c) => c.id)) : minId;
+      setCommentsMaxIdByPost((prev) => ({ ...prev, [post.id]: newMaxId }));
+      setCommentsHasMoreByPost((prev) => ({ ...prev, [post.id]: more.length >= 20 }));
+    } catch {
+      // ignore
+    } finally {
+      setCommentsLoadingMoreByPost((prev) => ({ ...prev, [post.id]: false }));
     }
   }
 
@@ -2624,9 +2719,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
-  function updateDraftComment(postId: number, value: string) {
-    setDraftComments((prev) => ({ ...prev, [postId]: value }));
-  }
 
   function clearDraftCommentMedia(postId: number) {
     setDraftCommentMediaByPostId((prev) => ({ ...prev, [postId]: null }));
@@ -2724,8 +2816,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     input.click();
   }
 
-  async function submitComment(postId: number) {
-    const nextValue = (draftComments[postId] || '').trim();
+  async function submitComment(postId: number, text: string) {
+    const nextValue = text.trim();
     const media = draftCommentMediaByPostId[postId] || null;
     if (!nextValue && !media) return;
     const sourcePost = getSourcePost(postId);
@@ -2744,7 +2836,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         ...prev,
         [postId]: [createdComment, ...(prev[postId] || [])],
       }));
-      setDraftComments((prev) => ({ ...prev, [postId]: '' }));
       clearDraftCommentMedia(postId);
       applyPostPatch(postId, (post) => ({
         ...post,
@@ -2760,6 +2851,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     try {
       const replies = await api.getPostCommentReplies(token, postUuid, commentId, 20);
       setCommentRepliesById((prev) => ({ ...prev, [commentId]: replies }));
+      const maxId = replies.length > 0 ? Math.max(...replies.map((r) => r.id)) : 0;
+      setRepliesMaxIdByComment((prev) => ({ ...prev, [commentId]: maxId }));
+      setRepliesHasMoreByComment((prev) => ({ ...prev, [commentId]: replies.length >= 20 }));
     } catch {
       setCommentRepliesById((prev) => ({ ...prev, [commentId]: [] }));
     } finally {
@@ -2767,8 +2861,21 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
-  function updateDraftReply(commentId: number, value: string) {
-    setDraftReplies((prev) => ({ ...prev, [commentId]: value }));
+  async function loadMoreRepliesForComment(postUuid: string, commentId: number) {
+    const minId = repliesMaxIdByComment[commentId];
+    if (!minId) return;
+    setRepliesLoadingMoreByComment((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      const more = await api.getPostCommentReplies(token, postUuid, commentId, 20, minId);
+      setCommentRepliesById((prev) => ({ ...prev, [commentId]: [...(prev[commentId] || []), ...more] }));
+      const newMaxId = more.length > 0 ? Math.max(...more.map((r) => r.id)) : minId;
+      setRepliesMaxIdByComment((prev) => ({ ...prev, [commentId]: newMaxId }));
+      setRepliesHasMoreByComment((prev) => ({ ...prev, [commentId]: more.length >= 20 }));
+    } catch {
+      // ignore
+    } finally {
+      setRepliesLoadingMoreByComment((prev) => ({ ...prev, [commentId]: false }));
+    }
   }
 
   function toggleCommentReplies(postId: number, commentId: number) {
@@ -2782,9 +2889,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     void loadRepliesForComment(sourcePost.uuid, commentId);
   }
 
-  async function submitReply(postId: number, commentId: number) {
+  async function submitReply(postId: number, commentId: number, text: string) {
     const sourcePost = getSourcePost(postId);
-    const nextValue = (draftReplies[commentId] || '').trim();
+    const nextValue = text.trim();
     const media = draftReplyMediaByCommentId[commentId] || null;
     if (!sourcePost?.uuid || (!nextValue && !media)) return;
 
@@ -2799,7 +2906,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         [commentId]: [createdReply, ...(prev[commentId] || [])],
       }));
       setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: true }));
-      setDraftReplies((prev) => ({ ...prev, [commentId]: '' }));
       clearDraftReplyMedia(commentId);
       setLocalComments((prev) => ({
         ...prev,
@@ -2814,14 +2920,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
-  function startEditingComment(commentId: number, currentText: string, isReply: boolean) {
+  function startEditingComment(commentId: number, _currentText: string, isReply: boolean) {
     if (isReply) {
       setEditingReplyById((prev) => ({ ...prev, [commentId]: true }));
-      setReplyEditDrafts((prev) => ({ ...prev, [commentId]: currentText || '' }));
       return;
     }
     setEditingCommentById((prev) => ({ ...prev, [commentId]: true }));
-    setCommentEditDrafts((prev) => ({ ...prev, [commentId]: currentText || '' }));
   }
 
   function cancelEditingComment(commentId: number, isReply: boolean) {
@@ -2832,18 +2936,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setEditingCommentById((prev) => ({ ...prev, [commentId]: false }));
   }
 
-  function updateEditCommentDraft(commentId: number, value: string, isReply: boolean) {
-    if (isReply) {
-      setReplyEditDrafts((prev) => ({ ...prev, [commentId]: value }));
-      return;
-    }
-    setCommentEditDrafts((prev) => ({ ...prev, [commentId]: value }));
-  }
-
-  async function saveEditedComment(postId: number, commentId: number, isReply: boolean, parentCommentId?: number) {
+  async function saveEditedComment(postId: number, commentId: number, isReply: boolean, text: string, parentCommentId?: number) {
     const sourcePost = getSourcePost(postId);
-    const draft = (isReply ? replyEditDrafts[commentId] : commentEditDrafts[commentId]) || '';
-    const nextValue = draft.trim();
+    const nextValue = text.trim();
     if (!sourcePost?.uuid || !nextValue) return;
 
     setCommentMutationLoadingById((prev) => ({ ...prev, [commentId]: true }));
@@ -3186,6 +3281,36 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
+  async function toggleClosePost(post: FeedPost) {
+    if (!post.uuid) {
+      setError(t('home.postCloseUnavailable', { defaultValue: 'Unable to lock this post.' }));
+      return;
+    }
+    try {
+      const currentlyClosed = !!post.is_closed;
+      const updated = currentlyClosed
+        ? await api.openPost(token, post.uuid)
+        : await api.closePost(token, post.uuid);
+
+      const nextClosed =
+        typeof updated?.is_closed === 'boolean' ? updated.is_closed : !currentlyClosed;
+
+      applyPostPatch(post.id, (current) => ({
+        ...current,
+        is_closed: nextClosed,
+      }));
+
+      setNotice(
+        nextClosed
+          ? t('home.postLockedSuccess', { defaultValue: 'Post locked. Comments are disabled.' })
+          : t('home.postUnlockedSuccess', { defaultValue: 'Post unlocked. Comments are enabled.' }),
+      );
+    } catch (e: any) {
+      setError(e?.message || t('home.postCloseFailed', { defaultValue: 'Failed to update post lock.' }));
+      throw e;
+    }
+  }
+
   function openEditProfileDrawer() {
     const vis = user?.visibility === 'O' || user?.visibility === 'T' || user?.visibility === 'P'
       ? user.visibility as 'P' | 'O' | 'T'
@@ -3484,6 +3609,60 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setError(e?.message || t('home.reportFailed', { defaultValue: 'Could not submit report right now.' }));
     } finally {
       setReportingItem(false);
+    }
+  }
+
+  async function loadModerationTasks(status: 'P' | 'A' | 'R', reset = true) {
+    setModerationTasksLoading(true);
+    if (reset) setModerationTasksItems([]);
+    try {
+      const items = await api.getGlobalModeratedObjects(token, { count: 20, statuses: [status] });
+      setModerationTasksItems(Array.isArray(items) ? items : []);
+    } catch (e: any) {
+      setError(e?.message || t('home.moderationLoadFailed', { defaultValue: 'Could not load moderation queue.' }));
+    } finally {
+      setModerationTasksLoading(false);
+    }
+  }
+
+  async function openModerationTaskDetail(item: GlobalModeratedObject) {
+    setModerationTasksDetailItem(item);
+    setModerationTasksDetailReports([]);
+    setModerationTasksDetailReportsLoading(true);
+    try {
+      const reports = await api.getModeratedObjectReports(token, item.id);
+      setModerationTasksDetailReports(Array.isArray(reports) ? reports : []);
+    } catch {
+      // show what we have
+    } finally {
+      setModerationTasksDetailReportsLoading(false);
+    }
+  }
+
+  async function handleModerationAction(id: number, action: 'approve' | 'reject' | 'verify') {
+    setModerationTasksActionLoading(id);
+    try {
+      if (action === 'approve') await api.approveModeratedObject(token, id);
+      else if (action === 'reject') await api.rejectModeratedObject(token, id);
+      else await api.verifyModeratedObject(token, id);
+      setModerationTasksItems((prev) => prev.filter((item) => item.id !== id));
+      setModerationTasksDetailItem(null);
+    } catch (e: any) {
+      setError(e?.message || t('home.moderationActionFailed', { defaultValue: 'Action failed. Try again.' }));
+    } finally {
+      setModerationTasksActionLoading(null);
+    }
+  }
+
+  async function loadUserPenalties() {
+    setUserPenaltiesLoading(true);
+    try {
+      const penalties = await api.getUserModerationPenalties(token);
+      setUserPenalties(Array.isArray(penalties) ? penalties : []);
+    } catch {
+      // ignore
+    } finally {
+      setUserPenaltiesLoading(false);
     }
   }
 
@@ -4319,7 +4498,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function openComposerModal(action?: 'video' | 'image' | 'emoji') {
     composerTextRef.current = '';
-    setComposerText('');
+    if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -4370,7 +4549,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function resetComposerState() {
     composerTextRef.current = '';
-    setComposerText('');
+    if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -5288,7 +5467,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function handleShowAllSearchResults() {
-    const query = searchQuery.trim();
+    const query = searchCurrentTextRef.current.trim();
     if (query.length < 2) return;
     closeSearchDropdown();
     setSearchResultsActive(true);
@@ -5317,7 +5496,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setSearchResultsActive(false);
     setSearchResultsLoading(false);
     setSearchResultsQuery('');
+    searchCurrentTextRef.current = '';
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     setSearchQuery('');
+    setSearchExternalResetKey((prev) => prev + 1);
     closeSearchDropdown();
     setActiveFeed('home');
     onNavigate({ screen: 'feed', feed: 'home' });
@@ -5460,7 +5642,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     post: FeedPost,
     variant: 'feed' | 'profile' = 'feed',
     pinnedPostsSource: FeedPost[] = myPinnedPosts,
-    options?: { allowExpandControl?: boolean; onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void> }
+    options?: { allowExpandControl?: boolean; onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void>; onToggleClosePost?: (post: FeedPost) => void | Promise<void> }
   ) {
     const PIN_LIMIT = 5;
     const pinnedIndex = pinnedPostsSource.findIndex((item) => item.id === post.id);
@@ -5479,12 +5661,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         commentRepliesById={commentRepliesById}
         commentRepliesExpanded={commentRepliesExpanded}
         commentRepliesLoadingById={commentRepliesLoadingById}
-        draftComments={draftComments}
-        draftReplies={draftReplies}
         draftCommentMediaByPostId={draftCommentMediaByPostId}
         draftReplyMediaByCommentId={draftReplyMediaByCommentId}
-        commentEditDrafts={commentEditDrafts}
-        replyEditDrafts={replyEditDrafts}
         editingCommentById={editingCommentById}
         editingReplyById={editingReplyById}
         commentMutationLoadingById={commentMutationLoadingById}
@@ -5507,8 +5685,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onSharePost={handleSharePost}
         onRepostPost={handleRepostPost}
         onOpenLink={openLink}
-        onUpdateDraftComment={updateDraftComment}
-        onUpdateDraftReply={updateDraftReply}
         onPickDraftCommentImage={pickDraftCommentImage}
         onPickDraftReplyImage={pickDraftReplyImage}
         onSetDraftCommentGif={setDraftCommentGif}
@@ -5517,7 +5693,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onClearDraftReplyMedia={clearDraftReplyMedia}
         onStartEditingComment={startEditingComment}
         onCancelEditingComment={cancelEditingComment}
-        onUpdateEditCommentDraft={updateEditCommentDraft}
         onSaveEditedComment={saveEditedComment}
         onDeleteComment={deleteComment}
         onSubmitComment={submitComment}
@@ -5547,6 +5722,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         isPostDetailOpen={!!activePost}
         allowExpandControl={options?.allowExpandControl ?? true}
         onToggleCommunityPinPost={options?.onToggleCommunityPinPost}
+        onToggleClosePost={options?.onToggleClosePost}
         translationLanguageCode={(user as any)?.translation_language?.code}
       />
     );
@@ -5568,8 +5744,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             <View style={[styles.topNavSearch, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
               <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
               <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
+                key={searchExternalResetKey}
+                ref={searchInputRef}
+                onChangeText={(value) => {
+                  searchCurrentTextRef.current = value;
+                  if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                  searchDebounceRef.current = setTimeout(() => setSearchQuery(value), 200);
+                }}
                 onFocus={handleSearchFocus}
                 onBlur={handleSearchBlur}
                 onSubmitEditing={handleShowAllSearchResults}
@@ -5915,8 +6096,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 { icon: 'account-arrow-down-outline', label: t('home.sideMenuFollowers', { defaultValue: 'Followers' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'followers' }); } },
                 { icon: 'account-arrow-up-outline', label: t('home.sideMenuFollowing', { defaultValue: 'Following' }), onPress: () => { setMenuOpen(false); onNavigate({ screen: 'following' }); } },
                 { icon: 'email-plus-outline', label: t('home.sideMenuInvites', { defaultValue: 'Invites' }), onPress: handleOpenInviteDrawerFromMenu },
-                { icon: 'shield-check-outline', label: t('home.sideMenuModerationTasks', { defaultValue: 'Moderation tasks' }), onPress: () => { setMenuOpen(false); setNotice(t('home.sideMenuModerationTasksComingSoon', { defaultValue: 'Moderation tasks — coming soon' })); } },
-                { icon: 'gavel', label: t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation penalties' }), onPress: () => { setMenuOpen(false); setNotice(t('home.sideMenuModerationPenaltiesComingSoon', { defaultValue: 'Moderation penalties — coming soon' })); } },
+                ...(user?.is_superuser ? [{ icon: 'shield-check-outline', label: t('home.sideMenuModerationTasks', { defaultValue: 'Moderation tasks' }), badge: (user?.pending_communities_moderated_objects_count ?? 0) > 0 ? user.pending_communities_moderated_objects_count : undefined, onPress: () => { setMenuOpen(false); setModerationTasksStatus('P'); setModerationTasksOpen(true); loadModerationTasks('P'); } }] : []),
+                { icon: 'gavel', label: t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation penalties' }), badge: undefined, onPress: () => { setMenuOpen(false); setModerationPenaltiesOpen(true); loadUserPenalties(); } },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.label}
@@ -5926,6 +6107,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 >
                   <MaterialCommunityIcons name={item.icon as any} size={18} color={c.textSecondary} />
                   <Text style={[styles.sideMenuItemText, { color: c.textPrimary }]}>{item.label}</Text>
+                  {item.badge != null && item.badge > 0 ? (
+                    <View style={{ marginLeft: 'auto', backgroundColor: '#dc2626', borderRadius: 999, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                    </View>
+                  ) : null}
                 </TouchableOpacity>
               ))}
 
@@ -6102,6 +6288,303 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               onNavigate({ screen: 'profile', username });
             }}
           />
+        </Animated.View>
+      </Modal>
+
+      {/* ── Moderation Tasks drawer ──────────────────────────────── */}
+      <Modal
+        visible={moderationTasksDrawerMounted}
+        transparent
+        animationType="none"
+        onRequestClose={() => setModerationTasksOpen(false)}
+      >
+        <Animated.View style={[styles.drawerBackdrop, { opacity: moderationTasksDrawerBackdropOpacity }]} pointerEvents="auto">
+          <Pressable style={{ flex: 1 }} onPress={() => setModerationTasksOpen(false)} />
+        </Animated.View>
+        <Animated.View style={[styles.drawerPanel, { width: sideDrawerWidth, backgroundColor: c.surface, transform: [{ translateX: moderationTasksDrawerTranslateX }] }]}>
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('home.sideMenuModerationTasks', { defaultValue: 'Moderation Tasks' })}
+            </Text>
+          </View>
+
+          {/* Status tabs */}
+          <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.border }}>
+            {(['P', 'A', 'R'] as const).map((s) => {
+              const label = s === 'P' ? t('home.modTasksPending', { defaultValue: 'Pending' })
+                : s === 'A' ? t('home.modTasksApproved', { defaultValue: 'Approved' })
+                : t('home.modTasksRejected', { defaultValue: 'Rejected' });
+              const active = moderationTasksStatus === s;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: active ? c.primary : 'transparent' }}
+                  onPress={() => { setModerationTasksStatus(s); setModerationTasksItems([]); loadModerationTasks(s); }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: active ? c.primary : c.textMuted }}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {moderationTasksLoading ? (
+              <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 24 }} />
+            ) : moderationTasksItems.length === 0 ? (
+              <Text style={[styles.feedStatText, { color: c.textMuted, textAlign: 'center', marginTop: 32, paddingHorizontal: 16 }]}>
+                {t('home.modTasksEmpty', { defaultValue: 'No items in this queue.' })}
+              </Text>
+            ) : moderationTasksItems.map((item) => {
+              const typeLabel = item.object_type === 'P' ? 'Post'
+                : item.object_type === 'PC' ? 'Comment'
+                : item.object_type === 'C' ? 'Community'
+                : item.object_type === 'U' ? 'User'
+                : 'Hashtag';
+              const co = item.content_object;
+              const authorUsername = co?.creator?.username || co?.commenter?.username || co?.username || '';
+              const contentText = co?.text || co?.name || co?.title || '';
+              const severityColor = item.category?.severity === 'C' ? '#dc2626'
+                : item.category?.severity === 'H' ? '#ea580c'
+                : item.category?.severity === 'M' ? '#ca8a04'
+                : '#16a34a';
+              const isActioning = moderationTasksActionLoading === item.id;
+
+              return (
+                <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={() => void openModerationTaskDetail(item)} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
+                  {/* Header row: type badge + category + report count */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <View style={{ backgroundColor: severityColor, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{typeLabel}</Text>
+                    </View>
+                    {item.category ? (
+                      <Text style={{ fontSize: 12, color: c.textMuted, flex: 1 }} numberOfLines={1}>{item.category.title || item.category.name}</Text>
+                    ) : <View style={{ flex: 1 }} />}
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>{item.reports_count} report{item.reports_count !== 1 ? 's' : ''}</Text>
+                  </View>
+
+                  {/* Author + content preview */}
+                  {authorUsername ? (
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: c.textSecondary, marginBottom: 2 }}>@{authorUsername}</Text>
+                  ) : null}
+                  {contentText ? (
+                    <Text style={{ fontSize: 13, color: c.textSecondary, lineHeight: 18 }} numberOfLines={2}>{contentText}</Text>
+                  ) : null}
+
+                  {/* Actions */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                    {isActioning ? (
+                      <ActivityIndicator color={c.primary} size="small" />
+                    ) : item.status === 'P' ? (
+                      <>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#16a34a', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                          activeOpacity={0.85}
+                          onPress={() => void handleModerationAction(item.id, 'approve')}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksApproveBtn', { defaultValue: 'Approve' })}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#dc2626', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                          activeOpacity={0.85}
+                          onPress={() => void handleModerationAction(item.id, 'reject')}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksRejectBtn', { defaultValue: 'Reject' })}</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : item.status === 'A' && !item.verified ? (
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#7c3aed', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 }}
+                        activeOpacity={0.85}
+                        onPress={() => void handleModerationAction(item.id, 'verify')}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{t('home.modTasksVerifyBtn', { defaultValue: 'Verify & Penalise' })}</Text>
+                      </TouchableOpacity>
+                    ) : item.verified ? (
+                      <Text style={{ fontSize: 12, color: '#16a34a', fontWeight: '600' }}>✓ {t('home.modTasksVerified', { defaultValue: 'Verified' })}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* ── Task detail sub-panel (slides in from right over the drawer) ── */}
+          <Animated.View style={{
+            position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+            backgroundColor: c.surface,
+            transform: [{ translateX: moderationTasksDetailTranslateX }],
+            zIndex: 10,
+          }}>
+                {/* Header */}
+                <View style={[styles.settingsDrawerHeader, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+                  <TouchableOpacity onPress={() => setModerationTasksDetailItem(null)} activeOpacity={0.75}>
+                    <MaterialCommunityIcons name="arrow-left" size={20} color={c.textSecondary} />
+                  </TouchableOpacity>
+                  <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary, flex: 1 }]}>
+                    {t('home.modTasksDetailTitle', { defaultValue: 'Report details' })}
+                  </Text>
+                </View>
+
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }}>
+                  {moderationTasksDetailItem && (() => {
+                    const item = moderationTasksDetailItem;
+                    const co = item.content_object;
+                    const typeLabel = item.object_type === 'P' ? 'Post' : item.object_type === 'PC' ? 'Comment' : item.object_type === 'C' ? 'Community' : item.object_type === 'U' ? 'User' : 'Hashtag';
+                    const authorUsername = co?.creator?.username || co?.commenter?.username || co?.username || '';
+                    const contentText = co?.text || co?.name || co?.title || '';
+                    const parentPostText = co?.post?.text;
+                    const severityColor = item.category?.severity === 'C' ? '#dc2626' : item.category?.severity === 'H' ? '#ea580c' : item.category?.severity === 'M' ? '#ca8a04' : '#16a34a';
+                    const isActioning = moderationTasksActionLoading === item.id;
+
+                    return (
+                      <>
+                        {/* Content section */}
+                        <View style={{ backgroundColor: c.inputBackground, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: c.border }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <View style={{ backgroundColor: severityColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{typeLabel}</Text>
+                            </View>
+                            {item.category && (
+                              <Text style={{ fontSize: 13, color: c.textMuted }}>{item.category.title || item.category.name}</Text>
+                            )}
+                          </View>
+                          {authorUsername ? (
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: c.textSecondary, marginBottom: 4 }}>@{authorUsername}</Text>
+                          ) : null}
+                          {/* For comments, show the parent post context */}
+                          {parentPostText ? (
+                            <View style={{ borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: 10, marginBottom: 8 }}>
+                              <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 2 }}>{t('home.modTasksDetailInReplyTo', { defaultValue: 'On post:' })}</Text>
+                              <Text style={{ fontSize: 12, color: c.textMuted }} numberOfLines={2}>{parentPostText}</Text>
+                            </View>
+                          ) : null}
+                          {contentText ? (
+                            <Text style={{ fontSize: 14, color: c.textPrimary, lineHeight: 20 }}>{contentText}</Text>
+                          ) : null}
+                        </View>
+
+                        {/* Reports section */}
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {t('home.modTasksDetailReportsTitle', { defaultValue: 'Reports ({{count}})', count: item.reports_count })}
+                        </Text>
+
+                        {moderationTasksDetailReportsLoading ? (
+                          <ActivityIndicator color={c.primary} size="small" />
+                        ) : moderationTasksDetailReports.map((report) => (
+                          <View key={report.id} style={{ borderBottomWidth: 1, borderBottomColor: c.border, paddingBottom: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }}>
+                                {report.reporter.profile?.avatar ? (
+                                  <Image source={{ uri: report.reporter.profile.avatar }} style={{ width: 28, height: 28, borderRadius: 14 }} resizeMode="cover" />
+                                ) : (
+                                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{(report.reporter.username?.[0] || '?').toUpperCase()}</Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: c.textSecondary }}>@{report.reporter.username}</Text>
+                              <View style={{ flex: 1 }} />
+                              <Text style={{ fontSize: 11, color: c.textMuted }}>{report.category.title || report.category.name}</Text>
+                            </View>
+                            {report.description ? (
+                              <Text style={{ fontSize: 13, color: c.textSecondary, marginLeft: 36, lineHeight: 18 }}>{report.description}</Text>
+                            ) : null}
+                          </View>
+                        ))}
+
+                        {/* Action buttons */}
+                        {!item.verified && (
+                          <View style={{ flexDirection: 'row', gap: 10, paddingTop: 4, paddingBottom: 8 }}>
+                            {isActioning ? (
+                              <ActivityIndicator color={c.primary} size="small" />
+                            ) : item.status === 'P' ? (
+                              <>
+                                <TouchableOpacity
+                                  style={{ flex: 1, backgroundColor: '#16a34a', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                                  activeOpacity={0.85}
+                                  onPress={() => void handleModerationAction(item.id, 'approve')}
+                                >
+                                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksApproveBtn', { defaultValue: 'Approve' })}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={{ flex: 1, backgroundColor: '#dc2626', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                                  activeOpacity={0.85}
+                                  onPress={() => void handleModerationAction(item.id, 'reject')}
+                                >
+                                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksRejectBtn', { defaultValue: 'Reject' })}</Text>
+                                </TouchableOpacity>
+                              </>
+                            ) : item.status === 'A' ? (
+                              <TouchableOpacity
+                                style={{ flex: 1, backgroundColor: '#7c3aed', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                                activeOpacity={0.85}
+                                onPress={() => void handleModerationAction(item.id, 'verify')}
+                              >
+                                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{t('home.modTasksVerifyBtn', { defaultValue: 'Verify & Penalise' })}</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        )}
+                        {item.verified && (
+                          <Text style={{ fontSize: 13, color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>✓ {t('home.modTasksVerified', { defaultValue: 'Verified' })}</Text>
+                        )}
+                      </>
+                    );
+                  })()}
+                </ScrollView>
+          </Animated.View>
+
+        </Animated.View>
+      </Modal>
+
+      {/* ── Moderation Penalties drawer ──────────────────────────── */}
+      <Modal
+        visible={moderationPenaltiesDrawerMounted}
+        transparent
+        animationType="none"
+        onRequestClose={() => setModerationPenaltiesOpen(false)}
+      >
+        <Animated.View style={[styles.drawerBackdrop, { opacity: moderationPenaltiesDrawerBackdropOpacity }]} pointerEvents="auto">
+          <Pressable style={{ flex: 1 }} onPress={() => setModerationPenaltiesOpen(false)} />
+        </Animated.View>
+        <Animated.View style={[styles.drawerPanel, { width: sideDrawerWidth, backgroundColor: c.surface, transform: [{ translateX: moderationPenaltiesDrawerTranslateX }] }]}>
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('home.sideMenuModerationPenalties', { defaultValue: 'Moderation Penalties' })}
+            </Text>
+          </View>
+
+          <Text style={[styles.linkedSubtitle, { color: c.textMuted }]}>
+            {t('home.modPenaltiesDescription', { defaultValue: 'Active penalties applied to your account.' })}
+          </Text>
+
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 12 }}>
+            {userPenaltiesLoading ? (
+              <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 24 }} />
+            ) : userPenalties.length === 0 ? (
+              <Text style={[styles.feedStatText, { color: c.textMuted, textAlign: 'center', marginTop: 32 }]}>
+                {t('home.modPenaltiesNone', { defaultValue: 'No active penalties. Your account is in good standing.' })}
+              </Text>
+            ) : userPenalties.map((penalty) => {
+              const expiry = penalty.expiration ? new Date(penalty.expiration) : null;
+              const isPermanent = !expiry;
+              const expiryLabel = isPermanent
+                ? t('home.modPenaltyPermanent', { defaultValue: 'Permanent' })
+                : t('home.modPenaltyExpires', { defaultValue: 'Expires {{date}}', date: expiry!.toLocaleDateString() });
+
+              return (
+                <View key={penalty.id} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <MaterialCommunityIcons name="gavel" size={18} color="#dc2626" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: c.textPrimary }}>
+                      {penalty.type === 'S' ? t('home.modPenaltySuspension', { defaultValue: 'Suspension' }) : penalty.type}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: isPermanent ? '#dc2626' : c.textMuted, marginTop: 2 }}>
+                      {expiryLabel}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
         </Animated.View>
       </Modal>
 
@@ -6309,11 +6792,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       ? t('home.repostComposerInputPlaceholder', { defaultValue: 'Add a comment… (optional)' })
                       : t('home.postComposerInputPlaceholder', { defaultValue: "What's on your mind?" })}
                     placeholderTextColor={c.placeholder}
-                    value={composerText}
                     onChangeText={(value) => {
                       composerTextRef.current = value;
-                      setComposerText(value);
-                      setComposerTextLength(value.length);
+                      if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
+                      composerTextLengthDebounceRef.current = setTimeout(() => setComposerTextLength(value.length), 100);
                       void refreshComposerLinkPreview(value);
                       if (composerPostType === 'LP') {
                         setComposerPostType('P');
@@ -6875,15 +7357,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         currentUsername={user?.username}
         currentUserAvatar={user?.profile?.avatar}
         localComments={localComments}
+        commentsHasMoreByPost={commentsHasMoreByPost}
+        commentsLoadingMoreByPost={commentsLoadingMoreByPost}
+        onLoadMoreComments={(post) => void loadMoreCommentsForPost(post)}
         commentRepliesById={commentRepliesById}
+        repliesHasMoreByComment={repliesHasMoreByComment}
+        repliesLoadingMoreByComment={repliesLoadingMoreByComment}
+        onLoadMoreReplies={(postUuid, commentId) => void loadMoreRepliesForComment(postUuid, commentId)}
         commentRepliesExpanded={commentRepliesExpanded}
         commentRepliesLoadingById={commentRepliesLoadingById}
-        draftComments={draftComments}
-        draftReplies={draftReplies}
         draftCommentMediaByPostId={draftCommentMediaByPostId}
         draftReplyMediaByCommentId={draftReplyMediaByCommentId}
-        commentEditDrafts={commentEditDrafts}
-        replyEditDrafts={replyEditDrafts}
         editingCommentById={editingCommentById}
         editingReplyById={editingReplyById}
         commentMutationLoadingById={commentMutationLoadingById}
@@ -6980,8 +7464,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         ) : undefined}
         onOpenSharedPost={openPostDetail}
         onOpenLink={openLink}
-        onUpdateDraftComment={updateDraftComment}
-        onUpdateDraftReply={updateDraftReply}
         onPickDraftCommentImage={pickDraftCommentImage}
         onPickDraftReplyImage={pickDraftReplyImage}
         onSetDraftCommentGif={setDraftCommentGif}
@@ -6990,7 +7472,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onClearDraftReplyMedia={clearDraftReplyMedia}
         onStartEditingComment={startEditingComment}
         onCancelEditingComment={cancelEditingComment}
-        onUpdateEditCommentDraft={updateEditCommentDraft}
         onSaveEditedComment={saveEditedComment}
         onDeleteComment={deleteComment}
         onSubmitComment={submitComment}
@@ -8153,6 +8634,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 renderPostCard={(post, variant) =>
                   renderPostCard(post, variant, myPinnedPosts, {
                     onToggleCommunityPinPost: canManageCurrentCommunity ? toggleCommunityPinPost : undefined,
+                    onToggleClosePost: canManageCurrentCommunity ? toggleClosePost : undefined,
                   })
                 }
               />
@@ -8561,6 +9043,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onDeclineCommunityOwnershipTransfer={async (inviteId, communityName) => {
           await api.respondCommunityOwnershipTransferInvite(token, communityName, inviteId, 'decline');
           setNotice(t('community.ownershipTransferDeclinedNotice', { defaultValue: `Ownership transfer for c/${communityName} declined.` }));
+        }}
+        onOpenModerationTasks={() => {
+          setNotifDrawerOpen(false);
+          setModerationTasksStatus('P');
+          setModerationTasksOpen(true);
+          loadModerationTasks('P');
         }}
       />
     </View>

@@ -440,6 +440,9 @@ export default function LongPostDrawer({
   const { t } = useTranslation();
   const c = theme.colors;
   const { width, height } = useWindowDimensions();
+  const [localTitle, setLocalTitle] = useState(title);
+  const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lexicalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const drawerWidth = useMemo(() => {
     if (Platform.OS !== 'web') return width;
@@ -458,7 +461,7 @@ export default function LongPostDrawer({
     [blocks]
   );
   const longPostCharCount = useMemo(() => {
-    const safeTitle = (title || '').trim();
+    const safeTitle = (localTitle || '').trim();
     const bodyText =
       editorMode === 'lexical'
         ? htmlToPlainText(lexicalHtml)
@@ -477,7 +480,7 @@ export default function LongPostDrawer({
             .join('\n')
             .trim();
     return `${safeTitle}\n${bodyText}`.trim().length;
-  }, [blocks, editorMode, lexicalHtml, title]);
+  }, [blocks, editorMode, lexicalHtml, localTitle]);
   const longPostCharsRemaining = LONG_POST_MAX_CHAR_COUNT - longPostCharCount;
 
   useEffect(() => {
@@ -531,7 +534,12 @@ export default function LongPostDrawer({
   useEffect(() => {
     if (!visible) {
       setLexicalHeightExpanded(false);
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+      if (lexicalDebounceRef.current) clearTimeout(lexicalDebounceRef.current);
+    } else {
+      setLocalTitle(title);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
@@ -816,8 +824,12 @@ export default function LongPostDrawer({
                         style={[styles.titleInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
                         placeholder={t('home.longPostTitlePlaceholder', { defaultValue: 'Write post title...' })}
                         placeholderTextColor={c.placeholder}
-                        value={title}
-                        onChangeText={onChangeTitle}
+                        value={localTitle}
+                        onChangeText={(value) => {
+                          setLocalTitle(value);
+                          if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+                          titleDebounceRef.current = setTimeout(() => onChangeTitle(value), 150);
+                        }}
                       />
                     </View>
 
@@ -975,7 +987,10 @@ export default function LongPostDrawer({
                       key={`lexical-${lexicalResetKey ?? 'default'}`}
                       value={lexicalHtml}
                       placeholder={t('home.longPostLexicalPlaceholder', { defaultValue: 'Start writing your long post...' })}
-                      onChange={(html) => onChangeLexicalHtml?.(html)}
+                      onChange={(html) => {
+                        if (lexicalDebounceRef.current) clearTimeout(lexicalDebounceRef.current);
+                        lexicalDebounceRef.current = setTimeout(() => onChangeLexicalHtml?.(html), 300);
+                      }}
                       onUploadImageFiles={onUploadImageFiles}
                       expandedHeight={lexicalHeightExpanded}
                       maxImages={maxImages}
