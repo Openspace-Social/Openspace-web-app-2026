@@ -1528,5 +1528,12 @@
     "requestEmailChange": "Send verification",
     "setPassword": "Set Password",
     "updatePassword": "Update password"
+  },
+  "nav": {
+    "tabHome": "Home",
+    "tabCommunities": "Communities",
+    "tabCompose": "Compose post",
+    "tabNotifications": "Alerts",
+    "tabProfile": "Profile"
   }
 }

@@ -56,6 +56,7 @@ import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
 import LongPostDrawer, { LongPostBlock, LongPostEditorMode } from '../components/LongPostDrawer';
 import NotificationDrawer from '../components/NotificationDrawer';
+import BottomTabBar, { BottomTab } from '../components/BottomTabBar';
 import CirclesScreen from './CirclesScreen';
 import ListsScreen from './ListsScreen';
 import FollowPeopleScreen from './FollowPeopleScreen';
@@ -5555,6 +5556,29 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const SIDEBAR_RIGHT_W = 260;
   const showSidebars = viewportWidth >= SIDEBAR_BREAKPOINT;
   const showHomeShellSidebars = showSidebars && !viewingCommunitiesRoute;
+  const showBottomTabs = !showSidebars;
+  const activeBottomTab: BottomTab = (() => {
+    if (notifDrawerOpen) return 'notifications';
+    const screen = displayRoute.screen;
+    if (screen === 'feed') return 'home';
+    if (
+      screen === 'communities' ||
+      screen === 'community' ||
+      screen === 'manage-communities' ||
+      screen === 'muted-communities'
+    ) return 'communities';
+    if (
+      screen === 'me' ||
+      screen === 'profile' ||
+      screen === 'followers' ||
+      screen === 'following' ||
+      screen === 'blocked' ||
+      screen === 'circles' ||
+      screen === 'lists' ||
+      screen === 'settings'
+    ) return 'profile';
+    return null;
+  })();
 
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
@@ -8929,6 +8953,20 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         ) : null}
 
       </View>{/* end three-column row */}
+
+      {showBottomTabs ? (
+        <BottomTabBar
+          c={c}
+          t={t}
+          activeTab={activeBottomTab}
+          unreadNotifications={unreadCount}
+          onNavigateHome={() => onNavigate({ screen: 'feed', feed: 'home' })}
+          onNavigateCommunities={() => onNavigate({ screen: 'communities' })}
+          onOpenComposer={() => openComposerModal()}
+          onOpenNotifications={() => setNotifDrawerOpen(true)}
+          onNavigateProfile={() => onNavigate({ screen: 'me' })}
+        />
+      ) : null}
 
       <Modal
         transparent

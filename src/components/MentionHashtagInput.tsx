@@ -60,7 +60,7 @@ type PopupPos = {
 };
 
 export type MentionHashtagInputProps = {
-  value: string;
+  value?: string;
   onChangeText: (value: string) => void;
   token?: string;
   style?: any;
@@ -219,7 +219,7 @@ function getInputDOMEl(
 // ─── component ────────────────────────────────────────────────────────────────
 
 export default function MentionHashtagInput({
-  value,
+  value = '',
   onChangeText,
   token,
   style,
