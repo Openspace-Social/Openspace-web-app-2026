@@ -10,9 +10,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import {
   CircleResult,
   FeedPost,
@@ -165,6 +167,11 @@ export default function MyProfileScreen({
   onToggleSubscribeToPosts,
   isEdgeToEdge = false,
 }: Props) {
+  // Mobile-viewport gate for all size/padding overrides in this screen.
+  // Kept local so we don't have to thread another prop from HomeScreen.
+  const { width: viewportWidth } = useWindowDimensions();
+  const isNarrow = viewportWidth < 700;
+
   const resolveImageUri = React.useCallback((value: unknown): string | undefined => {
     if (typeof value === 'string') {
       const trimmed = value.trim();
@@ -189,6 +196,8 @@ export default function MyProfileScreen({
   }, []);
 
   const [avatarOptionsOpen, setAvatarOptionsOpen] = React.useState(false);
+  // Full-size avatar preview — tapping the avatar opens this lightbox.
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = React.useState(false);
   const [avatarEditorOpen, setAvatarEditorOpen] = React.useState(false);
   const [avatarEditorUri, setAvatarEditorUri] = React.useState<string | null>(null);
   const [avatarEditorScale, setAvatarEditorScale] = React.useState(1);
@@ -330,26 +339,69 @@ export default function MyProfileScreen({
     setAvatarEditorOffsetX(0);
     setAvatarEditorOffsetY(0);
     setAvatarEditorGrayscale(false);
-    setAvatarEditorOpen(true);
     setAvatarOptionsOpen(false);
+    // iOS can only present one Modal at a time; if we flip both flags in the
+    // same tick the editor Modal silently fails to appear. Defer it until the
+    // options Modal has finished dismissing.
+    if (Platform.OS === 'ios') {
+      setTimeout(() => setAvatarEditorOpen(true), 320);
+    } else {
+      setAvatarEditorOpen(true);
+    }
   }
 
-  function uploadNewAvatar() {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      onNotice(t('home.profileImagePickerUnavailable', { defaultValue: 'Image picker is currently available on web.' }));
+  async function uploadNewAvatar() {
+    // Web: use a hidden <input type="file"> — opens our in-app editor for
+    // scale/offset/grayscale before upload.
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        objectUrlRef.current.push(url);
+        openAvatarEditorWithUri(url);
+      };
+      input.click();
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      objectUrlRef.current.push(url);
-      openAvatarEditorWithUri(url);
-    };
-    input.click();
+    // Native: use expo-image-picker with allowsEditing — iOS/Android show
+    // their own crop UI (square for avatar), then we upload the result URI
+    // directly. Skips the in-app canvas editor, which is web-only.
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        onNotice(t('home.profileImagePickerPermissionDenied', { defaultValue: 'Photo access is needed to upload a new avatar.' }));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled) return;
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return;
+      // Close the options sheet now that the picker is done.
+      setAvatarOptionsOpen(false);
+      if (avatarSaving) return;
+      setAvatarSaving(true);
+      try {
+        const rnFile = { uri, type: 'image/jpeg', name: 'avatar.jpg' } as any;
+        await onUpdateProfileMedia({ avatarFile: rnFile });
+      } catch {
+        onNotice(t('home.profileAvatarEditFailed', { defaultValue: 'Could not process avatar image.' }));
+      } finally {
+        setAvatarSaving(false);
+      }
+    } catch {
+      onNotice(t('home.profileImagePickerFailed', { defaultValue: 'Could not open the photo library.' }));
+    }
   }
 
   function closeAvatarEditor() {
@@ -372,26 +424,60 @@ export default function MyProfileScreen({
     setCoverEditorOffsetX(0);
     setCoverEditorOffsetY(0);
     setCoverEditorGrayscale(false);
-    setCoverEditorOpen(true);
     setCoverOptionsOpen(false);
+    if (Platform.OS === 'ios') {
+      setTimeout(() => setCoverEditorOpen(true), 320);
+    } else {
+      setCoverEditorOpen(true);
+    }
   }
 
-  function uploadNewCover() {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      onNotice(t('home.profileImagePickerUnavailable', { defaultValue: 'Image picker is currently available on web.' }));
+  async function uploadNewCover() {
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        objectUrlRef.current.push(url);
+        openCoverEditorWithUri(url);
+      };
+      input.click();
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      objectUrlRef.current.push(url);
-      openCoverEditorWithUri(url);
-    };
-    input.click();
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        onNotice(t('home.profileImagePickerPermissionDenied', { defaultValue: 'Photo access is needed to upload a new cover.' }));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.9,
+      });
+      if (result.canceled) return;
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return;
+      setCoverOptionsOpen(false);
+      if (coverSaving) return;
+      setCoverSaving(true);
+      try {
+        const rnFile = { uri, type: 'image/jpeg', name: 'cover.jpg' } as any;
+        await onUpdateProfileMedia({ coverFile: rnFile });
+      } catch {
+        onNotice(t('home.profileCoverEditFailed', { defaultValue: 'Could not process cover image.' }));
+      } finally {
+        setCoverSaving(false);
+      }
+    } catch {
+      onNotice(t('home.profileImagePickerFailed', { defaultValue: 'Could not open the photo library.' }));
+    }
   }
 
   function closeCoverEditor() {
@@ -533,6 +619,49 @@ export default function MyProfileScreen({
         },
       ]}
     >
+      {/* Full-size avatar preview lightbox — works for own + public profiles. */}
+      <Modal
+        visible={avatarPreviewOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setAvatarPreviewOpen(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.92)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onPress={() => setAvatarPreviewOpen(false)}
+        >
+          <Image
+            source={avatarDisplayUri ? { uri: avatarDisplayUri } : DEFAULT_PROFILE_AVATAR}
+            style={{ width: '100%', height: '100%', maxWidth: 600, maxHeight: 600 }}
+            resizeMode="contain"
+          />
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: Platform.OS === 'ios' ? 56 : 24,
+              right: 16,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.16)',
+            }}
+            onPress={() => setAvatarPreviewOpen(false)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('home.closeNoticeAction')}
+          >
+            <MaterialCommunityIcons name="close" size={22} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
+
       <Modal
         visible={isOwnProfile && avatarOptionsOpen}
         animationType="fade"
@@ -886,7 +1015,13 @@ export default function MyProfileScreen({
       </Modal>
 
       <View style={{ position: 'relative' }}>
-        <View style={[styles.profileCoverWrap, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+        <View
+          style={[
+            styles.profileCoverWrap,
+            { backgroundColor: c.inputBackground, borderColor: c.border },
+            isNarrow && { height: 180, borderRadius: 0 },
+          ]}
+        >
           {coverDisplayUri ? (
             <Image
               source={{ uri: coverDisplayUri }}
@@ -911,10 +1046,37 @@ export default function MyProfileScreen({
           )}
         </View>
 
-        <View style={[styles.profileIdentityRow, isCompactProfileLayout ? styles.profileIdentityRowCompact : null]}>
-        <View style={[styles.profileIdentityLeft, isCompactProfileLayout ? styles.profileIdentityLeftCompact : null]}>
-          <View style={styles.profileAvatarActionWrap}>
-            <View style={[styles.profileAvatarWrap, { borderColor: c.surface, backgroundColor: c.primary }]}>
+        <View style={[
+          styles.profileIdentityRow,
+          isCompactProfileLayout ? styles.profileIdentityRowCompact : null,
+          isNarrow && { gap: 8, paddingHorizontal: 12 },
+        ]}>
+        <View style={[
+          styles.profileIdentityLeft,
+          isCompactProfileLayout ? styles.profileIdentityLeftCompact : null,
+          // On narrow viewports we stack avatar above meta so the text isn't
+          // squeezed into half the screen.
+          isNarrow && { minWidth: 0, flexDirection: 'column', alignItems: 'center', gap: 8 },
+        ]}>
+          <View style={[
+            styles.profileAvatarActionWrap,
+            // Avatar wrap reserves 180×214 on desktop for the 180px avatar plus
+            // an Edit-photo pill below. Shrink it down to the actual visible
+            // content on mobile so there's no dead space around it.
+            isNarrow && { width: 96, height: isOwnProfile ? 130 : 96 },
+          ]}>
+            <Pressable
+              style={[
+                styles.profileAvatarWrap,
+                { borderColor: c.surface, backgroundColor: c.primary },
+                isNarrow && { width: 96, height: 96, borderRadius: 24, borderWidth: 3, marginTop: -32 },
+              ]}
+              onPress={() => {
+                if (avatarDisplayUri || !isProfileLoading) setAvatarPreviewOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.profileAvatarViewAction', { defaultValue: 'View avatar' })}
+            >
               {avatarDisplayUri ? (
                 <Image
                   source={{ uri: avatarDisplayUri }}
@@ -937,7 +1099,7 @@ export default function MyProfileScreen({
                   resizeMode="cover"
                 />
               )}
-            </View>
+            </Pressable>
             {isOwnProfile ? (
               <TouchableOpacity
                 style={[styles.profileAvatarEditAction, { backgroundColor: c.surface, borderColor: c.border }]}
@@ -951,9 +1113,23 @@ export default function MyProfileScreen({
               </TouchableOpacity>
             ) : null}
           </View>
-          <View style={styles.profileIdentityMeta}>
-            <View style={styles.profileDisplayNameRow}>
-                <Text style={[styles.profileDisplayName, isCompactProfileLayout ? styles.profileDisplayNameCompact : null, { color: c.textPrimary }]}>
+          <View style={[
+            styles.profileIdentityMeta,
+            isNarrow && { alignItems: 'center', width: '100%', gap: 6, paddingBottom: 4 },
+          ]}>
+            <View style={[
+              styles.profileDisplayNameRow,
+              isNarrow && { justifyContent: 'center' },
+            ]}>
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    styles.profileDisplayName,
+                    isCompactProfileLayout ? styles.profileDisplayNameCompact : null,
+                    { color: c.textPrimary },
+                    isNarrow && { fontSize: 22, lineHeight: 28 },
+                  ]}
+                >
                 {user?.profile?.name || `@${user?.username || profileRouteUsername}`}
               </Text>
               {hasVerifiedBadge ? (
@@ -989,7 +1165,10 @@ export default function MyProfileScreen({
                 </View>
               ) : null}
             </View>
-            <View style={styles.profileNameCountsRow}>
+            <View style={[
+              styles.profileNameCountsRow,
+              isNarrow && { justifyContent: 'center' },
+            ]}>
               {shouldShowFollowersCount ? (
                 <TouchableOpacity
                   activeOpacity={onOpenFollowersScreen ? 0.8 : 1}
@@ -1017,17 +1196,24 @@ export default function MyProfileScreen({
                 </Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.profileMetaInline}>
+            <View style={[
+              styles.profileMetaInline,
+              isNarrow && { justifyContent: 'center', gap: 8 },
+            ]}>
               {user?.profile?.location ? (
-                <Text style={[styles.profileMetaText, { color: c.textMuted }]}>{user.profile.location}</Text>
+                <Text style={[styles.profileMetaText, { color: c.textMuted }, isNarrow && { fontSize: 14 }]} numberOfLines={1}>{user.profile.location}</Text>
               ) : null}
-              <Text style={[styles.profileMetaText, { color: c.textMuted }]}>@{user?.username || profileRouteUsername}</Text>
+              <Text style={[styles.profileMetaText, { color: c.textMuted }, isNarrow && { fontSize: 14 }]} numberOfLines={1}>@{user?.username || profileRouteUsername}</Text>
             </View>
           </View>
         </View>
 
         {isOwnProfile ? (
-          <View style={[styles.profileIdentityActions, isCompactProfileLayout ? styles.profileIdentityActionsCompact : null]}>
+          <View style={[
+            styles.profileIdentityActions,
+            isCompactProfileLayout ? styles.profileIdentityActionsCompact : null,
+            isNarrow && { justifyContent: 'center', paddingHorizontal: 12, paddingBottom: 12, marginTop: 4 },
+          ]}>
             <TouchableOpacity
               style={[styles.profilePrimaryBtn, { backgroundColor: c.primary }]}
               activeOpacity={0.85}
@@ -1046,7 +1232,11 @@ export default function MyProfileScreen({
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={[styles.profileIdentityActions, isCompactProfileLayout ? styles.profileIdentityActionsCompact : null]}>
+          <View style={[
+            styles.profileIdentityActions,
+            isCompactProfileLayout ? styles.profileIdentityActionsCompact : null,
+            isNarrow && { justifyContent: 'center', paddingHorizontal: 12, paddingBottom: 12, marginTop: 4 },
+          ]}>
             <TouchableOpacity
               style={[
                 styles.profilePrimaryBtn,
@@ -1243,7 +1433,13 @@ export default function MyProfileScreen({
 
         {isOwnProfile ? (
           <TouchableOpacity
-            style={[styles.profileCoverAction, { backgroundColor: c.surface, borderColor: c.border }]}
+            style={[
+              styles.profileCoverAction,
+              { backgroundColor: c.surface, borderColor: c.border },
+              // Cover is 180px on mobile (vs 360 desktop), so reposition the
+              // Edit-cover pill to sit inside the shorter cover area.
+              isNarrow && { top: 140 },
+            ]}
             activeOpacity={0.85}
             onPress={openCoverOptions}
           >
@@ -1266,7 +1462,7 @@ export default function MyProfileScreen({
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="account-details-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
                   {t('home.profilePersonalDetailsTitle')}
                 </Text>
               </View>
@@ -1309,7 +1505,7 @@ export default function MyProfileScreen({
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border, marginTop: 14 }]}>
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="account-group-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
                   {t('home.profileJoinedCommunitiesTitle', { defaultValue: "Communities I've joined" })}
                 </Text>
               </View>
@@ -1324,14 +1520,14 @@ export default function MyProfileScreen({
                   {t('home.profileJoinedCommunitiesEmpty', { defaultValue: 'No joined communities yet.' })}
                 </Text>
               ) : (
-                <View style={styles.profileCommunitiesGrid}>
+                <View style={[styles.profileCommunitiesGrid, isNarrow && { gap: 8 }]}>
                   {shownJoinedCommunities.map((community) => (
                     (() => {
                       const communityAvatarUri = resolveImageUri(community.avatar);
                       return (
                     <TouchableOpacity
                       key={`profile-joined-community-${community.id || 'na'}-${community.name || community.title || 'community'}`}
-                      style={styles.profileCommunityTile}
+                      style={[styles.profileCommunityTile, isNarrow && { width: '22%', minWidth: 56, maxWidth: 88, gap: 4 }]}
                       activeOpacity={0.85}
                       onPress={() => {
                         if (!community.name) return;
@@ -1347,13 +1543,13 @@ export default function MyProfileScreen({
                           />
                         ) : (
                           <View style={[styles.profileCommunityAvatarFallback, { backgroundColor: c.primary }]}>
-                            <Text style={styles.profileCommunityAvatarLetter}>
+                            <Text style={[styles.profileCommunityAvatarLetter, isNarrow && { fontSize: 18 }]}>
                               {(community.name?.[0] || community.title?.[0] || 'C').toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
-                      <Text numberOfLines={1} style={[styles.profileCommunityName, { color: c.textPrimary }]}>
+                      <Text numberOfLines={1} style={[styles.profileCommunityName, { color: c.textPrimary }, isNarrow && { fontSize: 11 }]}>
                         {community.name ? `c/${community.name}` : (community.title || 'c/community')}
                       </Text>
                     </TouchableOpacity>
@@ -1384,7 +1580,7 @@ export default function MyProfileScreen({
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border, marginTop: 14 }]}>
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="account-heart-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
                   {t('home.profileFollowingTitle', { defaultValue: 'Accounts I follow' })}
                 </Text>
               </View>
@@ -1396,14 +1592,14 @@ export default function MyProfileScreen({
                   {t('home.profileFollowingEmpty', { defaultValue: 'Not following anyone yet.' })}
                 </Text>
               ) : (
-                <View style={styles.profileCommunitiesGrid}>
+                <View style={[styles.profileCommunitiesGrid, isNarrow && { gap: 8 }]}>
                   {shownFollowings.map((followedUser) => (
                     (() => {
                       const followingAvatarUri = resolveImageUri(followedUser.profile?.avatar);
                       return (
                     <TouchableOpacity
                       key={`profile-following-user-${followedUser.id}`}
-                      style={styles.profileCommunityTile}
+                      style={[styles.profileCommunityTile, isNarrow && { width: '22%', minWidth: 56, maxWidth: 88, gap: 4 }]}
                       activeOpacity={0.85}
                       onPress={() => {
                         if (!followedUser.username) return;
@@ -1415,13 +1611,13 @@ export default function MyProfileScreen({
                           <Image source={{ uri: followingAvatarUri }} style={styles.profileCommunityAvatar} resizeMode="cover" />
                         ) : (
                           <View style={[styles.profileCommunityAvatarFallback, { backgroundColor: c.primary }]}>
-                            <Text style={styles.profileCommunityAvatarLetter}>
+                            <Text style={[styles.profileCommunityAvatarLetter, isNarrow && { fontSize: 18 }]}>
                               {(followedUser.username?.[0] || followedUser.profile?.name?.[0] || 'U').toUpperCase()}
                             </Text>
                           </View>
                         )}
                       </View>
-                      <Text numberOfLines={1} style={[styles.profileCommunityName, { color: c.textPrimary }]}>
+                      <Text numberOfLines={1} style={[styles.profileCommunityName, { color: c.textPrimary }, isNarrow && { fontSize: 11 }]}>
                         @{followedUser.username || 'user'}
                       </Text>
                     </TouchableOpacity>
@@ -1451,31 +1647,10 @@ export default function MyProfileScreen({
           </View>
 
           <View style={[styles.profileBodyRight, isCompactProfileLayout ? styles.profileBodyRightCompact : null]}>
-            {isOwnProfile ? (
-              <View style={[styles.profileComposerCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-                <View style={styles.profileComposerTop}>
-                  <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
-                  <Image
-                    source={avatarDisplayUri ? { uri: avatarDisplayUri } : DEFAULT_PROFILE_AVATAR}
-                    style={styles.feedAvatarImage}
-                    resizeMode="cover"
-                  />
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.profileComposerInputMock, { borderColor: c.border, backgroundColor: c.surface }]}
-                    activeOpacity={0.85}
-                    onPress={() => onNotice(t('home.profileComingSoonAction'))}
-                  >
-                    <Text style={[styles.profileComposerInputText, { color: c.textMuted }]}> {t('home.profileWhatsOnMindTitle')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
-
             <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="pin-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
                   {t('home.profilePinnedPostsTitle')}
                 </Text>
               </View>
@@ -1495,7 +1670,7 @@ export default function MyProfileScreen({
             <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="post-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }]}>
+                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
                   {t('home.profilePostsTitle', { defaultValue: 'Posts' })}
                 </Text>
               </View>

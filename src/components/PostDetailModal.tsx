@@ -367,11 +367,16 @@ export default function PostDetailModal({
   const [localReplyDrafts, setLocalReplyDrafts] = React.useState<Record<number, string>>({});
   const [localCommentEditDrafts, setLocalCommentEditDrafts] = React.useState<Record<number, string>>({});
   const [localReplyEditDrafts, setLocalReplyEditDrafts] = React.useState<Record<number, string>>({});
-  // Clear comment draft when switching to a different post
+  // Mobile: let the user collapse the media pane so comments take the full screen.
+  // Height transitions via CSS (web) / instantly snaps (native, until we wire
+  // up LayoutAnimation there).
+  const [mediaHidden, setMediaHidden] = React.useState(false);
+  // Clear comment draft and un-collapse media when switching to a different post
   const prevPostIdRef = React.useRef<number | null>(null);
   if (activePost && activePost.id !== prevPostIdRef.current) {
     prevPostIdRef.current = activePost.id;
     if (localCommentDraft !== '') setLocalCommentDraft('');
+    if (mediaHidden) setMediaHidden(false);
   }
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postReactionHostRef = React.useRef<any>(null);
@@ -1668,8 +1673,26 @@ export default function PostDetailModal({
       <View style={{ flex: 1 }}>
       {activePost ? (
         hasActivePostMedia ? (
-          <View style={[styles.postDetailRoot, isNarrow && { flexDirection: 'column' }, { backgroundColor: '#0B0E13' }]}>
-            <View style={styles.postDetailLeft}>
+          <View
+            style={[
+              styles.postDetailRoot,
+              isNarrow && { flexDirection: 'column' },
+              { backgroundColor: '#0B0E13' },
+              // Modals render outside the app-level SafeAreaView, so push content
+              // below the device status bar / notch ourselves.
+              isNarrow && (Platform.OS === 'web'
+                ? ({ paddingTop: 'env(safe-area-inset-top, 0px)' } as any)
+                : Platform.OS === 'ios'
+                  ? { paddingTop: 44 }
+                  : null),
+            ]}
+          >
+            <View
+              style={[
+                styles.postDetailLeft,
+                isNarrow && mediaHidden && { display: 'none' as const },
+              ]}
+            >
               <TouchableOpacity
                 style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
                 onPress={onClose}
@@ -1805,7 +1828,7 @@ export default function PostDetailModal({
               { backgroundColor: c.surface, borderLeftColor: c.border },
             ]}>
               <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
-                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
+                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
                   {creatorAvatar ? (
                     <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
                   ) : (
@@ -1816,6 +1839,34 @@ export default function PostDetailModal({
                   <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{activePost.creator?.username || t('home.unknownUser')}</Text>
                   <Text style={[styles.feedDate, { color: c.textMuted }]}>{activePost.created ? new Date(activePost.created).toLocaleString() : ''}</Text>
                 </View>
+                {isNarrow ? (
+                  <TouchableOpacity
+                    onPress={() => setMediaHidden((prev) => !prev)}
+                    activeOpacity={0.75}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: c.inputBackground,
+                      borderWidth: 1,
+                      borderColor: c.border,
+                    }}
+                    accessibilityLabel={
+                      mediaHidden
+                        ? t('home.showMediaAction', { defaultValue: 'Show media' })
+                        : t('home.hideMediaAction', { defaultValue: 'Hide media' })
+                    }
+                  >
+                    <MaterialCommunityIcons
+                      name={mediaHidden ? 'image-outline' : 'image-off-outline'}
+                      size={18}
+                      color={c.textSecondary}
+                    />
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
@@ -1906,7 +1957,17 @@ export default function PostDetailModal({
             </View>
           </View>
         ) : (
-          <View style={[styles.postDetailTextOnlyRoot, { backgroundColor: '#0B0E13' }]}> 
+          <View
+            style={[
+              styles.postDetailTextOnlyRoot,
+              { backgroundColor: '#0B0E13' },
+              isNarrow && (Platform.OS === 'web'
+                ? ({ paddingTop: 'env(safe-area-inset-top, 0px)' } as any)
+                : Platform.OS === 'ios'
+                  ? { paddingTop: 44 }
+                  : null),
+            ]}
+          > 
             <View style={[styles.postDetailTextOnlyCard, { backgroundColor: c.surface, borderColor: c.border }]}> 
               <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}> 
                 <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 

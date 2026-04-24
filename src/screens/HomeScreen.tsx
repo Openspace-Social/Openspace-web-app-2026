@@ -2086,7 +2086,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const mainScrollRef = useRef<any>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    // Web-only: native has a window shim but no addEventListener/DOM scroll.
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
 
     // On web, React Native Web renders ScrollView as a plain div.
     // Grab the underlying DOM node and listen directly on it.
@@ -2099,6 +2100,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           : (node as HTMLElement | null);
 
     const target = scrollTarget ?? window;
+    if (typeof (target as any).addEventListener !== 'function') return;
 
     const handleScroll = () => {
       let scrollTop: number;
@@ -9103,7 +9105,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           onNavigateHome={() => onNavigate({ screen: 'feed', feed: 'home' })}
           onNavigateCommunities={() => onNavigate({ screen: 'communities' })}
           onOpenComposer={() => openComposerModal()}
-          onOpenNotifications={() => setNotifDrawerOpen(true)}
+          onOpenNotifications={() => void handleOpenNotifications()}
           onNavigateProfile={() => onNavigate({ screen: 'me' })}
         />
       ) : null}

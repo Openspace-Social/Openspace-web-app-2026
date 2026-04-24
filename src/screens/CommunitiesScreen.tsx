@@ -149,6 +149,7 @@ function CommunityCard({
   width,
   onPress,
   action,
+  compact = false,
 }: {
   item: SearchCommunityResult;
   c: any;
@@ -157,6 +158,8 @@ function CommunityCard({
   width?: number;
   onPress: () => void;
   action?: React.ReactNode;
+  /** Compact styling for mobile tiles: shorter cover, tighter padding, smaller fonts. */
+  compact?: boolean;
 }) {
   const title = item.title || item.name || t('communitiesHub.untitledCommunity', { defaultValue: 'Community' });
   const handle = item.name ? `c/${item.name}` : t('communitiesHub.communityHandleFallback', { defaultValue: 'c/community' });
@@ -218,11 +221,18 @@ function CommunityCard({
           borderColor: c.border,
           backgroundColor: c.surface,
         },
+        compact && { minHeight: 168 },
       ]}
       activeOpacity={0.9}
       onPress={onPress}
     >
-      <View style={[styles.gridCoverWrap, { backgroundColor: c.inputBackground, borderBottomColor: c.border }]}>
+      <View
+        style={[
+          styles.gridCoverWrap,
+          { backgroundColor: c.inputBackground, borderBottomColor: c.border },
+          compact && { height: 72 },
+        ]}
+      >
         {item.cover ? (
           <Image source={{ uri: item.cover }} style={styles.gridCoverImage} resizeMode="cover" />
         ) : (
@@ -230,27 +240,48 @@ function CommunityCard({
         )}
       </View>
 
-      <View style={styles.gridBody}>
-        <View style={styles.gridIdentityRow}>
-          <View style={[styles.gridAvatarWrap, { backgroundColor: accent }]}>
+      <View style={[styles.gridBody, compact && { paddingHorizontal: 10, paddingVertical: 8 }]}>
+        <View style={[styles.gridIdentityRow, compact && { gap: 8 }]}>
+          <View
+            style={[
+              styles.gridAvatarWrap,
+              { backgroundColor: accent },
+              compact && { width: 28, height: 28, borderRadius: 8 },
+            ]}
+          >
             {item.avatar ? (
               <Image source={{ uri: item.avatar }} style={styles.gridAvatarImage} resizeMode="cover" />
             ) : (
-              <Text style={styles.gridAvatarInitial}>{initial}</Text>
+              <Text style={[styles.gridAvatarInitial, compact && { fontSize: 13 }]}>{initial}</Text>
             )}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.gridTitle, { color: c.textPrimary }]} numberOfLines={1}>
+            <Text
+              style={[styles.gridTitle, { color: c.textPrimary }, compact && { fontSize: 13 }]}
+              numberOfLines={1}
+            >
               {title}
             </Text>
-            <Text style={[styles.gridHandle, { color: c.textMuted }]} numberOfLines={1}>
+            <Text
+              style={[styles.gridHandle, { color: c.textMuted }, compact && { fontSize: 11 }]}
+              numberOfLines={1}
+            >
               {handle}
             </Text>
           </View>
         </View>
 
-        <View style={[styles.gridFooter, { borderTopColor: c.border }]}>
-          <Text style={[styles.gridMeta, { color: c.textSecondary }]} numberOfLines={1}>
+        <View
+          style={[
+            styles.gridFooter,
+            { borderTopColor: c.border },
+            compact && { marginTop: 8, paddingTop: 6 },
+          ]}
+        >
+          <Text
+            style={[styles.gridMeta, { color: c.textSecondary }, compact && { fontSize: 11 }]}
+            numberOfLines={1}
+          >
             {getMembersLabel(item, t)}
           </Text>
           {action}
@@ -272,10 +303,16 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [layoutMode, setLayoutMode] = useState<CommunitiesLayoutMode>('three-panel');
 
-  const numCols = width >= 1480 ? 4 : width >= 1060 ? 3 : width >= 680 ? 2 : 1;
-  const horizontalGap = 14;
+  // On narrow viewports we strip the outer card chrome, shrink the title,
+  // and drop desktop-only toggles so the list can use the full width.
+  const isNarrow = width < 700;
+  // Mobile forces 2-up tile layout (was 1 full-width card). Desktop stays as-is.
+  const numCols = width >= 1480 ? 4 : width >= 1060 ? 3 : width >= 680 ? 2 : 2;
+  const horizontalGap = isNarrow ? 8 : 14;
   const contentWidth = Math.max(320, Math.min(width - 40, 1520));
-  const panelHeight = Math.max(560, Math.min(Math.floor(height * 0.86), 980));
+  const panelHeight = isNarrow
+    ? height
+    : Math.max(560, Math.min(Math.floor(height * 0.86), 980));
   const testThreePanelEnabled =
     ENABLE_COMMUNITIES_3_PANEL_TEST &&
     layoutMode === 'three-panel' &&
@@ -285,9 +322,13 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   const threePanelGap = 12;
   const usable = testThreePanelEnabled
     ? Math.max(0, contentWidth - 24 - leftPanelWidth - rightPanelWidth - (threePanelGap * 2))
-    : Math.max(0, contentWidth - 24);
-  const cardWidth =
-    usable > 0 ? Math.max(220, Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)) : undefined;
+    : Math.max(0, contentWidth - (isNarrow ? 16 : 24));
+  // Mobile: drop the 220px lower floor so 2 tiles fit on a 375px phone.
+  const cardWidth = usable > 0
+    ? (isNarrow
+        ? Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)
+        : Math.max(220, Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)))
+    : undefined;
 
   const [loading, setLoading] = useState(true);
   const [administrated, setAdministrated] = useState<SearchCommunityResult[]>([]);
@@ -694,13 +735,31 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   }
 
   return (
-    <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border, height: panelHeight }]}>
-      <View style={[s.header, { borderBottomColor: c.border }]}>
-        <Text style={[s.headerTitle, { color: c.textPrimary }]}>
+    <View
+      style={[
+        s.container,
+        { backgroundColor: c.surface, borderColor: c.border, height: panelHeight },
+        isNarrow && { borderWidth: 0, borderRadius: 0 },
+      ]}
+    >
+      <View
+        style={[
+          s.header,
+          { borderBottomColor: c.border },
+          isNarrow && { paddingHorizontal: 12, paddingVertical: 10 },
+        ]}
+      >
+        <Text
+          style={[
+            s.headerTitle,
+            { color: c.textPrimary },
+            isNarrow && { fontSize: 24 },
+          ]}
+        >
           {t('communitiesHub.title', { defaultValue: 'Communities' })}
         </Text>
         <View style={s.headerActions}>
-          {ENABLE_COMMUNITIES_3_PANEL_TEST ? (
+          {ENABLE_COMMUNITIES_3_PANEL_TEST && !isNarrow ? (
             <View style={[s.layoutToggleWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
               <TouchableOpacity
                 style={[
@@ -732,68 +791,85 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
               </TouchableOpacity>
             </View>
           ) : null}
-          <View style={[s.layoutToggleWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
-            <TouchableOpacity
-              style={[
-                s.layoutToggleButton,
-                viewMode === 'grid'
-                  ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
-                  : { borderColor: 'transparent', backgroundColor: 'transparent' },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => setViewMode('grid')}
-            >
-              <View style={s.layoutToggleButtonInner}>
-                <MaterialCommunityIcons
-                  name="view-grid-outline"
-                  size={14}
-                  color={viewMode === 'grid' ? c.primary : c.textSecondary}
-                />
-                <Text style={[s.layoutToggleButtonText, { color: viewMode === 'grid' ? c.primary : c.textSecondary }]}>
-                  {t('communitiesHub.viewGrid', { defaultValue: 'Grid' })}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                s.layoutToggleButton,
-                viewMode === 'list'
-                  ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
-                  : { borderColor: 'transparent', backgroundColor: 'transparent' },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => setViewMode('list')}
-            >
-              <View style={s.layoutToggleButtonInner}>
-                <MaterialCommunityIcons
-                  name="view-list-outline"
-                  size={14}
-                  color={viewMode === 'list' ? c.primary : c.textSecondary}
-                />
-                <Text style={[s.layoutToggleButtonText, { color: viewMode === 'list' ? c.primary : c.textSecondary }]}>
-                  {t('communitiesHub.viewList', { defaultValue: 'List' })}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+          {isNarrow ? null : (
+            <View style={[s.layoutToggleWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+              <TouchableOpacity
+                style={[
+                  s.layoutToggleButton,
+                  viewMode === 'grid'
+                    ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                    : { borderColor: 'transparent', backgroundColor: 'transparent' },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setViewMode('grid')}
+              >
+                <View style={s.layoutToggleButtonInner}>
+                  <MaterialCommunityIcons
+                    name="view-grid-outline"
+                    size={14}
+                    color={viewMode === 'grid' ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[s.layoutToggleButtonText, { color: viewMode === 'grid' ? c.primary : c.textSecondary }]}>
+                    {t('communitiesHub.viewGrid', { defaultValue: 'Grid' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  s.layoutToggleButton,
+                  viewMode === 'list'
+                    ? { borderColor: c.primary, backgroundColor: `${c.primary}22` }
+                    : { borderColor: 'transparent', backgroundColor: 'transparent' },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setViewMode('list')}
+              >
+                <View style={s.layoutToggleButtonInner}>
+                  <MaterialCommunityIcons
+                    name="view-list-outline"
+                    size={14}
+                    color={viewMode === 'list' ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[s.layoutToggleButtonText, { color: viewMode === 'list' ? c.primary : c.textSecondary }]}>
+                    {t('communitiesHub.viewList', { defaultValue: 'List' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
           <TouchableOpacity
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 6,
-              borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-              backgroundColor: c.primary,
-            }}
+            style={
+              isNarrow
+                ? {
+                    // Compact round button on mobile: icon only, 40x40 circle.
+                    width: 40, height: 40, borderRadius: 999,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: c.primary,
+                  }
+                : {
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+                    backgroundColor: c.primary,
+                  }
+            }
             activeOpacity={0.85}
             onPress={() => setCreateDrawerOpen(true)}
+            accessibilityLabel={t('communitiesHub.createCommunity', { defaultValue: 'Create Community' })}
           >
-            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
-              {t('communitiesHub.createCommunity', { defaultValue: 'Create Community' })}
-            </Text>
+            <MaterialCommunityIcons name="plus" size={isNarrow ? 22 : 18} color="#fff" />
+            {isNarrow ? null : (
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                {t('communitiesHub.createCommunity', { defaultValue: 'Create Community' })}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[s.scrollContent, isNarrow && { paddingHorizontal: 8 }]}
+      >
         <View style={[s.contentColumn, { maxWidth: contentWidth }]}>
           <View style={testThreePanelEnabled ? s.threePanelShell : undefined}>
             {testThreePanelEnabled ? (
@@ -972,8 +1048,10 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
               {displayItems.map((item, idx, arr) => {
                 const communityName = (item.name || '').trim();
                 const joinedAlready = Array.isArray(item.memberships) && item.memberships.length > 0;
+                // HTML5 drag-and-drop is desktop-only — touch events on mobile
+                // browsers don't trigger it, so we fall back to chevron buttons there.
                 const isWebDragEnabled =
-                  Platform.OS === 'web' && activeTab === 'favorites' && favoritesReorderMode && !!communityName;
+                  Platform.OS === 'web' && !isNarrow && activeTab === 'favorites' && favoritesReorderMode && !!communityName;
                 const cardNode = (
                   <CommunityCard
                     item={item}
@@ -981,6 +1059,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                     t={t}
                     mode="grid"
                     width={cardWidth}
+                    compact={isNarrow}
                     onPress={() => handleCommunityCardPress(communityName)}
                     action={
                       activeTab === 'discover' && communityName
@@ -1032,7 +1111,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                             </TouchableOpacity>
                           )
                           : activeTab === 'favorites' && favoritesReorderMode && communityName
-                            ? Platform.OS === 'web'
+                            ? Platform.OS === 'web' && !isNarrow
                               ? (
                                 <View style={[s.dragHintChip, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
                                   <MaterialCommunityIcons name="drag-vertical" size={14} color={c.textSecondary} />
@@ -1131,8 +1210,10 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
               {displayItems.map((item, idx, arr) => {
                 const communityName = (item.name || '').trim();
                 const joinedAlready = Array.isArray(item.memberships) && item.memberships.length > 0;
+                // HTML5 drag-and-drop is desktop-only — touch events on mobile
+                // browsers don't trigger it, so we fall back to chevron buttons there.
                 const isWebDragEnabled =
-                  Platform.OS === 'web' && activeTab === 'favorites' && favoritesReorderMode && !!communityName;
+                  Platform.OS === 'web' && !isNarrow && activeTab === 'favorites' && favoritesReorderMode && !!communityName;
                 const cardNode = (
                   <CommunityCard
                     item={item}
@@ -1190,7 +1271,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                             </TouchableOpacity>
                           )
                           : activeTab === 'favorites' && favoritesReorderMode && communityName
-                            ? Platform.OS === 'web'
+                            ? Platform.OS === 'web' && !isNarrow
                               ? (
                                 <View style={[s.dragHintChip, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
                                   <MaterialCommunityIcons name="drag-vertical" size={14} color={c.textSecondary} />

@@ -1,7 +1,9 @@
 import './src/i18n'; // initialise i18next before any component renders
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
-import { Platform, SafeAreaView, View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from './src/i18n';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -22,7 +24,9 @@ function Root() {
   const [token, setToken] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => {
-    if (typeof window === 'undefined') return { screen: 'landing' };
+    // On native, `window` exists as a global but `window.location` is undefined,
+    // so we must guard on both.
+    if (typeof window === 'undefined' || !window.location) return { screen: 'landing' };
     return parsePathToRoute(window.location.pathname);
   });
 
@@ -31,7 +35,7 @@ function Root() {
 
   function navigate(nextRoute: AppRoute, replace = false) {
     setRoute(nextRoute);
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !window.location || !window.history) return;
     const nextPath = routeToPath(nextRoute);
     const currentPath = window.location.pathname || '/';
     if (nextPath === currentPath) return;
@@ -40,7 +44,7 @@ function Root() {
   }
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !window.location) return;
     const onPopState = () => setRoute(parsePathToRoute(window.location.pathname));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -185,10 +189,18 @@ const webSafeAreaStyle = {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppToastProvider>
-        <Root />
-      </AppToastProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      {/* NavigationContainer mounted at the root so future react-navigation
+          navigators + useNavigation() calls have context available. The custom
+          routing in Root() is still the source of truth until we migrate each
+          route to the navigator in src/navigation/AppNavigator.tsx. */}
+      <NavigationContainer>
+        <ThemeProvider>
+          <AppToastProvider>
+            <Root />
+          </AppToastProvider>
+        </ThemeProvider>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

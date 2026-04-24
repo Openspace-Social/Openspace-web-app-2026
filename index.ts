@@ -1,3 +1,7 @@
+// Must be the first import — react-native-gesture-handler requires setup
+// before any other module that might use gestures (react-navigation stack swipes,
+// swipe-to-close drawers, etc.).
+import 'react-native-gesture-handler';
 import { registerRootComponent } from 'expo';
 
 import App from './App';
