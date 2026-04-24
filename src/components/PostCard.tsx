@@ -421,7 +421,7 @@ type PostCardProps = {
   onFetchUserProfile?: (token: string, username: string) => Promise<UserProfile>;
 };
 
-export default function PostCard({
+function PostCard({
   post,
   variant,
   styles,
@@ -1402,6 +1402,7 @@ export default function PostCard({
               activeOpacity={0.85}
               onPress={() => setPostMenuOpen((prev) => !prev)}
               accessibilityLabel={t('home.postMenuAction')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <MaterialCommunityIcons name="dots-horizontal" size={16} color={c.textSecondary} />
             </TouchableOpacity>
@@ -2142,15 +2143,13 @@ export default function PostCard({
           }}
           disabled={reactionActionLoading}
           activeOpacity={0.85}
+          accessibilityLabel={t('home.reactAction')}
         >
           <MaterialCommunityIcons
             name={hasReacted ? 'emoticon' : 'emoticon-outline'}
-            size={16}
+            size={22}
             color={hasReacted ? c.primary : c.textSecondary}
           />
-          <Text style={[styles.feedActionText, { color: hasReacted ? c.primary : c.textSecondary }]}>
-            {t('home.reactAction')}
-          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2163,9 +2162,9 @@ export default function PostCard({
             }
           }}
           activeOpacity={0.85}
+          accessibilityLabel={t('home.commentAction')}
         >
-          <MaterialCommunityIcons name="comment-outline" size={16} color={c.textSecondary} />
-          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.commentAction')}</Text>
+          <MaterialCommunityIcons name="comment-outline" size={22} color={c.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2178,26 +2177,27 @@ export default function PostCard({
           ]}
           onPress={() => onRepostPost(post)}
           activeOpacity={0.85}
+          accessibilityLabel={t('home.repostAction', { defaultValue: 'Repost' })}
         >
           <MaterialCommunityIcons
             name="repeat-variant"
-            size={16}
+            size={22}
             color={post.user_has_reposted ? c.primary : c.textSecondary}
           />
-          <Text style={[styles.feedActionText, { color: post.user_has_reposted ? c.primary : c.textSecondary }]}>
-            {post.reposts_count && post.reposts_count > 0
-              ? `${post.reposts_count}`
-              : t('home.repostAction', { defaultValue: 'Repost' })}
-          </Text>
+          {post.reposts_count && post.reposts_count > 0 ? (
+            <Text style={[styles.feedActionText, { color: post.user_has_reposted ? c.primary : c.textSecondary }]}>
+              {post.reposts_count}
+            </Text>
+          ) : null}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
           onPress={() => onSharePost(post)}
           activeOpacity={0.85}
+          accessibilityLabel={t('home.shareAction')}
         >
-          <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
-          <Text style={[styles.feedActionText, { color: c.textSecondary }]}>{t('home.shareAction')}</Text>
+          <MaterialCommunityIcons name="share-variant-outline" size={22} color={c.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2206,7 +2206,7 @@ export default function PostCard({
           activeOpacity={0.85}
           accessibilityLabel={t('home.expandPostAction', { defaultValue: 'Expand post' })}
         >
-          <MaterialCommunityIcons name="arrow-expand" size={15} color={c.textMuted} />
+          <MaterialCommunityIcons name="arrow-expand" size={22} color={c.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -2748,3 +2748,23 @@ export default function PostCard({
     </View>
   );
 }
+
+// PostCard receives 60+ props and sits inside feed .map loops. Most re-renders
+// of HomeScreen recreate function refs but don't change *data* — so we memoize
+// and skip comparison of function props (their identity shifts but behavior
+// doesn't). Any data-prop change still triggers a re-render via Object.is.
+function arePostCardPropsEqual(prev: PostCardProps, next: PostCardProps): boolean {
+  const keys = Object.keys(next) as Array<keyof PostCardProps>;
+  for (const key of keys) {
+    const nv = next[key];
+    if (typeof nv === 'function') continue;
+    if (!Object.is(nv, prev[key])) return false;
+  }
+  // Also catch removed props (prev has a key next doesn't)
+  for (const key of Object.keys(prev) as Array<keyof PostCardProps>) {
+    if (!(key in next) && typeof prev[key] !== 'function') return false;
+  }
+  return true;
+}
+
+export default React.memo(PostCard, arePostCardPropsEqual);

@@ -998,7 +998,7 @@ function useStyles(c: any) {
       borderRadius: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: '500',
     },
     errorText: {

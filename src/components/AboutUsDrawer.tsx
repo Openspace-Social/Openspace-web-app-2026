@@ -9,29 +9,33 @@ import {
   SafeAreaView,
   Platform,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 interface AboutUsDrawerProps {
   visible: boolean;
   onClose: () => void;
 }
 
-const DRAWER_WIDTH = Platform.OS === 'web' ? 680 : 340;
 const DURATION = 280;
 
 export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+  const { width: viewportWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(Platform.OS === 'web' ? 680 : 340, viewportWidth);
 
-  const translateX = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
 
   useEffect(() => {
     if (visible) {
-      translateX.setValue(DRAWER_WIDTH);
+      translateX.setValue(drawerWidth);
       Animated.parallel([
         Animated.timing(translateX, {
           toValue: 0,
@@ -47,7 +51,7 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
     } else {
       Animated.parallel([
         Animated.timing(translateX, {
-          toValue: DRAWER_WIDTH,
+          toValue: drawerWidth,
           duration: DURATION,
           useNativeDriver: true,
         }),
@@ -58,7 +62,7 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, drawerWidth]);
 
   return (
     <Modal
@@ -75,9 +79,11 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
 
         {/* Drawer slides in from the right */}
         <Animated.View
+          {...swipeHandlers}
           style={[
             styles.drawer,
             {
+              width: drawerWidth,
               backgroundColor: c.surface,
               borderColor: c.border,
               transform: [{ translateX }],
@@ -146,7 +152,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   drawer: {
-    width: DRAWER_WIDTH,
     borderLeftWidth: 1,
     shadowColor: '#000',
     shadowOpacity: 0.2,

@@ -1,13 +1,12 @@
 /**
  * UserHoverCard
  *
- * On web: wraps children in a hover zone. When the pointer rests on the
- * avatar for 350 ms, the component fetches the user profile (cached per
- * username) and renders a floating card via a React portal anchored to the
- * avatar using fixed viewport coordinates — so it is never clipped by any
- * ancestor overflow or z-index context.
+ * On web (pointer: fine): wraps children in a hover zone. When the pointer
+ * rests on the avatar for 350 ms, the component fetches the user profile
+ * (cached per username) and renders a floating card via a React portal.
  *
- * On native: renders children as-is with no hover behaviour.
+ * On touch devices (native, or web with pointer: coarse / hover: none):
+ * renders children as-is. The child TouchableOpacity handles tap-to-navigate.
  */
 import React from 'react';
 import {
@@ -39,8 +38,34 @@ type Props = {
   children: React.ReactNode;
 };
 
+// Detect touch/coarse-pointer devices on web. Result is stable for the
+// session (device input type doesn't swap mid-page) so we can safely memoize.
+function useIsCoarsePointer(): boolean {
+  const [coarse, setCoarse] = React.useState<boolean>(() => {
+    if (Platform.OS !== 'web') return true;
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(hover: none), (pointer: coarse)').matches;
+  });
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(hover: none), (pointer: coarse)');
+    const onChange = (e: MediaQueryListEvent) => setCoarse(e.matches);
+    // Safari <14 uses addListener; modern browsers use addEventListener
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+    // @ts-ignore legacy API
+    mq.addListener(onChange);
+    // @ts-ignore legacy API
+    return () => mq.removeListener(onChange);
+  }, []);
+  return coarse;
+}
+
 export default function UserHoverCard(props: Props) {
-  if (Platform.OS !== 'web') return <>{props.children}</>;
+  const isCoarsePointer = useIsCoarsePointer();
+  if (Platform.OS !== 'web' || isCoarsePointer) return <>{props.children}</>;
   return <WebHoverCard {...props} />;
 }
 

@@ -19,6 +19,8 @@ type Props = {
   onSelectUser: (username?: string) => void;
   onSelectCommunity: (name?: string) => void;
   onSelectHashtag: (name?: string) => void;
+  /** When true, strip the outer card chrome so results run edge-to-edge. */
+  isEdgeToEdge?: boolean;
 };
 
 export default function SearchResultsScreen({
@@ -37,6 +39,7 @@ export default function SearchResultsScreen({
   onSelectUser,
   onSelectCommunity,
   onSelectHashtag,
+  isEdgeToEdge = false,
 }: Props) {
   return (
     <View style={isWideSearchResultsLayout ? styles.searchResultsWideLayout : undefined}>
@@ -46,6 +49,7 @@ export default function SearchResultsScreen({
           styles.feedCard,
           isWideSearchResultsLayout ? styles.searchResultsMainCard : null,
           { backgroundColor: c.surface, borderColor: c.border },
+          isEdgeToEdge && { borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, marginBottom: 0, maxWidth: '100%' as const },
         ]}
       >
         <View style={styles.searchMainHeader}>

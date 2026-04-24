@@ -10,11 +10,13 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ApiRequestError, api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 interface InviteDrawerProps {
   visible: boolean;
@@ -23,7 +25,6 @@ interface InviteDrawerProps {
   onClose: () => void;
 }
 
-const DRAWER_WIDTH = Platform.OS === 'web' ? 560 : 360;
 const DURATION = 280;
 
 type InviteMessageType = 'success' | 'info' | 'error';
@@ -32,18 +33,21 @@ export default function InviteDrawer({ visible, token, inviterName, onClose }: I
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+  const { width: viewportWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(Platform.OS === 'web' ? 560 : 360, viewportWidth);
 
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<InviteMessageType>('info');
 
-  const translateX = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
 
   useEffect(() => {
     if (visible) {
-      translateX.setValue(DRAWER_WIDTH);
+      translateX.setValue(drawerWidth);
       Animated.parallel([
         Animated.timing(translateX, {
           toValue: 0,
@@ -59,7 +63,7 @@ export default function InviteDrawer({ visible, token, inviterName, onClose }: I
     } else {
       Animated.parallel([
         Animated.timing(translateX, {
-          toValue: DRAWER_WIDTH,
+          toValue: drawerWidth,
           duration: DURATION,
           useNativeDriver: true,
         }),
@@ -70,7 +74,7 @@ export default function InviteDrawer({ visible, token, inviterName, onClose }: I
         }),
       ]).start();
     }
-  }, [backdropOpacity, translateX, visible]);
+  }, [backdropOpacity, translateX, visible, drawerWidth]);
 
   useEffect(() => {
     if (!visible) {
@@ -139,9 +143,11 @@ export default function InviteDrawer({ visible, token, inviterName, onClose }: I
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
         </Animated.View>
         <Animated.View
+          {...swipeHandlers}
           style={[
             styles.drawer,
             {
+              width: drawerWidth,
               backgroundColor: c.surface,
               borderColor: c.border,
               transform: [{ translateX }],
@@ -253,7 +259,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   drawer: {
-    width: DRAWER_WIDTH,
     borderLeftWidth: 1,
     shadowColor: '#000',
     shadowOpacity: 0.2,
@@ -310,7 +315,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: 16,
   },
   messageBox: {
     borderWidth: 1,

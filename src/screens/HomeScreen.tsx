@@ -2101,14 +2101,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const target = scrollTarget ?? window;
 
     const handleScroll = () => {
+      let scrollTop: number;
       let distFromBottom: number;
       if (target === window) {
-        const scrollTop = window.scrollY || document.documentElement.scrollTop;
+        scrollTop = window.scrollY || document.documentElement.scrollTop;
         distFromBottom = document.documentElement.scrollHeight - scrollTop - window.innerHeight;
       } else {
         const el = target as HTMLElement;
+        scrollTop = el.scrollTop;
         distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       }
+      topBarScrollHandlerRef.current(scrollTop);
       if (distFromBottom < 600) {
         void loadMoreFeed();
       }
@@ -5557,6 +5560,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const showSidebars = viewportWidth >= SIDEBAR_BREAKPOINT;
   const showHomeShellSidebars = showSidebars && !viewingCommunitiesRoute;
   const showBottomTabs = !showSidebars;
+  // On phones, use every pixel of the viewport. Below this breakpoint we strip
+  // the outer horizontal padding and card chrome so content runs edge-to-edge.
+  const isEdgeToEdge = viewportWidth < 700;
   const activeBottomTab: BottomTab = (() => {
     if (notifDrawerOpen) return 'notifications';
     const screen = displayRoute.screen;
@@ -5632,8 +5638,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const composerDrawerWidth =
     Platform.OS === 'web'
       ? composerStep === 'compose'
-        ? Math.min(980, Math.max(760, viewportWidth * 0.72))
-        : Math.min(840, Math.max(640, viewportWidth * 0.62))
+        ? Math.min(980, viewportWidth)
+        : Math.min(840, viewportWidth)
       : viewportWidth;
 
   function handleNavigateProfile(username: string) {
@@ -5752,18 +5758,86 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     );
   }
 
+  // ── Scroll-driven top-bar auto-hide (mobile only) ─────────────────────────
+  // Top nav + mobile feed-tab bar collapse upward when the user scrolls down
+  // and reappear when they scroll up. Bottom tab bar stays anchored.
+  const topChromeTranslateY = useRef(new Animated.Value(0)).current;
+  const [topChromeHeight, setTopChromeHeight] = useState(60);
+  const lastScrollYRef = useRef(0);
+  const topBarHiddenRef = useRef(false);
+  // The web DOM scroll listener is registered once with stale closures; we
+  // call through this ref so it always hits the latest handler.
+  const topBarScrollHandlerRef = useRef<(y: number) => void>(() => {});
+
+  function handleTopBarOnScroll(currentY: number) {
+    if (!showBottomTabs) return;
+    const delta = currentY - lastScrollYRef.current;
+    lastScrollYRef.current = currentY;
+
+    // Always show near the top — don't leave bars hidden when user pulls back.
+    if (currentY < 16) {
+      if (topBarHiddenRef.current) {
+        topBarHiddenRef.current = false;
+        Animated.timing(topChromeTranslateY, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+      }
+      return;
+    }
+
+    if (delta > 8 && !topBarHiddenRef.current) {
+      topBarHiddenRef.current = true;
+      Animated.timing(topChromeTranslateY, {
+        toValue: -topChromeHeight,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else if (delta < -8 && topBarHiddenRef.current) {
+      topBarHiddenRef.current = false;
+      Animated.timing(topChromeTranslateY, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }
+
+  // Keep the ref pointing at the latest closure (captures fresh topChromeHeight
+  // and showBottomTabs) for the DOM scroll listener to call.
+  topBarScrollHandlerRef.current = handleTopBarOnScroll;
+
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
+      <Animated.View
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h && h !== topChromeHeight) setTopChromeHeight(h);
+        }}
+        style={[
+          showBottomTabs && {
+            position: 'absolute' as const,
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            transform: [{ translateY: topChromeTranslateY }],
+          },
+        ]}
+      >
       <View style={[styles.topNav, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
         <View style={styles.topNavLeft}>
-          <TouchableOpacity
-            style={[styles.topNavBrand, { backgroundColor: c.primary }]}
-            activeOpacity={0.85}
-            onPress={handleBackToHomeFeed}
-            accessibilityLabel={t('home.backToHomeFeedAction')}
-          >
-            <Text style={styles.topNavBrandLetter}>O</Text>
-          </TouchableOpacity>
+          {showBottomTabs ? null : (
+            <TouchableOpacity
+              style={[styles.topNavBrand, { backgroundColor: c.primary }]}
+              activeOpacity={0.85}
+              onPress={handleBackToHomeFeed}
+              accessibilityLabel={t('home.backToHomeFeedAction')}
+            >
+              <Text style={styles.topNavBrandLetter}>O</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.topNavSearchWrap}>
             <View style={[styles.topNavSearch, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
               <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
@@ -5936,7 +6010,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           </View>
         </View>
 
-        <View style={styles.topNavCenter}>
+        <View style={[styles.topNavCenter, showBottomTabs && { display: 'none' as const }]}>
           {feedTabs.map((tab) => {
             const isActive = tab.key === activeFeed;
             return (
@@ -5978,56 +6052,60 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           })}
         </View>
 
-        <View style={styles.topNavRight}>
-          <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="message-outline" size={18} color={c.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
-            activeOpacity={0.85}
-            onPress={() => void handleOpenNotifications()}
-          >
-            <MaterialCommunityIcons
-              name={unreadCount > 0 ? 'bell-badge-outline' : 'bell-outline'}
-              size={18}
-              color={unreadCount > 0 ? c.primary : c.textSecondary}
-            />
-            {unreadCount > 0 ? (
-              <View style={{
-                position: 'absolute',
-                top: 2,
-                right: 2,
-                minWidth: 14,
-                height: 14,
-                borderRadius: 7,
-                backgroundColor: c.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 2,
-              }}>
-                <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 }}>
-                  {unreadCount > 99 ? '99+' : String(unreadCount)}
-                </Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.topNavUtility,
-              viewingCommunitiesRoute
-                ? { backgroundColor: `${c.primary}20`, borderWidth: 1, borderColor: c.primary }
-                : { backgroundColor: c.inputBackground },
-            ]}
-            activeOpacity={0.85}
-            onPress={() => onNavigate({ screen: 'communities' })}
-            accessibilityLabel={t('home.sideMenuCommunities', { defaultValue: 'Communities' })}
-          >
-            <MaterialCommunityIcons
-              name="account-group-outline"
-              size={18}
-              color={viewingCommunitiesRoute ? c.primary : c.textSecondary}
-            />
-          </TouchableOpacity>
+        <View style={[styles.topNavRight, showBottomTabs && { flex: 0 as const, gap: 4 }]}>
+          {showBottomTabs ? null : (
+            <>
+              <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} activeOpacity={0.85}>
+                <MaterialCommunityIcons name="message-outline" size={18} color={c.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]}
+                activeOpacity={0.85}
+                onPress={() => void handleOpenNotifications()}
+              >
+                <MaterialCommunityIcons
+                  name={unreadCount > 0 ? 'bell-badge-outline' : 'bell-outline'}
+                  size={18}
+                  color={unreadCount > 0 ? c.primary : c.textSecondary}
+                />
+                {unreadCount > 0 ? (
+                  <View style={{
+                    position: 'absolute',
+                    top: 2,
+                    right: 2,
+                    minWidth: 14,
+                    height: 14,
+                    borderRadius: 7,
+                    backgroundColor: c.primary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 2,
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 }}>
+                      {unreadCount > 99 ? '99+' : String(unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.topNavUtility,
+                  viewingCommunitiesRoute
+                    ? { backgroundColor: `${c.primary}20`, borderWidth: 1, borderColor: c.primary }
+                    : { backgroundColor: c.inputBackground },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => onNavigate({ screen: 'communities' })}
+                accessibilityLabel={t('home.sideMenuCommunities', { defaultValue: 'Communities' })}
+              >
+                <MaterialCommunityIcons
+                  name="account-group-outline"
+                  size={18}
+                  color={viewingCommunitiesRoute ? c.primary : c.textSecondary}
+                />
+              </TouchableOpacity>
+            </>
+          )}
           <TouchableOpacity
             style={[styles.topNavProfile, { backgroundColor: user ? c.primary : 'transparent' }]}
             activeOpacity={0.85}
@@ -6043,6 +6121,56 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           </TouchableOpacity>
         </View>
       </View>
+
+      {showBottomTabs && displayRoute.screen === 'feed' ? (
+        <View style={{
+          flexDirection: 'row',
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+          backgroundColor: c.surface,
+        }}>
+          {feedTabs.map((tab) => {
+            const isActive = tab.key === activeFeed;
+            return (
+              <TouchableOpacity
+                key={`mobile-feed-tab-${tab.key}`}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 11,
+                  borderBottomWidth: 2,
+                  borderBottomColor: isActive ? c.primary : 'transparent',
+                }}
+                activeOpacity={0.75}
+                onPress={() => handleSelectFeed(tab.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={tab.label}
+              >
+                <MaterialCommunityIcons
+                  name={tab.icon as any}
+                  size={18}
+                  color={isActive ? c.primary : c.textMuted}
+                />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: isActive ? c.primary : c.textMuted,
+                  }}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+      </Animated.View>
 
       <Modal
         visible={menuDrawerMounted}
@@ -8328,7 +8456,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       </Modal>
 
       {showWelcomeNotice && !loading ? (
-        <View style={styles.welcomeNoticeWrap}>
+        <View style={[styles.welcomeNoticeWrap, showBottomTabs && { marginTop: topChromeHeight }]}>
           <Animated.View
             style={[
               styles.welcomeNotice,
@@ -8484,8 +8612,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         <ScrollView
           ref={mainScrollRef}
           style={{ flex: 1 }}
-          contentContainerStyle={showHomeShellSidebars ? [styles.rootContent, { paddingHorizontal: 16 }] : styles.rootContent}
-          scrollEventThrottle={200}
+          contentContainerStyle={[
+            styles.rootContent,
+            showHomeShellSidebars ? { paddingHorizontal: 16 } : null,
+            isEdgeToEdge ? { paddingHorizontal: 0, paddingVertical: 0 } : null,
+            showBottomTabs ? { paddingTop: topChromeHeight } : null,
+          ]}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={feedRefreshing}
@@ -8497,6 +8630,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onScroll={({ nativeEvent }) => {
           // Native (iOS/Android) scroll handling — web uses the DOM listener above
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          handleTopBarOnScroll(contentOffset.y);
           const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
           if (nearBottom && feedHasMore && !feedLoadingMore && !feedLoading) {
             void loadMoreFeed();
@@ -8545,6 +8679,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 renderPostCard={(post, variant) => renderPostCard(post, variant, myPinnedPosts)}
                 isOwnProfile
                 isProfileLoading={false}
+                isEdgeToEdge={isEdgeToEdge}
               />
             ) : null}
 
@@ -8612,6 +8747,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     ? () => void handleToggleUserPostSubscription(profileRouteUsername)
                     : undefined
                 }
+                isEdgeToEdge={isEdgeToEdge}
               />
             ) : null}
 
@@ -8661,6 +8797,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     onToggleClosePost: canManageCurrentCommunity ? toggleClosePost : undefined,
                   })
                 }
+                isEdgeToEdge={isEdgeToEdge}
               />
             ) : null}
 
@@ -8799,6 +8936,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onSelectUser={handleSelectSearchUser}
                 onSelectCommunity={handleSelectSearchCommunity}
                 onSelectHashtag={handleSelectSearchHashtag}
+                isEdgeToEdge={isEdgeToEdge}
               />
             ) : null}
 
@@ -8817,6 +8955,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 feedLoadingMore={feedLoadingMore}
                 feedHasMore={feedHasMore}
                 renderPostCard={renderPostCard}
+                isEdgeToEdge={isEdgeToEdge}
+                hideComposer={showBottomTabs}
               />
             ) : null}
 
@@ -9112,7 +9252,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
-    minWidth: 200,
+    minWidth: 0,
   },
   topNavBrand: {
     width: 40,
@@ -9145,7 +9285,7 @@ const styles = StyleSheet.create({
   },
   topNavSearchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 16,
     paddingVertical: 0,
   },
   searchDropdown: {
@@ -9372,8 +9512,8 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   topNavUtility: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -9552,7 +9692,7 @@ const styles = StyleSheet.create({
     maxHeight: 360,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
   },
   postComposerCounterRow: {
@@ -9776,7 +9916,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     minHeight: 40,
     paddingHorizontal: 10,
-    fontSize: 14,
+    fontSize: 16,
   },
   postComposerDestinationList: {
     borderWidth: 1,
@@ -9938,8 +10078,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   reactionEmojiButton: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderWidth: 1,
     borderRadius: 999,
     alignItems: 'center',
@@ -10409,8 +10549,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   feedComposerActionButton: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -11256,8 +11396,8 @@ const styles = StyleSheet.create({
   reportButton: {
     borderWidth: 1,
     borderRadius: 999,
-    width: 30,
-    height: 30,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -11655,6 +11795,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 5,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -11681,6 +11822,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 9,
     paddingHorizontal: 8,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -11835,8 +11977,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   commentReactionPickerEmojiButton: {
-    width: 30,
-    height: 30,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -11973,7 +12115,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
-    fontSize: 13,
+    fontSize: 16,
   },
   commentSendButton: {
     borderRadius: 10,

@@ -1,7 +1,7 @@
 import './src/i18n'; // initialise i18next before any component renders
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Platform, SafeAreaView, View, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from './src/i18n';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -121,18 +121,67 @@ function Root() {
     return <LandingScreen onLogin={handleLogin} />;
   }
 
+  // Web-only mount tweaks:
+  // 1. Expose env(safe-area-inset-*) via viewport-fit=cover (Expo's default lacks it).
+  // 2. Hide the vertical-scrollbar gutter below 700px so our edge-to-edge cards
+  //    truly reach the viewport edges. Phones have overlay scrollbars already;
+  //    this only matters in desktop browsers resized to mobile widths.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    if (meta) {
+      const content = meta.getAttribute('content') || '';
+      if (!/viewport-fit\s*=/.test(content)) {
+        meta.setAttribute('content', `${content}${content ? ', ' : ''}viewport-fit=cover`);
+      }
+    }
+
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-openspace-scrollbar', 'true');
+    styleEl.textContent = `
+      @media (max-width: 699px) {
+        html, body { overflow-x: hidden; }
+        body { scrollbar-width: none; -ms-overflow-style: none; }
+        body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        *::-webkit-scrollbar { width: 0; height: 0; }
+        * { scrollbar-width: none; }
+      }
+    `;
+    document.head.appendChild(styleEl);
+    return () => {
+      if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+    };
+  }, []);
+
+  // Platform-specific root: SafeAreaView on iOS handles notch/home-indicator.
+  // On web we use env() insets; on Android edge-to-edge the system handles it.
+  const RootContainer: any = Platform.OS === 'ios' ? SafeAreaView : View;
+  const rootStyle =
+    Platform.OS === 'web'
+      ? [styles.root, webSafeAreaStyle as any]
+      : styles.root;
+
   return (
-    <View style={styles.root}>
+    <RootContainer style={rootStyle}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       {renderContent()}
       <CookieConsentBanner />
-    </View>
+    </RootContainer>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
 });
+
+// Web-only: top/left/right insets at the app root. Bottom-inset is applied by
+// bottom-most components (e.g. BottomTabBar) so inner scroll areas aren't padded.
+const webSafeAreaStyle = {
+  paddingTop: 'env(safe-area-inset-top, 0px)',
+  paddingLeft: 'env(safe-area-inset-left, 0px)',
+  paddingRight: 'env(safe-area-inset-right, 0px)',
+} as const;
 
 export default function App() {
   return (

@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, CommunityCategory, SearchCommunityResult } from '../api/client';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ export default function CreateCommunityDrawer({ visible, token, c, t, onClose, o
   const drawerWidth = Math.min(500, width * 0.94);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
   const [mounted, setMounted] = useState(false);
 
   // ── Step ──
@@ -384,6 +386,7 @@ export default function CreateCommunityDrawer({ visible, token, c, t, onClose, o
         }}
       />
       <Animated.View
+        {...swipeHandlers}
         style={{
           position: 'absolute', top: 0, right: 0, bottom: 0,
           width: drawerWidth,
@@ -885,7 +888,7 @@ function inputStyle(c: any) {
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500' as const,
     color: c.textPrimary,
     backgroundColor: c.inputBackground,

@@ -96,6 +96,8 @@ type Props = {
   isSubscribedToPosts?: boolean | null;
   subscribeToPostsLoading?: boolean;
   onToggleSubscribeToPosts?: () => void;
+  /** When true, strip the outer profile card chrome so content runs edge-to-edge. */
+  isEdgeToEdge?: boolean;
 };
 
 export default function MyProfileScreen({
@@ -161,6 +163,7 @@ export default function MyProfileScreen({
   isSubscribedToPosts = null,
   subscribeToPostsLoading = false,
   onToggleSubscribeToPosts,
+  isEdgeToEdge = false,
 }: Props) {
   const resolveImageUri = React.useCallback((value: unknown): string | undefined => {
     if (typeof value === 'string') {
@@ -518,7 +521,18 @@ export default function MyProfileScreen({
   }
 
   return (
-    <View style={[styles.profilePageCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View
+      style={[
+        styles.profilePageCard,
+        { backgroundColor: c.surface, borderColor: c.border },
+        isEdgeToEdge && {
+          borderWidth: 0,
+          borderRadius: 0,
+          paddingHorizontal: 0,
+          marginBottom: 0,
+        },
+      ]}
+    >
       <Modal
         visible={isOwnProfile && avatarOptionsOpen}
         animationType="fade"

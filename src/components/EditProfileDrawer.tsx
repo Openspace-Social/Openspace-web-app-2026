@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 type ProfileVisibility = 'P' | 'O' | 'T';
 
@@ -65,6 +66,7 @@ export default function EditProfileDrawer({
   const drawerWidth = Math.min(480, width * 0.92);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
   const [mounted, setMounted] = useState(false);
   const [panel, setPanel] = useState<Panel>('main');
 
@@ -562,6 +564,7 @@ export default function EditProfileDrawer({
 
       {/* Drawer panel */}
       <Animated.View
+        {...swipeHandlers}
         style={{
           position: 'absolute',
           top: 0,

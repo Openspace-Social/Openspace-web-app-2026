@@ -25,6 +25,7 @@ import {
   SearchUserResult,
   SearchCommunityResult,
 } from '../api/client';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 type Panel =
   | 'main'
@@ -101,6 +102,7 @@ export default function CommunityManagementDrawer({
   const drawerWidth = Math.min(480, width * 0.92);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
   const [mounted, setMounted] = useState(false);
 
   const [panel, setPanel] = useState<Panel>('main');
@@ -1503,6 +1505,7 @@ export default function CommunityManagementDrawer({
       </Animated.View>
 
       <Animated.View
+        {...swipeHandlers}
         style={{
           position: 'absolute',
           top: 0,

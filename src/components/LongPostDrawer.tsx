@@ -17,6 +17,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 import LexicalLongPostEditor from './LexicalLongPostEditor';
 import MentionHashtagInput from './MentionHashtagInput';
 
@@ -446,13 +447,16 @@ export default function LongPostDrawer({
 
   const drawerWidth = useMemo(() => {
     if (Platform.OS !== 'web') return width;
-    if (expanded) return Math.min(1280, Math.max(980, width * 0.92));
-    return Math.min(960, Math.max(720, width * 0.78));
+    // On mobile (<720/980), use full viewport. On desktop, target the preferred
+    // fraction, clamped at the upper cap.
+    if (expanded) return width < 980 ? width : Math.min(1280, width * 0.92);
+    return width < 720 ? width : Math.min(960, width * 0.78);
   }, [expanded, width]);
 
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const animatedDrawerWidth = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
   const wasVisibleRef = useRef(visible);
   const [lexicalHeightExpanded, setLexicalHeightExpanded] = useState(false);
   const isLexicalFocusMode = editorMode === 'lexical' && lexicalHeightExpanded;
@@ -737,6 +741,7 @@ export default function LongPostDrawer({
         </Animated.View>
 
         <Animated.View
+          {...swipeHandlers}
           style={[
             styles.drawer,
             {
@@ -1412,7 +1417,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    fontSize: 14,
+    fontSize: 16,
   },
   blockInputMultiline: {
     minHeight: 110,

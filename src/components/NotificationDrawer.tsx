@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppNotification, NotificationType } from '../api/client';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 const DURATION = 280;
 const DRAWER_MAX_WIDTH = 420;
@@ -78,6 +79,7 @@ export default function NotificationDrawer({
 
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
 
   // Keep modal mounted during the close animation so it can slide out
   const [mounted, setMounted] = useState(visible);
@@ -159,8 +161,9 @@ export default function NotificationDrawer({
         <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
 
-      {/* Drawer panel — slides in from right */}
+      {/* Drawer panel — slides in from right; swipe right to dismiss */}
       <Animated.View
+        {...swipeHandlers}
         style={{
           position: 'absolute',
           top: 0,

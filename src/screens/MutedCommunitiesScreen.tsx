@@ -125,6 +125,7 @@ export default function MutedCommunitiesScreen({
         <Pressable
           style={{
             width: 280,
+            maxWidth: '92%',
             borderRadius: 14,
             backgroundColor: c.surface,
             borderWidth: 1,

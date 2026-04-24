@@ -9,22 +9,25 @@ import {
   SafeAreaView,
   Platform,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
+import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
 interface TermsOfUseDrawerProps {
   visible: boolean;
   onClose: () => void;
 }
 
-const DRAWER_WIDTH = Platform.OS === 'web' ? 680 : 340;
 const DURATION = 280;
 
 export default function TermsOfUseDrawer({ visible, onClose }: TermsOfUseDrawerProps) {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+  const { width: viewportWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(Platform.OS === 'web' ? 680 : 340, viewportWidth);
 
   const tableOfContents = (t('termsOfUse.tableOfContents', { returnObjects: true }) || []) as string[];
   const sections = (t('termsOfUse.sections', { returnObjects: true }) || []) as Array<{
@@ -34,12 +37,13 @@ export default function TermsOfUseDrawer({ visible, onClose }: TermsOfUseDrawerP
     paragraphsAfterBullets?: string[];
   }>;
 
-  const translateX = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
 
   useEffect(() => {
     if (visible) {
-      translateX.setValue(DRAWER_WIDTH);
+      translateX.setValue(drawerWidth);
       Animated.parallel([
         Animated.timing(translateX, {
           toValue: 0,
@@ -55,7 +59,7 @@ export default function TermsOfUseDrawer({ visible, onClose }: TermsOfUseDrawerP
     } else {
       Animated.parallel([
         Animated.timing(translateX, {
-          toValue: DRAWER_WIDTH,
+          toValue: drawerWidth,
           duration: DURATION,
           useNativeDriver: true,
         }),
@@ -66,7 +70,7 @@ export default function TermsOfUseDrawer({ visible, onClose }: TermsOfUseDrawerP
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, drawerWidth]);
 
   return (
     <Modal
@@ -83,9 +87,11 @@ export default function TermsOfUseDrawer({ visible, onClose }: TermsOfUseDrawerP
 
         {/* Drawer slides in from the right */}
         <Animated.View
+          {...swipeHandlers}
           style={[
             styles.drawer,
             {
+              width: drawerWidth,
               backgroundColor: c.surface,
               borderColor: c.border,
               transform: [{ translateX }],
@@ -179,7 +185,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   drawer: {
-    width: DRAWER_WIDTH,
     borderLeftWidth: 1,
     shadowColor: '#000',
     shadowOpacity: 0.2,

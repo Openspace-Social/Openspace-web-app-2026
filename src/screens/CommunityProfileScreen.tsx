@@ -55,6 +55,8 @@ type Props = {
   onClearCommunityPostsFilter?: () => void;
   onOpenProfile: (username: string) => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
+  /** When true, strip the outer page card chrome so content runs edge-to-edge. */
+  isEdgeToEdge?: boolean;
 };
 
 export default function CommunityProfileScreen({
@@ -94,6 +96,7 @@ export default function CommunityProfileScreen({
   onClearCommunityPostsFilter,
   onOpenProfile,
   renderPostCard,
+  isEdgeToEdge = false,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const isTwoCol = screenWidth >= TWO_COL_BREAKPOINT;
@@ -119,7 +122,13 @@ export default function CommunityProfileScreen({
 
   if (communityLoading && !community) {
     return (
-      <View style={[styles.profilePageCard, { backgroundColor: c.surface, borderColor: c.border, alignItems: 'center', justifyContent: 'center', minHeight: 200 }]}>
+      <View
+        style={[
+          styles.profilePageCard,
+          { backgroundColor: c.surface, borderColor: c.border, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
+          isEdgeToEdge && { borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, marginBottom: 0 },
+        ]}
+      >
         <ActivityIndicator color={c.primary} size="large" />
       </View>
     );
@@ -811,7 +820,18 @@ export default function CommunityProfileScreen({
   );
 
   return (
-    <View style={[styles.profilePageCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+    <View
+      style={[
+        styles.profilePageCard,
+        { backgroundColor: c.surface, borderColor: c.border },
+        isEdgeToEdge && {
+          borderWidth: 0,
+          borderRadius: 0,
+          paddingHorizontal: 0,
+          marginBottom: 0,
+        },
+      ]}
+    >
       {muteDurationModal}
       {header}
 

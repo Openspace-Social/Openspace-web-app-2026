@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
@@ -356,6 +357,11 @@ export default function PostDetailModal({
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postReactionPickerOpen, setPostReactionPickerOpen] = React.useState(false);
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
+  // Narrow-viewport detection: below this, stack media above comments
+  // (instead of side-by-side) so comments aren't squeezed to 42% of width.
+  const { width: viewportWidth } = useWindowDimensions();
+  const isNarrow = viewportWidth < 720;
+
   // Local draft state — isolated so typing never causes the parent tree to re-render
   const [localCommentDraft, setLocalCommentDraft] = React.useState('');
   const [localReplyDrafts, setLocalReplyDrafts] = React.useState<Record<number, string>>({});
@@ -1662,7 +1668,7 @@ export default function PostDetailModal({
       <View style={{ flex: 1 }}>
       {activePost ? (
         hasActivePostMedia ? (
-          <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13' }]}> 
+          <View style={[styles.postDetailRoot, isNarrow && { flexDirection: 'column' }, { backgroundColor: '#0B0E13' }]}>
             <View style={styles.postDetailLeft}>
               <TouchableOpacity
                 style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
@@ -1793,8 +1799,12 @@ export default function PostDetailModal({
               </View>
             </View>
 
-            <View style={[styles.postDetailRight, { backgroundColor: c.surface, borderLeftColor: c.border }]}> 
-              <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}> 
+            <View style={[
+              styles.postDetailRight,
+              isNarrow && { width: '100%', maxWidth: '100%', flex: 1, borderLeftWidth: 0, borderTopWidth: 1, borderTopColor: c.border },
+              { backgroundColor: c.surface, borderLeftColor: c.border },
+            ]}>
+              <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
                 <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
                   {creatorAvatar ? (
                     <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
