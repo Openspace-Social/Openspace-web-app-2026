@@ -1839,6 +1839,34 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       <PrivacyPolicyDrawer visible={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
       <TermsOfUseDrawer visible={termsOfUseOpen} onClose={() => setTermsOfUseOpen(false)} />
       <GuidelinesDrawer visible={guidelinesOpen} onClose={() => setGuidelinesOpen(false)} />
+
+      {/* Full-screen sign-in overlay — visible whenever a social provider's
+       *  round-trip is in flight. Without this the user lands back on the
+       *  splash screen post-redirect and sees no feedback while the
+       *  backend exchange + login completes. */}
+      {socialLoadingProvider !== null ? (
+        <View
+          pointerEvents="auto"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              backgroundColor: 'rgba(0,0,0,0.45)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+            },
+          ]}
+        >
+          <View style={{ backgroundColor: c.surface, paddingHorizontal: 24, paddingVertical: 20, borderRadius: 14, alignItems: 'center', gap: 10, minWidth: 220 }}>
+            <ActivityIndicator color={c.primary} size="large" />
+            <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 14 }}>
+              {socialLoadingProvider === 'google'
+                ? t('auth.socialLoadingGoogle')
+                : t('auth.socialLoadingApple')}
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
     </ImageBackground>
   );
