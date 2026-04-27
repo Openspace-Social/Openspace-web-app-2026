@@ -1,0 +1,132 @@
+<!--
+  Apple Sign-In bridge for the native Android app.
+
+  Apple has no native Sign-in-with-Apple SDK on Android. The Android client
+  opens Apple's web auth URL inside Custom Tabs with this page as the
+  redirect_uri. Apple redirects back here with the id_token in the URL
+  fragment; we surface a single big button that hands the token back to
+  the app via the openspacesocial://apple-callback custom URL scheme. We
+  also try to auto-click that button on load, but Custom Tabs may block
+  JS-only navigation to non-HTTP schemes, so the visible button is the
+  reliable fallback.
+
+  This file lives in openspace-app/public/ and is served by Netlify as a
+  real static file, so the SPA's catch-all `/* → /index.html` rule does
+  NOT match (Netlify serves real files before applying redirects).
+
+  iOS uses native AppleAuthentication and never hits this page.
+  Web uses the popup flow already in LandingScreen and never hits this
+  page either.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Returning to Openspace…</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #1f2937;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .ok-bridge {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 48px 20px 32px;
+        text-align: center;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 12px;
+      }
+      p {
+        font-size: 15px;
+        line-height: 1.5;
+        margin: 8px 0 16px;
+      }
+      .ok-bridge__error {
+        color: #dc2626;
+        font-weight: 600;
+      }
+      .ok-bridge__btn {
+        display: inline-block;
+        margin-top: 24px;
+        padding: 16px 28px;
+        background: #6366f1;
+        color: #ffffff;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 16px;
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ok-bridge">
+      <h1>Returning to Openspace…</h1>
+      <p id="msg">Apple sign-in succeeded. Tap the button below to finish.</p>
+      <p id="err" class="ok-bridge__error" style="display: none"></p>
+      <p id="cta-wrap" style="display: none">
+        <a id="cta" class="ok-bridge__btn" href="#">Continue to the Openspace app →</a>
+      </p>
+    </div>
+
+    <script>
+      (function () {
+        var hash = (window.location.hash || '').replace(/^#/, '');
+        var query = (window.location.search || '').replace(/^\?/, '');
+        var fromHash = new URLSearchParams(hash);
+        var fromQuery = new URLSearchParams(query);
+        var get = function (k) {
+          return fromHash.get(k) || fromQuery.get(k) || '';
+        };
+
+        var idToken = get('id_token');
+        var code = get('code');
+        var state = get('state');
+        var errorParam = get('error');
+
+        var msgEl = document.getElementById('msg');
+        var errEl = document.getElementById('err');
+        var ctaWrap = document.getElementById('cta-wrap');
+        var cta = document.getElementById('cta');
+
+        if (errorParam) {
+          msgEl.style.display = 'none';
+          errEl.style.display = '';
+          errEl.textContent = 'Apple returned an error: ' + errorParam;
+          return;
+        }
+        if (!idToken) {
+          msgEl.style.display = 'none';
+          errEl.style.display = '';
+          errEl.textContent = 'No identity token returned from Apple.';
+          return;
+        }
+
+        var params = new URLSearchParams();
+        params.set('id_token', idToken);
+        if (code) params.set('code', code);
+        if (state) params.set('state', state);
+        var schemeUrl = 'openspacesocial://apple-callback?' + params.toString();
+        cta.setAttribute('href', schemeUrl);
+        ctaWrap.style.display = '';
+
+        // Try a programmatic anchor click — Android Custom Tabs is more
+        // willing to honor a custom-scheme navigation that looks like a
+        // real anchor activation than a bare window.location.href change.
+        try {
+          cta.click();
+        } catch (_e) {
+          // Visible button is the user-tap fallback.
+        }
+      })();
+    </script>
+  </body>
+</html>
