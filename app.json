@@ -2,7 +2,7 @@
   "expo": {
     "name": "Openspace.Social",
     "slug": "openspace-social",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,6 +17,7 @@
       "supportsTablet": true,
       "usesAppleSignIn": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Openspace.Social needs access to your photos so you can upload avatar and cover photos for your profile.",
         "CFBundleURLTypes": [
           {
@@ -60,6 +61,17 @@
           "iosUrlScheme": "com.googleusercontent.apps.767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9b3af6b5-b5c6-4f77-bb85-55b4f8c7e6f7"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9b3af6b5-b5c6-4f77-bb85-55b4f8c7e6f7"
+    }
   }
 }

@@ -179,9 +179,14 @@ function Root() {
     };
   }, []);
 
-  // Platform-specific root: SafeAreaView on iOS handles notch/home-indicator.
-  // On web we use env() insets; on Android edge-to-edge the system handles it.
-  const RootContainer: any = Platform.OS === 'ios' ? SafeAreaView : View;
+  // Platform-specific root:
+  //   - iOS: SafeAreaView clears the notch + home-indicator.
+  //   - Android: edge-to-edge is on (app.json) so the system bar overlays
+  //     our content; SafeAreaView from react-native-safe-area-context
+  //     applies the right insets so headers don't render under the
+  //     status bar / camera cutout.
+  //   - Web: env(safe-area-inset-*) is applied via inline style.
+  const RootContainer: any = Platform.OS === 'web' ? View : SafeAreaView;
   const rootStyle =
     Platform.OS === 'web'
       ? [styles.root, webSafeAreaStyle as any]
@@ -229,7 +234,16 @@ export default function App() {
           flips on, at which point AppNavigator owns routing.
           Linking disabled for now — the config has overlapping paths across
           tabs that need deduplication before it can be enabled. */}
-      <NavigationContainer>
+      <NavigationContainer
+        // Without a fallback, NavigationContainer's useDocumentTitle hook
+        // writes `document.title = options?.title ?? route?.name` which
+        // is literally `undefined` on web (the new navigator isn't mounted
+        // there yet), so the browser tab reads "undefined".
+        documentTitle={{
+          formatter: (options, route) =>
+            (options as any)?.title ?? route?.name ?? 'Openspace.Social',
+        }}
+      >
         <ThemeProvider>
           <AppToastProvider>
             <GifPickerProvider>

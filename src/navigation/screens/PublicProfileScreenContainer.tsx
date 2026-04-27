@@ -20,6 +20,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -27,6 +29,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -66,6 +69,17 @@ type PublicUser = {
   follows_count?: number | null;
   following?: { count?: number } | null;
   posts_count?: number;
+  // Relationship flags returned by the API for non-own profiles. Used to
+  // render the action bar (Follow / Connect / Subscribe / Block) and to
+  // optimistically update on action.
+  is_following?: boolean;
+  is_followed?: boolean;
+  is_connected?: boolean;
+  is_fully_connected?: boolean;
+  is_pending_connection_confirmation?: boolean;
+  is_subscribed?: boolean;
+  is_blocked?: boolean;
+  connected_circles?: Array<{ id: number; name?: string; color?: string }> | null;
 };
 
 type CommunityLite = {
@@ -101,6 +115,7 @@ export default function PublicProfileScreenContainer() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<HomeStackParamList, 'Profile'>>();
   const username = route.params?.username;
+  const insets = useSafeAreaInsets();
 
   const [user, setUser] = useState<PublicUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
@@ -111,6 +126,19 @@ export default function PublicProfileScreenContainer() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const isOwnProfile = !!currentUsername && !!username && currentUsername === username;
+
+  // ── Profile-action state (Follow / Connect / Subscribe / Block) ──────
+  // Loading flags are per-action so multiple concurrent in-flight calls
+  // are reported independently. Connection-circle picker is its own
+  // modal because the API requires a circle id list.
+  const [followLoading, setFollowLoading] = useState(false);
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const [connectionLoading, setConnectionLoading] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [connectPickerOpen, setConnectPickerOpen] = useState<null | 'connect' | 'update' | 'confirm'>(null);
+  const [circles, setCircles] = useState<Array<{ id: number; name?: string; color?: string }>>([]);
+  const [connectSelectedIds, setConnectSelectedIds] = useState<number[]>([]);
 
   // Aux fetches
   const [pinnedPosts, setPinnedPosts] = useState<FeedPost[]>([]);
@@ -226,6 +254,147 @@ export default function PublicProfileScreenContainer() {
     },
     [token, refreshUser, showToast, t],
   );
+
+  // ── Profile-action handlers ─────────────────────────────────────────
+  // Each handler optimistically flips the relevant flag(s) on the user
+  // object so the UI reflects the new state immediately, then refreshes
+  // from the API to pick up authoritative values (counts, etc.). Errors
+  // surface via toast and do NOT roll back — easier to leave the API as
+  // the source of truth via the next refreshUser().
+
+  const handleToggleFollow = useCallback(async () => {
+    if (!token || !username || followLoading) return;
+    const wasFollowing = !!user?.is_following;
+    setFollowLoading(true);
+    setUser((prev) => (prev ? { ...prev, is_following: !wasFollowing } : prev));
+    try {
+      if (wasFollowing) await api.unfollowUser(token, username);
+      else await api.followUser(token, username);
+      await refreshUser();
+    } catch (e: any) {
+      setUser((prev) => (prev ? { ...prev, is_following: wasFollowing } : prev));
+      showToast(e?.message || t('home.profileFollowFailed', { defaultValue: 'Could not update follow.' }), { type: 'error' });
+    } finally {
+      setFollowLoading(false);
+    }
+  }, [token, username, followLoading, user?.is_following, refreshUser, showToast, t]);
+
+  const handleToggleSubscribe = useCallback(async () => {
+    if (!token || !username || subscribeLoading) return;
+    const wasSubscribed = !!user?.is_subscribed;
+    setSubscribeLoading(true);
+    setUser((prev) => (prev ? { ...prev, is_subscribed: !wasSubscribed } : prev));
+    try {
+      if (wasSubscribed) await api.unsubscribeFromUserNewPostNotifications(token, username);
+      else await api.subscribeToUserNewPostNotifications(token, username);
+      showToast(
+        wasSubscribed
+          ? t('home.profileUnsubscribed', { defaultValue: 'Notifications turned off.' })
+          : t('home.profileSubscribed', { defaultValue: 'Notifications turned on.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      setUser((prev) => (prev ? { ...prev, is_subscribed: wasSubscribed } : prev));
+      showToast(e?.message || t('home.profileSubscribeFailed', { defaultValue: 'Could not update notifications.' }), { type: 'error' });
+    } finally {
+      setSubscribeLoading(false);
+    }
+  }, [token, username, subscribeLoading, user?.is_subscribed, showToast, t]);
+
+  const handleToggleBlock = useCallback(async () => {
+    if (!token || !username || blockLoading) return;
+    const wasBlocked = !!user?.is_blocked;
+    setBlockLoading(true);
+    // Optimistic flip — getUserByUsername returns the same `is_blocked`
+    // value we just set on the server, but some backend versions hide
+    // the field on blocked profiles, so the refresh below isn't always
+    // sufficient on its own.
+    setUser((prev) => (prev ? { ...prev, is_blocked: !wasBlocked } : prev));
+    try {
+      if (wasBlocked) await api.unblockUser(token, username);
+      else await api.blockUser(token, username);
+      try {
+        await refreshUser();
+        // Re-assert the optimistic flag after the refresh in case the
+        // API didn't echo it back (it can return null when the relation
+        // changes how the profile is rendered).
+        setUser((prev) => (prev ? { ...prev, is_blocked: !wasBlocked } : prev));
+      } catch {
+        /* refresh failed, keep optimistic value */
+      }
+      showToast(
+        wasBlocked
+          ? t('home.profileUnblocked', { defaultValue: 'User unblocked.' })
+          : t('home.profileBlocked', { defaultValue: 'User blocked.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      // Roll back optimistic update on failure.
+      setUser((prev) => (prev ? { ...prev, is_blocked: wasBlocked } : prev));
+      showToast(e?.message || t('home.profileBlockFailed', { defaultValue: 'Could not update block.' }), { type: 'error' });
+    } finally {
+      setBlockLoading(false);
+    }
+  }, [token, username, blockLoading, user?.is_blocked, refreshUser, showToast, t]);
+
+  const handleDisconnect = useCallback(async () => {
+    if (!token || !username || connectionLoading) return;
+    setConnectionLoading(true);
+    try {
+      await api.disconnectFromUser(token, username);
+      await refreshUser();
+      showToast(t('home.profileDisconnected', { defaultValue: 'Disconnected.' }), { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || t('home.profileDisconnectFailed', { defaultValue: 'Could not disconnect.' }), { type: 'error' });
+    } finally {
+      setConnectionLoading(false);
+    }
+  }, [token, username, connectionLoading, refreshUser, showToast, t]);
+
+  // Open the circle picker. `mode` controls which API call we use on
+  // submit. We lazy-load the user's circles the first time it opens.
+  const openConnectPicker = useCallback(
+    async (mode: 'connect' | 'update' | 'confirm') => {
+      setConnectSelectedIds(
+        Array.isArray(user?.connected_circles) ? user!.connected_circles!.map((cc) => cc.id) : [],
+      );
+      setConnectPickerOpen(mode);
+      if (token && circles.length === 0) {
+        try {
+          const list = await api.getCircles(token);
+          setCircles(Array.isArray(list) ? (list as any) : []);
+        } catch {
+          /* keep empty; UI will show the empty state */
+        }
+      }
+    },
+    [token, circles.length, user?.connected_circles],
+  );
+
+  const submitConnectPicker = useCallback(async () => {
+    if (!token || !username || !connectPickerOpen || connectionLoading) return;
+    const ids = connectSelectedIds;
+    setConnectionLoading(true);
+    try {
+      if (connectPickerOpen === 'connect') await api.connectWithUser(token, username, ids);
+      else if (connectPickerOpen === 'update') await api.updateConnection(token, username, ids);
+      else await api.confirmConnection(token, username, ids);
+      await refreshUser();
+      setConnectPickerOpen(null);
+      showToast(
+        connectPickerOpen === 'confirm'
+          ? t('home.profileConnectionConfirmed', { defaultValue: 'Connection confirmed.' })
+          : connectPickerOpen === 'update'
+            ? t('home.profileConnectionUpdated', { defaultValue: 'Connection updated.' })
+            : t('home.profileConnected', { defaultValue: 'Connection request sent.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      showToast(e?.message || t('home.profileConnectionFailed', { defaultValue: 'Could not update connection.' }), { type: 'error' });
+    } finally {
+      setConnectionLoading(false);
+    }
+  }, [token, username, connectPickerOpen, connectionLoading, connectSelectedIds, refreshUser, showToast, t]);
 
   // Fetch pinned posts.
   useEffect(() => {
@@ -545,6 +714,92 @@ export default function PublicProfileScreenContainer() {
           </View>
         ) : null}
 
+        {/* Action bar — only on other users' profiles. */}
+        {!isOwnProfile && user ? (
+          <View style={styles.actionBar}>
+            <TouchableOpacity
+              style={[
+                styles.actionBtnPrimary,
+                {
+                  backgroundColor: user.is_following ? c.inputBackground : c.primary,
+                  borderColor: user.is_following ? c.border : c.primary,
+                },
+              ]}
+              activeOpacity={0.85}
+              disabled={followLoading}
+              onPress={() => { void handleToggleFollow(); }}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={user.is_following ? c.textPrimary : '#fff'} />
+              ) : (
+                <Text
+                  style={[
+                    styles.actionBtnPrimaryText,
+                    { color: user.is_following ? c.textPrimary : '#fff' },
+                  ]}
+                >
+                  {user.is_following
+                    ? t('home.profileUnfollowAction', { defaultValue: 'Unfollow' })
+                    : t('home.profileFollowAction', { defaultValue: 'Follow' })}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Connect / Pending / Confirm — state varies by relationship. */}
+            <TouchableOpacity
+              style={[styles.actionBtnSecondary, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              disabled={connectionLoading}
+              onPress={() => {
+                if (connectionLoading) return;
+                if (user.is_pending_connection_confirmation) {
+                  void openConnectPicker('confirm');
+                } else if (user.is_connected) {
+                  void openConnectPicker('update');
+                } else {
+                  void openConnectPicker('connect');
+                }
+              }}
+            >
+              {connectionLoading ? (
+                <ActivityIndicator size="small" color={c.textPrimary} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons
+                    name={
+                      user.is_fully_connected
+                        ? 'account-check'
+                        : user.is_pending_connection_confirmation
+                          ? 'account-clock-outline'
+                          : 'account-plus-outline'
+                    }
+                    size={14}
+                    color={c.textSecondary}
+                  />
+                  <Text style={[styles.actionBtnSecondaryText, { color: c.textPrimary }]}>
+                    {user.is_pending_connection_confirmation
+                      ? t('home.profileConfirmConnectionAction', { defaultValue: 'Confirm' })
+                      : user.is_fully_connected
+                        ? t('home.profileEditCirclesAction', { defaultValue: 'Edit circles' })
+                        : user.is_connected
+                          ? t('home.profilePendingConnectionAction', { defaultValue: 'Pending' })
+                          : t('home.profileConnectAction', { defaultValue: 'Connect' })}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* More menu — Subscribe / Disconnect / Block */}
+            <TouchableOpacity
+              style={[styles.actionBtnIcon, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              onPress={() => setActionMenuOpen((o) => !o)}
+            >
+              <MaterialCommunityIcons name="dots-horizontal" size={18} color={c.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Communities I've joined */}
         <SectionCard
           c={c}
@@ -757,6 +1012,224 @@ export default function PublicProfileScreenContainer() {
           )}
         </SectionCard>
       </ScrollView>
+
+      {/* More-actions page — full-screen modal opened from the ⋯ button.
+       *  Replaces the inline dropdown so each action gets a clear, tappable
+       *  row with breathing room, and the title bar tells the user where
+       *  they are. */}
+      <Modal
+        visible={!isOwnProfile && actionMenuOpen}
+        animationType="slide"
+        onRequestClose={() => setActionMenuOpen(false)}
+        presentationStyle="fullScreen"
+      >
+        <View style={{ flex: 1, backgroundColor: c.background }}>
+          <View style={{ height: insets.top, backgroundColor: c.surface }} />
+          <View style={[styles.actionPageHeader, { borderBottomColor: c.border, backgroundColor: c.surface }]}>
+            <TouchableOpacity
+              onPress={() => setActionMenuOpen(false)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={22} color={c.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.actionPageTitle, { color: c.textPrimary }]} numberOfLines={1}>
+              {t('home.profileActionsTitle', { defaultValue: 'More actions' })}
+              {username ? ` · @${username}` : ''}
+            </Text>
+            <View style={{ width: 22 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 14 }}>
+            <View style={[styles.actionPageGroup, { borderColor: c.border, backgroundColor: c.surface }]}>
+              <TouchableOpacity
+                style={styles.actionPageRow}
+                activeOpacity={0.7}
+                disabled={subscribeLoading}
+                onPress={() => { setActionMenuOpen(false); void handleToggleSubscribe(); }}
+              >
+                <MaterialCommunityIcons
+                  name={user?.is_subscribed ? 'bell-off-outline' : 'bell-outline'}
+                  size={20}
+                  color={c.textSecondary}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.actionPageRowTitle, { color: c.textPrimary }]}>
+                    {user?.is_subscribed
+                      ? t('home.profileUnsubscribeAction', { defaultValue: 'Turn off post notifications' })
+                      : t('home.profileSubscribeAction', { defaultValue: 'Notify me of new posts' })}
+                  </Text>
+                  <Text style={[styles.actionPageRowSub, { color: c.textMuted }]}>
+                    {user?.is_subscribed
+                      ? t('home.profileUnsubscribeHint', { defaultValue: 'You won\u2019t be alerted for their new posts.' })
+                      : t('home.profileSubscribeHint', { defaultValue: 'Get a push for every new post they publish.' })}
+                  </Text>
+                </View>
+                {subscribeLoading ? <ActivityIndicator size="small" color={c.textMuted} /> : (
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
+                )}
+              </TouchableOpacity>
+
+              {user?.is_connected ? (
+                <TouchableOpacity
+                  style={[styles.actionPageRow, { borderTopColor: c.border, borderTopWidth: 1 }]}
+                  activeOpacity={0.7}
+                  disabled={connectionLoading}
+                  onPress={() => {
+                    setActionMenuOpen(false);
+                    Alert.alert(
+                      t('home.profileDisconnectConfirmTitle', { defaultValue: 'Disconnect?' }),
+                      t('home.profileDisconnectConfirmBody', { defaultValue: 'You can reconnect later if you change your mind.' }),
+                      [
+                        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+                        { text: t('home.profileDisconnectAction', { defaultValue: 'Disconnect' }), style: 'destructive', onPress: () => { void handleDisconnect(); } },
+                      ],
+                    );
+                  }}
+                >
+                  <MaterialCommunityIcons name="account-minus-outline" size={20} color={c.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.actionPageRowTitle, { color: c.textPrimary }]}>
+                      {t('home.profileDisconnectAction', { defaultValue: 'Disconnect' })}
+                    </Text>
+                    <Text style={[styles.actionPageRowSub, { color: c.textMuted }]}>
+                      {t('home.profileDisconnectHint', { defaultValue: 'Remove them from your circles.' })}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View style={[styles.actionPageGroup, { borderColor: c.border, backgroundColor: c.surface, marginTop: 14 }]}>
+              <TouchableOpacity
+                style={styles.actionPageRow}
+                activeOpacity={0.7}
+                disabled={blockLoading}
+                onPress={() => {
+                  setActionMenuOpen(false);
+                  if (user?.is_blocked) {
+                    void handleToggleBlock();
+                  } else {
+                    Alert.alert(
+                      t('home.profileBlockConfirmTitle', { defaultValue: 'Block this user?' }),
+                      t('home.profileBlockConfirmBody', { defaultValue: 'They won\u2019t be able to see your posts or interact with you.' }),
+                      [
+                        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+                        { text: t('home.profileBlockAction', { defaultValue: 'Block' }), style: 'destructive', onPress: () => { void handleToggleBlock(); } },
+                      ],
+                    );
+                  }
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={user?.is_blocked ? 'account-cancel' : 'account-cancel-outline'}
+                  size={20}
+                  color={c.errorText || '#dc2626'}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.actionPageRowTitle, { color: c.errorText || '#dc2626' }]}>
+                    {user?.is_blocked
+                      ? t('home.profileUnblockAction', { defaultValue: 'Unblock' })
+                      : t('home.profileBlockAction', { defaultValue: 'Block' })}
+                  </Text>
+                  <Text style={[styles.actionPageRowSub, { color: c.textMuted }]}>
+                    {user?.is_blocked
+                      ? t('home.profileUnblockHint', { defaultValue: 'They\u2019ll be able to see your posts again.' })
+                      : t('home.profileBlockHint', { defaultValue: 'They won\u2019t be able to see your posts or contact you.' })}
+                  </Text>
+                </View>
+                {blockLoading ? <ActivityIndicator size="small" color={c.textMuted} /> : (
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Connect circle picker — opened from the action bar's Connect /
+       *  Pending / Confirm button. The user picks zero or more of their
+       *  circles to scope the connection to. Submitting calls the right
+       *  api method based on the open mode (connect | update | confirm). */}
+      {connectPickerOpen ? (
+        <View style={[StyleSheet.absoluteFillObject, styles.modalScrim]}>
+          <View style={[styles.modalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.modalTitle, { color: c.textPrimary }]}>
+              {connectPickerOpen === 'confirm'
+                ? t('home.profileConfirmConnectionTitle', { defaultValue: 'Confirm connection' })
+                : connectPickerOpen === 'update'
+                  ? t('home.profileEditCirclesTitle', { defaultValue: 'Edit connection circles' })
+                  : t('home.profileConnectTitle', { defaultValue: 'Connect with @' }) + (username || '')}
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: c.textMuted }]}>
+              {t('home.profileConnectCirclesHint', { defaultValue: 'Pick the circles this person belongs to (optional).' })}
+            </Text>
+            <ScrollView style={{ maxHeight: 280 }}>
+              {circles.length === 0 ? (
+                <Text style={[styles.emptyRow, { color: c.textMuted }]}>
+                  {t('home.profileConnectNoCircles', { defaultValue: "You don't have any circles yet." })}
+                </Text>
+              ) : (
+                circles.map((cc) => {
+                  const selected = connectSelectedIds.includes(cc.id);
+                  const dot = cc.color || c.primary;
+                  return (
+                    <TouchableOpacity
+                      key={`circle-${cc.id}`}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        setConnectSelectedIds((prev) =>
+                          prev.includes(cc.id) ? prev.filter((id) => id !== cc.id) : [...prev, cc.id],
+                        );
+                      }}
+                      style={[styles.circleRow, { borderColor: c.border, backgroundColor: selected ? `${dot}22` : c.inputBackground }]}
+                    >
+                      <View style={[styles.circleDot, { backgroundColor: dot }]} />
+                      <Text style={[styles.circleName, { color: c.textPrimary }]} numberOfLines={1}>
+                        {cc.name || t('home.profileCircleFallback', { defaultValue: 'Circle' })}
+                      </Text>
+                      <MaterialCommunityIcons
+                        name={selected ? 'check-circle' : 'circle-outline'}
+                        size={20}
+                        color={selected ? dot : c.textMuted}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+                activeOpacity={0.85}
+                disabled={connectionLoading}
+                onPress={() => setConnectPickerOpen(null)}
+              >
+                <Text style={[styles.modalBtnText, { color: c.textPrimary }]}>
+                  {t('common.cancel', { defaultValue: 'Cancel' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
+                activeOpacity={0.85}
+                disabled={connectionLoading}
+                onPress={() => { void submitConnectPicker(); }}
+              >
+                {connectionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#fff' }]}>
+                    {connectPickerOpen === 'confirm'
+                      ? t('home.profileConfirmConnectionAction', { defaultValue: 'Confirm' })
+                      : connectPickerOpen === 'update'
+                        ? t('home.profileSaveCirclesAction', { defaultValue: 'Save' })
+                        : t('home.profileConnectAction', { defaultValue: 'Connect' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </PostInteractionsProvider>
   );
 }
@@ -977,4 +1450,97 @@ const styles = StyleSheet.create({
   },
   commentText: { fontSize: 14, lineHeight: 20 },
   commentMeta: { fontSize: 11, fontWeight: '500' },
+
+  actionBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, marginTop: 14 },
+  actionBtnPrimary: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+  },
+  actionBtnPrimaryText: { fontSize: 14, fontWeight: '700' },
+  actionBtnSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 38,
+  },
+  actionBtnSecondaryText: { fontSize: 13, fontWeight: '700' },
+  actionBtnIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionPageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  actionPageTitle: { flex: 1, fontSize: 16, fontWeight: '800' },
+  actionPageGroup: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  actionPageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  actionPageRowTitle: { fontSize: 15, fontWeight: '700' },
+  actionPageRowSub: { fontSize: 12, marginTop: 2 },
+
+  modalScrim: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+    elevation: 999,
+  },
+  modalCard: {
+    width: '88%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    gap: 8,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800' },
+  modalSubtitle: { fontSize: 12, marginBottom: 6 },
+  circleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  circleDot: { width: 12, height: 12, borderRadius: 999 },
+  circleName: { flex: 1, fontSize: 14, fontWeight: '700' },
+  modalButtonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  modalBtnText: { fontSize: 14, fontWeight: '700' },
 });

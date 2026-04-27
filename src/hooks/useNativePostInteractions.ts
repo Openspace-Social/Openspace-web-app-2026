@@ -60,6 +60,37 @@ export function useNativePostInteractions({
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const { token } = useAuth();
 
+  // ── Follow state for the per-post Follow button ───────────────────────
+  // Tracks { is_following, in-flight } per username so PostCard can flip
+  // labels optimistically while the API call resolves. Seeded lazily —
+  // the post payload's `creator.is_following` is the initial source of
+  // truth via PostCard's `?? !!post.creator?.is_following` fallback.
+  const [followStateByUsername, setFollowStateByUsername] = useState<Record<string, boolean>>({});
+  const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
+
+  const handleToggleFollow = useCallback(
+    async (username: string, currentlyFollowing: boolean) => {
+      if (!token || !username) return;
+      // Optimistic flip + loading flag.
+      setFollowStateByUsername((prev) => ({ ...prev, [username]: !currentlyFollowing }));
+      setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: true }));
+      try {
+        if (currentlyFollowing) await api.unfollowUser(token, username);
+        else await api.followUser(token, username);
+      } catch (e: any) {
+        // Roll back on failure.
+        setFollowStateByUsername((prev) => ({ ...prev, [username]: currentlyFollowing }));
+        showToast(
+          e?.message || t('home.followFailed', { defaultValue: 'Could not update follow.' }),
+          { type: 'error' },
+        );
+      } finally {
+        setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: false }));
+      }
+    },
+    [token, showToast, t],
+  );
+
   // Fetch the lower-cased names of every community the current user can
   // manage (creator, admin, or moderator) so per-post menus can show admin
   // actions on any post belonging to one of those communities — not just
@@ -162,8 +193,8 @@ export function useNativePostInteractions({
       commentMutationLoadingById: comments.commentMutationLoadingById,
       draftCommentMediaByPostId: comments.draftCommentMediaByPostId,
       draftReplyMediaByCommentId: comments.draftReplyMediaByCommentId,
-      followStateByUsername: {},
-      followActionLoadingByUsername: {},
+      followStateByUsername,
+      followActionLoadingByUsername,
       reactionGroups,
       reactionPickerLoading,
       reactionActionLoading,
@@ -206,7 +237,7 @@ export function useNativePostInteractions({
       onDeleteComment: comments.deleteComment,
 
       // ── Stubs (coming soon) ───────────────────────────────────────
-      onToggleFollow: () => stub('Follow'),
+      onToggleFollow: handleToggleFollow,
       onSharePost: async (post) => {
         const uuid = (post as any)?.uuid;
         const url = uuid ? `https://openspacelive.com/posts/${uuid}` : '';
@@ -394,6 +425,9 @@ export function useNativePostInteractions({
       showToast,
       removePost,
       patchPost,
+      followStateByUsername,
+      followActionLoadingByUsername,
+      handleToggleFollow,
     ],
   );
 }
