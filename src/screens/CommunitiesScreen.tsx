@@ -451,7 +451,10 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
       setDiscoverLoading(true);
       try {
         if (trimmed.length >= 2) {
-          const results = await api.searchCommunities(token, trimmed, 24);
+          // Backend caps `count` at 20 (CommonSearchCommunitiesSerializer
+          // → max_value=20). Anything higher returns 400 and the search
+          // appears broken.
+          const results = await api.searchCommunities(token, trimmed, 20);
           const deduped = dedupeCommunities(Array.isArray(results) ? results : []);
           discoverCacheRef.current[cacheKey] = deduped;
           setDiscover(deduped);
@@ -738,7 +741,12 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
     <View
       style={[
         s.container,
-        { backgroundColor: c.surface, borderColor: c.border, height: panelHeight },
+        { backgroundColor: c.surface, borderColor: c.border },
+        // On web the screen lives inside a sized drawer panel — keep the
+        // panelHeight cap so the card doesn't blow out vertically. On
+        // native it's a full stack screen, so flex into all available
+        // space (otherwise the bottom rows hide behind the tab bar).
+        Platform.OS === 'web' ? { height: panelHeight } : { flex: 1 },
         isNarrow && { borderWidth: 0, borderRadius: 0 },
       ]}
     >
@@ -1747,7 +1755,7 @@ function makeStyles(c: any) {
     },
     scrollContent: {
       paddingHorizontal: 12,
-      paddingBottom: 24,
+      paddingBottom: Platform.select({ native: 120, default: 24 }),
     },
     contentColumn: {
       width: '100%',

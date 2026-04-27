@@ -1,0 +1,18 @@
+{
+  "name": "long-post-editor-web",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Single-file Vite build of the Lexical long-post editor that the React Native app embeds in a WebView. Web and native share one editor implementation, guaranteeing identical rendered output and editing UX.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/inline.mjs"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "dotenv": "^17.4.2",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.10",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}

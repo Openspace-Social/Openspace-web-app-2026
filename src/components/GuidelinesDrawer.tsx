@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Platform,
   Animated,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
 import { useSwipeToClose } from '../hooks/useSwipeToClose';
@@ -27,7 +27,11 @@ export default function GuidelinesDrawer({ visible, onClose }: GuidelinesDrawerP
   const { t } = useTranslation();
   const c = theme.colors;
   const { width: viewportWidth } = useWindowDimensions();
-  const drawerWidth = Math.min(Platform.OS === 'web' ? 680 : 340, viewportWidth);
+  const drawerWidth = Platform.OS === 'web'
+    ? Math.min(680, viewportWidth)
+    : viewportWidth < 600
+      ? viewportWidth
+      : 340;
   const sections = (t('guidelines.sections', { returnObjects: true }) || []) as Array<{
     title?: string;
     body?: string;

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 
 type ToastType = 'error' | 'success' | 'info';
@@ -20,6 +21,7 @@ const AppToastContext = createContext<ToastContextValue | null>(null);
 export function AppToastProvider({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
   const [type, setType] = useState<ToastType>('error');
   const [visible, setVisible] = useState(false);
@@ -124,7 +126,10 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
             styles.toast,
             {
               width: Math.min(560, Math.max(250, width - 36)),
-              marginTop: Platform.OS === 'web' ? 72 : 88,
+              // Clear the status bar + native stack header + FeedHeader
+              // (search pill + sub-tabs + progress bar) on native. On web
+              // the legacy top nav is fixed around 72pt.
+              marginTop: Platform.OS === 'web' ? 72 : insets.top + 110,
               backgroundColor: bg,
               borderColor: border,
               transform: [{ translateY }],

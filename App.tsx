@@ -13,6 +13,18 @@ import PublicPostScreen from './src/screens/PublicPostScreen';
 import CookieConsentBanner from './src/components/CookieConsentBanner';
 import { AppRoute, defaultAuthedRoute, parsePathToRoute, routeToPath } from './src/routing';
 import { AppToastProvider } from './src/toast/AppToastContext';
+import { GifPickerProvider } from './src/components/GifPickerProvider';
+import { MentionPopupProvider } from './src/components/MentionPopupProvider';
+import AppNavigator from './src/navigation/AppNavigator';
+import { AuthProvider, type AuthContextValue } from './src/context/AuthContext';
+
+// ── react-navigation migration feature flag ──────────────────────────────────
+// Native (iOS/Android): ON — the new navigator is the testbed here. Native
+// doesn't have a browser URL competing for control, so the legacy-router
+// conflicts we saw on web don't apply.
+// Web: OFF — the linking config's duplicate paths still need deduplication
+// before react-navigation's web resolver can handle them cleanly.
+const USE_NEW_NAVIGATOR = Platform.OS !== 'web';
 
 // Routes that should be accessible without authentication.
 function isPublicRoute(r: AppRoute): boolean {
@@ -35,6 +47,9 @@ function Root() {
 
   function navigate(nextRoute: AppRoute, replace = false) {
     setRoute(nextRoute);
+    // When the new navigator is on, react-navigation owns the URL — don't
+    // fight it via window.history.
+    if (USE_NEW_NAVIGATOR) return;
     if (typeof window === 'undefined' || !window.location || !window.history) return;
     const nextPath = routeToPath(nextRoute);
     const currentPath = window.location.pathname || '/';
@@ -44,6 +59,7 @@ function Root() {
   }
 
   useEffect(() => {
+    if (USE_NEW_NAVIGATOR) return; // react-navigation handles popstate itself
     if (typeof window === 'undefined' || !window.location) return;
     const onPopState = () => setRoute(parsePathToRoute(window.location.pathname));
     window.addEventListener('popstate', onPopState);
@@ -62,6 +78,7 @@ function Root() {
   }, []);
 
   useEffect(() => {
+    if (USE_NEW_NAVIGATOR) return; // react-navigation handles auth-gated routing
     if (!authReady) return;
     if (!token) {
       // Public routes (e.g. /posts/:id) are shown without auth — don't redirect.
@@ -96,6 +113,10 @@ function Root() {
 
   function renderContent() {
     if (!authReady) return null;
+
+    if (USE_NEW_NAVIGATOR) {
+      return <AppNavigator isAuthed={!!token} />;
+    }
 
     if (token) {
       return (
@@ -166,10 +187,22 @@ function Root() {
       ? [styles.root, webSafeAreaStyle as any]
       : styles.root;
 
+  // Single source of truth for auth — consumed by both the legacy HomeScreen
+  // route-switcher and any migrated react-navigation screens.
+  const authValue: AuthContextValue = {
+    token,
+    authReady,
+    onLogin: handleLogin,
+    onTokenRefresh: handleTokenRefresh,
+    onLogout: handleLogout,
+  };
+
   return (
     <RootContainer style={rootStyle}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {renderContent()}
+      <AuthProvider value={authValue}>
+        {renderContent()}
+      </AuthProvider>
       <CookieConsentBanner />
     </RootContainer>
   );
@@ -192,12 +225,18 @@ export default function App() {
     <SafeAreaProvider>
       {/* NavigationContainer mounted at the root so future react-navigation
           navigators + useNavigation() calls have context available. The custom
-          routing in Root() is still the source of truth until we migrate each
-          route to the navigator in src/navigation/AppNavigator.tsx. */}
+          routing in Root() is still the source of truth until USE_NEW_NAVIGATOR
+          flips on, at which point AppNavigator owns routing.
+          Linking disabled for now — the config has overlapping paths across
+          tabs that need deduplication before it can be enabled. */}
       <NavigationContainer>
         <ThemeProvider>
           <AppToastProvider>
-            <Root />
+            <GifPickerProvider>
+              <MentionPopupProvider>
+                <Root />
+              </MentionPopupProvider>
+            </GifPickerProvider>
           </AppToastProvider>
         </ThemeProvider>
       </NavigationContainer>

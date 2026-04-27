@@ -369,7 +369,7 @@ export default function NotificationDrawer({
   );
 }
 
-type NotificationFilterKey =
+export type NotificationFilterKey =
   | 'all'
   | 'unread'
   | 'comments'
@@ -382,7 +382,7 @@ type NotificationFilterKey =
   | 'reposts'
   | 'moderation';
 
-function matchesNotificationFilter(notif: AppNotification, filter: NotificationFilterKey) {
+export function matchesNotificationFilter(notif: AppNotification, filter: NotificationFilterKey) {
   if (filter === 'all') return true;
   if (filter === 'unread') return !notif.read;
   const type = notif.notification_type;
@@ -418,7 +418,7 @@ type RowProps = {
   onOpenModerationTasks?: () => void;
 };
 
-function NotificationRow({
+export function NotificationRow({
   notif,
   c,
   t,

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,6 +32,33 @@ type Props = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// On native the detail modal becomes a bottom-sheet drawer; the entire
+// content scrolls as one. On web we keep the inner-fixed-height ScrollViews.
+function ListBox({ webMaxHeight, children }: { webMaxHeight: number; children: React.ReactNode }) {
+  if (Platform.OS === 'web') {
+    return (
+      <ScrollView style={{ maxHeight: webMaxHeight }} contentContainerStyle={{ gap: 2 }}>
+        {children}
+      </ScrollView>
+    );
+  }
+  return <View style={{ gap: 2 }}>{children}</View>;
+}
+
+function DetailScroller({ children }: { children: React.ReactNode }) {
+  if (Platform.OS === 'web') return <>{children}</>;
+  return (
+    <ScrollView
+      style={{ flex: 1, marginHorizontal: -20, marginBottom: -20 }}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  );
+}
 
 function UserAvatar({
   uri,
@@ -545,6 +573,8 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                   </View>
                 </View>
 
+                <DetailScroller>
+
                 {/* Edit panel */}
                 {editMode ? (
                   <View style={[s.editPanel, { borderColor: c.border }]}>
@@ -600,7 +630,7 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                       {t('lists.inThisList', { defaultValue: 'IN THIS LIST' })}{' '}
                       ({detailList.follows_count ?? detailList.users?.length ?? 0})
                     </Text>
-                    <ScrollView style={s.memberScroll} contentContainerStyle={{ gap: 2 }}>
+                    <ListBox webMaxHeight={160}>
                       {(detailList.users || []).map((user) => (
                         <View key={user.id} style={[s.memberRow, { borderColor: c.border }]}>
                           <UserAvatar
@@ -627,7 +657,7 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                           </TouchableOpacity>
                         </View>
                       ))}
-                    </ScrollView>
+                    </ListBox>
                   </>
                 ) : null}
 
@@ -676,7 +706,7 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                       : t('lists.allInList', { defaultValue: 'Everyone you follow is already in this list.' })}
                   </Text>
                 ) : (
-                  <ScrollView style={s.pickerScroll} contentContainerStyle={{ gap: 2 }}>
+                  <ListBox webMaxHeight={220}>
                     {(isSearching ? filteredSearchResults : filteredFollowings).map((u) => {
                       const username = (u as any).username;
                       const name = (u as any).profile?.name;
@@ -721,8 +751,9 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                         </View>
                       );
                     })}
-                  </ScrollView>
+                  </ListBox>
                 )}
+                </DetailScroller>
               </>
             ) : null}
           </Pressable>
@@ -861,11 +892,16 @@ function useStyles(c: any) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      gap: 12,
+      paddingHorizontal: Platform.select({ native: 24, default: 16 }),
+      paddingVertical: Platform.select({ native: 18, default: 14 }),
       borderBottomWidth: 1,
     },
-    headerTitle: { fontSize: 18, fontWeight: '700' },
+    headerTitle: {
+      fontSize: Platform.select({ native: 44, default: 18 }),
+      fontWeight: Platform.select({ native: '800', default: '700' }),
+      letterSpacing: Platform.select({ native: -0.8, default: 0 }),
+    },
     headerAddBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -897,7 +933,7 @@ function useStyles(c: any) {
       paddingVertical: 7,
     },
     list: { flex: 1 },
-    listContent: { padding: 12, gap: 8 },
+    listContent: { padding: 12, paddingBottom: Platform.select({ native: 120, default: 12 }), gap: 8 },
     listRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -924,18 +960,29 @@ function useStyles(c: any) {
     overlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
+      ...Platform.select({
+        native: { justifyContent: 'flex-end', alignItems: 'stretch', padding: 0 },
+        default: { justifyContent: 'center', alignItems: 'center', padding: 20 },
+      }),
     },
     card: {
       width: '100%',
-      maxWidth: 440,
-      borderRadius: 14,
       borderWidth: 1,
       padding: 20,
+      ...Platform.select({
+        native: {
+          borderRadius: 0,
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          borderBottomWidth: 0,
+        },
+        default: { maxWidth: 440, borderRadius: 14 },
+      }),
     },
-    detailCard: { maxHeight: '90%' },
+    detailCard: Platform.select({
+      native: { height: '92%' },
+      default: { maxHeight: '90%' },
+    }) as any,
     cardTitle: { fontSize: 17, fontWeight: '700', marginBottom: 14 },
     cardBody: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
     cardActions: {
@@ -994,7 +1041,7 @@ function useStyles(c: any) {
       textTransform: 'uppercase',
       marginBottom: 8,
     },
-    memberScroll: { maxHeight: 160 },
+    memberScroll: Platform.select({ native: {}, default: { maxHeight: 160 } }) as any,
     memberRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1014,7 +1061,7 @@ function useStyles(c: any) {
       marginBottom: 8,
     },
     searchInput: { flex: 1, fontSize: 14, padding: 0 },
-    pickerScroll: { maxHeight: 220 },
+    pickerScroll: Platform.select({ native: {}, default: { maxHeight: 220 } }) as any,
     emptyPickerText: {
       fontSize: 13,
       textAlign: 'center',

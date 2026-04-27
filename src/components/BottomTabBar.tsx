@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type BottomTab = 'home' | 'communities' | 'notifications' | 'profile' | null;
@@ -9,6 +9,11 @@ type Props = {
   t: (key: string, options?: any) => string;
   activeTab: BottomTab;
   unreadNotifications: number;
+  /** When set, the Profile tab renders the user's avatar (with primary
+   *  ring when active) instead of the generic person icon. */
+  avatarUri?: string | null;
+  /** First letter to show in the avatar circle when no image is loaded. */
+  avatarLetter?: string;
   onNavigateHome: () => void;
   onNavigateCommunities: () => void;
   onOpenComposer: () => void;
@@ -23,6 +28,8 @@ export default function BottomTabBar({
   t,
   activeTab,
   unreadNotifications,
+  avatarUri,
+  avatarLetter,
   onNavigateHome,
   onNavigateCommunities,
   onOpenComposer,
@@ -87,8 +94,10 @@ export default function BottomTabBar({
         badgeCount={unreadNotifications}
         badgeColor={c.errorText || '#dc2626'}
       />
-      <TabButton
-        icon="account-circle-outline"
+      <ProfileTabButton
+        c={c}
+        avatarUri={avatarUri}
+        avatarLetter={avatarLetter}
         label={t('nav.tabProfile', { defaultValue: 'Profile' })}
         active={activeTab === 'profile'}
         iconColor={iconColor('profile')}
@@ -96,6 +105,65 @@ export default function BottomTabBar({
         onPress={onNavigateProfile}
       />
     </View>
+  );
+}
+
+function ProfileTabButton({
+  c,
+  avatarUri,
+  avatarLetter,
+  label,
+  active,
+  iconColor,
+  labelColor,
+  onPress,
+}: {
+  c: any;
+  avatarUri?: string | null;
+  avatarLetter?: string;
+  label: string;
+  active: boolean;
+  iconColor: string;
+  labelColor: string;
+  onPress: () => void;
+}) {
+  // If we don't have any user data yet (token still resolving), fall back
+  // to the generic person icon so the tab still looks right.
+  const showAvatar = !!avatarUri || !!avatarLetter;
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      activeOpacity={0.75}
+      onPress={onPress}
+      style={styles.tabBtn}
+    >
+      <View style={styles.iconWrap}>
+        {showAvatar ? (
+          <View
+            style={[
+              styles.avatarRing,
+              {
+                borderColor: active ? c.primary : 'transparent',
+                backgroundColor: c.primary,
+              },
+            ]}
+          >
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
+              <Text style={styles.avatarLetter}>{(avatarLetter || 'O').toUpperCase()}</Text>
+            )}
+          </View>
+        ) : (
+          <MaterialCommunityIcons name="account-circle-outline" size={24} color={iconColor} />
+        )}
+      </View>
+      <Text style={[styles.tabLabel, { color: labelColor }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -206,5 +274,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     lineHeight: 12,
+  },
+  avatarRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  avatarLetter: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

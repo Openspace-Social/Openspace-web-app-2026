@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -82,7 +83,7 @@ export default function ManageCommunitiesScreen({
   }, [load, refreshKey]);
 
   return (
-    <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border, height: panelHeight }]}>
+    <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border }, Platform.OS === 'web' ? { height: panelHeight } : { flex: 1 }]}>
       <View style={[s.header, { borderBottomColor: c.border }]}>
         <Text style={[s.headerTitle, { color: c.textPrimary }]}>
           {t('community.manageCommunitiesTitle', { defaultValue: 'Manage Communities' })}
@@ -159,15 +160,15 @@ const makeStyles = (c: any) =>
       alignSelf: 'center',
     },
     header: {
-      paddingHorizontal: 28,
-      paddingVertical: 24,
+      paddingHorizontal: Platform.select({ native: 24, default: 28 }),
+      paddingVertical: Platform.select({ native: 18, default: 24 }),
       borderBottomWidth: 1,
     },
     headerTitle: {
-      fontSize: 52,
-      fontWeight: '900',
-      letterSpacing: -0.8,
-      lineHeight: 56,
+      fontSize: Platform.select({ native: 30, default: 52 }),
+      fontWeight: Platform.select({ native: '800', default: '900' }),
+      letterSpacing: -0.5,
+      lineHeight: Platform.select({ native: 36, default: 56 }),
     },
     headerSubtitle: {
       marginTop: 8,
@@ -181,7 +182,7 @@ const makeStyles = (c: any) =>
     scrollContent: {
       paddingHorizontal: 20,
       paddingTop: 16,
-      paddingBottom: 24,
+      paddingBottom: Platform.select({ native: 120, default: 24 }),
       alignItems: 'center',
     },
     contentColumn: {

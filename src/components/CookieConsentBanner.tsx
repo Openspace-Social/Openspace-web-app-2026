@@ -16,6 +16,9 @@ export default function CookieConsentBanner() {
   const c = theme.colors;
   const { status, loading, accept, decline } = useCookieConsent();
 
+  // Cookies are a web-only concept — native apps don't use them, so the
+  // banner never renders on iOS / Android.
+  if (Platform.OS !== 'web') return null;
   // Don't render until we've checked storage, and don't render if already decided
   if (loading || status !== null) return null;
 

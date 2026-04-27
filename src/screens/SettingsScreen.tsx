@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -38,6 +39,7 @@ type Props = {
   onGetNotificationSettings: () => Promise<UserNotificationSettings>;
   onUpdateNotificationSettings: (patch: Partial<UserNotificationSettings>) => Promise<UserNotificationSettings>;
   onDeleteAccount: () => void;
+  onLogout?: () => void;
 };
 
 const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
@@ -65,6 +67,7 @@ export default function SettingsScreen({
   onGetNotificationSettings,
   onUpdateNotificationSettings,
   onDeleteAccount,
+  onLogout,
 }: Props) {
   const s = useStyles(c);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -298,7 +301,7 @@ export default function SettingsScreen({
         </Text>
       </View>
 
-      <View style={s.body}>
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
         <SettingsItem
           c={c}
           icon="email-edit-outline"
@@ -365,6 +368,15 @@ export default function SettingsScreen({
           onPress={onOpenBlockedUsers}
         />
 
+        {onLogout && (
+          <SettingsItem
+            c={c}
+            icon="logout"
+            title={t('settings.logOut', { defaultValue: 'Log out' })}
+            onPress={onLogout}
+          />
+        )}
+
         <SettingsItem
           c={c}
           icon="account-remove-outline"
@@ -373,7 +385,7 @@ export default function SettingsScreen({
           onPress={() => setDeleteConfirmOpen(true)}
           danger
         />
-      </View>
+      </ScrollView>
 
       <SettingsRightDrawerModal
         visible={deleteConfirmOpen}
@@ -956,19 +968,24 @@ function useStyles(c: any) {
       overflow: 'hidden',
     },
     header: {
-      paddingHorizontal: 30,
-      paddingVertical: 24,
+      paddingHorizontal: Platform.select({ native: 24, default: 30 }),
+      paddingVertical: Platform.select({ native: 18, default: 24 }),
       borderBottomWidth: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
     },
     title: {
-      fontSize: 56,
+      fontSize: Platform.select({ native: 44, default: 56 }),
       fontWeight: '800',
       letterSpacing: -0.8,
-      lineHeight: 62,
+      lineHeight: Platform.select({ native: 50, default: 62 }),
     },
     body: {
       paddingHorizontal: 24,
-      paddingVertical: 20,
+      paddingTop: 20,
+      paddingBottom: Platform.select({ native: 120, default: 20 }),
       gap: 10,
     },
     confirmTitle: {

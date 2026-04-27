@@ -561,7 +561,7 @@
           "I presenti Termini di Utilizzo costituiscono un accordo legalmente vincolante stipulato tra l'utente, sia a titolo personale che per conto di un'entità (\"l'utente\") e Openspace (\"Società\", \"noi\", \"ci\" o \"nostro\"), riguardante l'accesso e l'utilizzo del sito web Openspacelive.com nonché qualsiasi altra forma di media, canale multimediale, sito web mobile o applicazione mobile correlata, collegata o altrimenti connessa a esso (collettivamente, il \"Sito\"). Il Sito fornisce un mercato online per i seguenti beni, prodotti e/o servizi: Servizi di Hosting (i \"Servizi\"). L'utente accetta che accedendo al Sito e/o ai Servizi, ha letto, compreso e accetta di essere vincolato da tutti i presenti Termini di Utilizzo. SE L'UTENTE NON ACCETTA TUTTI I PRESENTI TERMINI DI UTILIZZO, È ESPRESSAMENTE VIETATO UTILIZZARE IL SITO E/O I SERVIZI E DEVE CESSARNE L'UTILIZZO IMMEDIATAMENTE.",
           "Ci riserviamo il diritto, a nostra esclusiva discrezione, di apportare modifiche ai presenti Termini di Utilizzo in qualsiasi momento. Avviseremo l'utente di eventuali modifiche aggiornando la data dell'\"Ultimo aggiornamento\" dei presenti Termini di Utilizzo, e l'utente rinuncia a qualsiasi diritto di ricevere notifica specifica di ciascuna modifica. Assicurarsi di controllare i Termini applicabili ogni volta che si utilizza il Sito per capire quali Termini si applicano.",
           "Il Sito non è progettato per conformarsi alle normative specifiche del settore (HIPAA, FISMA, ecc.), pertanto se le interazioni dell'utente fossero soggette a tali leggi, non può utilizzare il Sito. L'utente non può utilizzare il Sito in un modo che violi il Gramm-Leach-Bliley Act (GLBA).",
-          "Il Sito è destinato agli utenti che abbiano almeno 13 anni di età. Tutti gli utenti che siano minorenni nella giurisdizione in cui risiedono (generalmente sotto i 18 anni) devono avere il permesso e la supervisione diretta del genitore o tutore per utilizzare il Sito."
+          "Il Sito è destinato agli utenti che abbiano almeno 16 anni di età. Tutti gli utenti che siano minorenni nella giurisdizione in cui risiedono (generalmente sotto i 18 anni) devono avere il permesso e la supervisione diretta del genitore o tutore per utilizzare il Sito."
         ]
       },
       {
@@ -1107,7 +1107,7 @@
       },
       {
         "title": "Minori",
-        "body": "Gli utenti di età inferiore ai 13 anni non sono ammessi su Openspace. Se hai tra i 16 e i 18 anni, assicurati di avere il consenso dei genitori prima di utilizzare la piattaforma."
+        "body": "Gli utenti di età inferiore ai 16 anni non sono ammessi su Openspace. Se hai tra i 16 e i 18 anni, assicurati di avere il consenso dei genitori prima di utilizzare la piattaforma."
       },
       {
         "title": "Conti multipli",

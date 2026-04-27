@@ -7,7 +7,67 @@ import MentionHashtagInput from './MentionHashtagInput';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
-type PostCardVariant = 'feed' | 'profile';
+// Native-only: WebView renders YouTube/Vimeo embed URLs inline so the feed
+// gets the same inline-playable experience web has via <iframe>. Loaded
+// lazily on native so web bundles don't pull in the native-only module.
+const NativeWebView: any =
+  Platform.OS !== 'web'
+    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('react-native-webview').WebView
+    : null;
+
+// Wraps an embed URL in a minimal HTML document so iOS WKWebView can host
+// it cleanly. A neutral baseUrl (below) + origin param on the iframe URL
+// is what YouTube's player expects for a third-party embed — without
+// them iOS returns "Video player configuration error (153)" or a
+// playback-blocked state (152).
+const EMBED_BASE_URL = 'https://openspacelive.com';
+
+function buildEmbedHtml(embedUrl: string) {
+  let finalUrl = embedUrl;
+  try {
+    const u = new URL(embedUrl);
+    u.searchParams.set('playsinline', '1');
+    u.searchParams.set('rel', '0');
+    u.searchParams.set('modestbranding', '1');
+    if (u.host.includes('youtube')) {
+      u.searchParams.set('origin', EMBED_BASE_URL);
+    }
+    finalUrl = u.toString();
+  } catch {
+    finalUrl = embedUrl.includes('?') ? `${embedUrl}&playsinline=1` : `${embedUrl}?playsinline=1`;
+  }
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+      html, body { margin: 0; padding: 0; background: #000; height: 100%; }
+      .frame { position: fixed; inset: 0; }
+      iframe { width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <iframe
+        src="${finalUrl}"
+        title="Embedded video"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+      ></iframe>
+    </div>
+  </body>
+</html>`;
+}
+
+function getEmbedBaseUrl(_embedUrl: string): string {
+  // Neutral origin unrelated to YouTube/Vimeo so the player treats the
+  // iframe as a legitimate third-party embed rather than a self-embed.
+  return EMBED_BASE_URL;
+}
+
+export type PostCardVariant = 'feed' | 'profile';
 type LongPostRenderBlock = {
   type: 'heading' | 'paragraph' | 'quote' | 'image' | 'embed' | 'table';
   position?: number;
@@ -30,7 +90,137 @@ type MediaPreviewItem = {
   isVideo: boolean;
 };
 
-type CommentDraftMedia = {
+// ── Native Instagram-style swipeable media pager ──────────────────────────
+// Used in feed cards when a post has multiple images. Web keeps the
+// 2x2 grid layout — only native swaps to a paged horizontal scroller with
+// dot indicators.
+function NativeMediaPager({
+  items,
+  onPress,
+  c,
+}: {
+  items: MediaPreviewItem[];
+  onPress: () => void;
+  c: any;
+}) {
+  const [width, setWidth] = React.useState(0);
+  const [page, setPage] = React.useState(0);
+
+  const handleScroll = React.useCallback(
+    (event: any) => {
+      if (!width) return;
+      const x = event?.nativeEvent?.contentOffset?.x ?? 0;
+      const next = Math.round(x / width);
+      if (next !== page) setPage(next);
+    },
+    [width, page],
+  );
+
+  return (
+    <View
+      style={{ width: '100%', aspectRatio: 4 / 3, backgroundColor: c.surface }}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {width > 0 ? (
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          decelerationRate="fast"
+        >
+          {items.map((item) => (
+            <TouchableOpacity
+              key={`pager-${item.key}`}
+              activeOpacity={0.95}
+              onPress={onPress}
+              style={{ width, height: '100%' }}
+            >
+              <Image
+                source={{ uri: item.previewUri }}
+                style={{ width, height: '100%', backgroundColor: c.surface }}
+                resizeMode="cover"
+              />
+              {item.isVideo ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: [{ translateX: -22 }, { translateY: -22 }],
+                    backgroundColor: 'rgba(0,0,0,0.65)',
+                    borderRadius: 999,
+                    width: 44,
+                    height: 44,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="play" size={24} color="#fff" />
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+
+      {/* Page indicator (dots) — only when more than one image. */}
+      {items.length > 1 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            bottom: 10,
+            left: 0,
+            right: 0,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 5,
+          }}
+        >
+          {items.map((it, idx) => (
+            <View
+              key={`pager-dot-${it.key}`}
+              style={{
+                width: idx === page ? 7 : 6,
+                height: idx === page ? 7 : 6,
+                borderRadius: 999,
+                backgroundColor: idx === page ? '#fff' : 'rgba(255,255,255,0.55)',
+                shadowColor: '#000',
+                shadowOpacity: 0.35,
+                shadowRadius: 2,
+                shadowOffset: { width: 0, height: 1 },
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {/* Counter pill (e.g. 2/4) — top-right, like Instagram. */}
+      {items.length > 1 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            borderRadius: 999,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+            {`${page + 1}/${items.length}`}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+export type CommentDraftMedia = {
   kind: 'image' | 'gif';
   uri: string;
 };
@@ -337,13 +527,13 @@ function parseLongPostHtml(html?: string): LongPostRenderBlock[] {
   return blocks;
 }
 
-type ReactionGroup = {
+export type ReactionGroup = {
   id: number;
   keyword?: string;
   emojis?: Array<{ id?: number; image?: string }>;
 };
 
-type PostCardProps = {
+export type PostCardProps = {
   post: FeedPost;
   variant: PostCardVariant;
   styles: any;
@@ -405,6 +595,13 @@ type PostCardProps = {
   pinnedDisplayLimit?: number;
   onToggleCommunityPinPost?: (post: FeedPost) => void | Promise<void>;
   onToggleClosePost?: (post: FeedPost) => void | Promise<void>;
+  /** When provided, gates the community-admin menu items (Pin to community,
+   *  Lock post, View posts by @user in c/...) per-post: the items only show
+   *  when this returns true for the post's community. If omitted, the
+   *  presence of the corresponding handler alone decides visibility (legacy
+   *  behavior). Lets the same handler be supplied globally while the menu
+   *  still respects per-community admin/mod/owner privileges. */
+  canManageCommunity?: (communityName?: string | null) => boolean;
   onNavigateProfile: (username: string) => void;
   onNavigateHashtag?: (tag: string) => void;
   onNavigateCommunity: (communityName: string) => void;
@@ -483,6 +680,7 @@ function PostCard({
   pinnedDisplayLimit = 5,
   onToggleCommunityPinPost,
   onToggleClosePost,
+  canManageCommunity,
   onNavigateProfile,
   onNavigateHashtag,
   onNavigateCommunity,
@@ -1153,12 +1351,21 @@ function PostCard({
     disabled: boolean;
     onPress: () => void;
   };
+  // When canManageCommunity is provided, the community-admin menu items
+  // (Pin to community, Lock post, View posts by @user) are visible only if
+  // the current user actually manages the post's community. When omitted,
+  // we fall back to the legacy "handler-presence implies visibility" rule
+  // so existing callers (web HomeScreen) keep working unchanged.
+  const communityAdminAllowed =
+    typeof canManageCommunity !== 'function'
+    || canManageCommunity(post.community?.name);
   const canFilterByPosterInCommunity =
     typeof onFilterCommunityPostsByUser === 'function' &&
     typeof creatorUsername === 'string' &&
     creatorUsername.trim().length > 0 &&
     typeof post.community?.name === 'string' &&
-    post.community.name.trim().length > 0;
+    post.community.name.trim().length > 0 &&
+    communityAdminAllowed;
 
   const filterByPosterAction: PostMenuAction | null = canFilterByPosterInCommunity
     ? {
@@ -1213,7 +1420,7 @@ function PostCard({
           disabled: false,
           onPress: () => { setPostMenuOpen(false); onMovePostCommunities(post); },
         }] : []),
-        ...(onToggleClosePost ? [{
+        ...(onToggleClosePost && communityAdminAllowed ? [{
           key: 'close-post',
           icon: (post.is_closed ? 'lock-open-outline' : 'lock-outline') as const,
           label: postCloseLoading
@@ -1234,7 +1441,7 @@ function PostCard({
           disabled: false,
           onPress: openPostReportMenuAction,
         },
-        ...(onToggleCommunityPinPost ? [{
+        ...(onToggleCommunityPinPost && communityAdminAllowed ? [{
           key: 'community-pin',
           icon: (post.is_community_pinned ? 'pin-off-outline' : 'pin-outline') as const,
           label: postPinLoading
@@ -1245,7 +1452,7 @@ function PostCard({
           disabled: postPinLoading,
           onPress: () => void handleToggleCommunityPinPost(),
         }] : []),
-        ...(onToggleClosePost ? [{
+        ...(onToggleClosePost && communityAdminAllowed ? [{
           key: 'close-post',
           icon: (post.is_closed ? 'lock-open-outline' : 'lock-outline') as const,
           label: postCloseLoading
@@ -1567,6 +1774,27 @@ function PostCard({
                     </View>
                   );
                 }
+                if (Platform.OS !== 'web' && embedUrl && NativeWebView) {
+                  return (
+                    <View
+                      key={`${post.id}-lp-embed-${idx}`}
+                      style={{ width: '100%', marginVertical: 8 } as any}
+                    >
+                      <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                        <NativeWebView
+                          source={{ html: buildEmbedHtml(embedUrl), baseUrl: getEmbedBaseUrl(embedUrl) }}
+                          originWhitelist={['*']}
+                          allowsFullscreenVideo
+                          allowsInlineMediaPlayback
+                          mediaPlaybackRequiresUserAction={false}
+                          javaScriptEnabled
+                          domStorageEnabled
+                          style={{ flex: 1, backgroundColor: '#000' }}
+                        />
+                      </View>
+                    </View>
+                  );
+                }
                 const preview = longEmbedPreviewByUrl[(block.url || '').trim()];
                 if (preview) {
                   return (
@@ -1797,6 +2025,22 @@ function PostCard({
                 },
               } as any)}
             </View>
+          ) : Platform.OS !== 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl && NativeWebView ? (
+            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+              <NativeWebView
+                source={{
+                  html: buildEmbedHtml(resolvedShortLinkPreview.embedUrl),
+                  baseUrl: getEmbedBaseUrl(resolvedShortLinkPreview.embedUrl),
+                }}
+                originWhitelist={['*']}
+                allowsFullscreenVideo
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled
+                domStorageEnabled
+                style={{ flex: 1, backgroundColor: '#000' }}
+              />
+            </View>
           ) : (
             <TouchableOpacity
               style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.surface }]}
@@ -1830,49 +2074,57 @@ function PostCard({
       ) : null}
 
       {!suppressStandaloneMediaForLongPost && galleryPreviewItems.length > 1 ? (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={openPostDetailWithPause}
-          accessibilityLabel={t('home.openPostDetailAction')}
-          style={styles.feedMediaGrid}
-        >
-          {galleryPreviewItems.slice(0, 4).map((mediaItem, idx) => {
-            const hiddenCount = galleryPreviewItems.length - 4;
-            const showOverlay = idx === 3 && hiddenCount > 0;
-            return (
-              <View key={`post-media-grid-${post.id}-${mediaItem.key}`} style={styles.feedMediaGridItem}>
-                <Image
-                  source={{ uri: mediaItem.previewUri }}
-                  style={[styles.feedMediaGridImage, { backgroundColor: c.surface }]}
-                  resizeMode="cover"
-                />
-                {mediaItem.isVideo ? (
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: [{ translateX: -22 }, { translateY: -22 }],
-                      backgroundColor: 'rgba(0,0,0,0.65)',
-                      borderRadius: 999,
-                      width: 44,
-                      height: 44,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <MaterialCommunityIcons name="play" size={24} color="#fff" />
-                  </View>
-                ) : null}
-                {showOverlay ? (
-                  <View style={styles.feedMediaGridMoreOverlay}>
-                    <Text style={styles.feedMediaGridMoreText}>+{hiddenCount}</Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </TouchableOpacity>
+        Platform.OS === 'web' ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={openPostDetailWithPause}
+            accessibilityLabel={t('home.openPostDetailAction')}
+            style={styles.feedMediaGrid}
+          >
+            {galleryPreviewItems.slice(0, 4).map((mediaItem, idx) => {
+              const hiddenCount = galleryPreviewItems.length - 4;
+              const showOverlay = idx === 3 && hiddenCount > 0;
+              return (
+                <View key={`post-media-grid-${post.id}-${mediaItem.key}`} style={styles.feedMediaGridItem}>
+                  <Image
+                    source={{ uri: mediaItem.previewUri }}
+                    style={[styles.feedMediaGridImage, { backgroundColor: c.surface }]}
+                    resizeMode="cover"
+                  />
+                  {mediaItem.isVideo ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: [{ translateX: -22 }, { translateY: -22 }],
+                        backgroundColor: 'rgba(0,0,0,0.65)',
+                        borderRadius: 999,
+                        width: 44,
+                        height: 44,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <MaterialCommunityIcons name="play" size={24} color="#fff" />
+                    </View>
+                  ) : null}
+                  {showOverlay ? (
+                    <View style={styles.feedMediaGridMoreOverlay}>
+                      <Text style={styles.feedMediaGridMoreText}>+{hiddenCount}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </TouchableOpacity>
+        ) : (
+          <NativeMediaPager
+            items={galleryPreviewItems}
+            onPress={openPostDetailWithPause}
+            c={c}
+          />
+        )
       ) : !suppressStandaloneMediaForLongPost && galleryPreviewItems.length === 1 ? (
         <TouchableOpacity
           activeOpacity={0.9}

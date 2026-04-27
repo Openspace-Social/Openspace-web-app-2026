@@ -18,7 +18,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -30,6 +29,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { api, SearchHashtagResult, SearchUserResult } from '../api/client';
+import { useMentionPopup } from './MentionPopupProvider';
 
 // ─── conditional react-dom imports (web only, tree-shaken on native) ─────────
 let _createPortal: ((node: React.ReactNode, container: Element) => React.ReactPortal) | null = null;
@@ -236,6 +236,7 @@ export default function MentionHashtagInput({
   c,
 }: MentionHashtagInputProps) {
   const { height: screenH, width: screenW } = useWindowDimensions();
+  const mentionPopup = useMentionPopup();
 
   // Allow the input to be used uncontrolled (no `value` prop) so callers
   // that manage text via refs don't crash. When controlled, `value` wins;
@@ -371,6 +372,36 @@ export default function MentionHashtagInput({
       });
     }
   }
+
+  // ─── follow-the-input loop (native) ──────────────────────────────────────
+  // While the popup is active, re-measure the input every animation frame so
+  // the popup tracks scrolling / keyboard movement instead of floating in a
+  // stale screen position. setState bails early when the position hasn't
+  // changed (Object.is on the returned ref), so steady frames don't trigger
+  // re-renders.
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    if (!suggestions.length && !suggestLoading && !activeTrigger) return undefined;
+    if (!containerRef.current) return undefined;
+    let cancelled = false;
+    let rafId: number | null = null;
+    const tick = () => {
+      if (cancelled || !containerRef.current) return;
+      containerRef.current.measureInWindow((x, y, w, h) => {
+        if (cancelled) return;
+        setPopupPos((prev) => {
+          if (prev && Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - (y + h)) < 0.5) return prev;
+          return { x, y: y + h, spaceAbove: y };
+        });
+      });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [suggestions.length, suggestLoading, activeTrigger]);
 
   // ─── text / cursor handlers ──────────────────────────────────────────────
 
@@ -601,34 +632,65 @@ export default function MentionHashtagInput({
           )
         : null}
 
-      {/* NATIVE — transparent Modal, no focus issues on iOS/Android */}
-      {Platform.OS !== 'web' ? (
-        <Modal
-          visible={showPopup}
-          transparent
-          animationType="none"
-          onRequestClose={clearSuggestions}
-        >
-          <Pressable style={{ flex: 1 }} onPress={clearSuggestions}>
-            <Pressable onPress={() => {}}>
-              <View
-                style={[
-                  panelStyle,
-                  {
-                    position: 'absolute',
-                    left: popupLeft,
-                    ...(popupTop    !== undefined ? { top: popupTop }       : {}),
-                    ...(popupBottom !== undefined ? { bottom: popupBottom } : {}),
-                    elevation: 8,
-                  },
-                ]}
-              >
-                {suggestionRows}
-              </View>
-            </Pressable>
+      {/* NATIVE — popup is rendered via MentionPopupProvider (the inline
+       *  Modal we used to render here silently failed to paint inside
+       *  react-navigation's native stack and inside PostDetailModal). The
+       *  effect below pushes the popup node into the provider's overlay
+       *  whenever this input has an active popup. */}
+      <NativePopupBridge
+        active={Platform.OS !== 'web' && showPopup}
+        setNode={mentionPopup.setNode}
+        clear={clearSuggestions}
+        node={
+          <Pressable style={{ flex: 1 }} onPress={clearSuggestions} pointerEvents="box-none">
+            <View
+              style={[
+                panelStyle,
+                {
+                  position: 'absolute',
+                  left: popupLeft,
+                  ...(popupTop    !== undefined ? { top: popupTop }       : {}),
+                  ...(popupBottom !== undefined ? { bottom: popupBottom } : {}),
+                  elevation: 8,
+                },
+              ]}
+            >
+              {suggestionRows}
+            </View>
           </Pressable>
-        </Modal>
-      ) : null}
+        }
+      />
     </View>
   );
+}
+
+/**
+ * Tiny helper that bridges the popup node into the global provider via
+ * useEffect, so we don't push from inside MentionHashtagInput's render
+ * path. Clears on unmount/blur so dismissing the input also dismisses
+ * the popup.
+ */
+function NativePopupBridge({
+  active,
+  node,
+  setNode,
+  clear,
+}: {
+  active: boolean;
+  node: React.ReactNode;
+  setNode: (n: React.ReactNode | null) => void;
+  clear: () => void;
+}) {
+  useEffect(() => {
+    if (!active) {
+      setNode(null);
+      return undefined;
+    }
+    setNode(node);
+    return () => setNode(null);
+  }, [active, node, setNode]);
+
+  // Cleanup on unmount.
+  useEffect(() => () => { setNode(null); clear(); }, [setNode, clear]);
+  return null;
 }

@@ -16,6 +16,57 @@ import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 import MentionHashtagInput from './MentionHashtagInput';
+import { GifPickerOverlay } from './GifPickerProvider';
+import { MentionPopupOverlay } from './MentionPopupProvider';
+
+// Native WebView for YouTube/Vimeo embeds. Lazy-required on native only so
+// web bundles don't pull in the native-only module. Same treatment as
+// PostCard.
+const NativeWebView: any =
+  Platform.OS !== 'web'
+    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('react-native-webview').WebView
+    : null;
+
+const EMBED_BASE_URL = 'https://openspacelive.com';
+
+function buildEmbedHtml(embedUrl: string) {
+  let finalUrl = embedUrl;
+  try {
+    const u = new URL(embedUrl);
+    u.searchParams.set('playsinline', '1');
+    u.searchParams.set('rel', '0');
+    u.searchParams.set('modestbranding', '1');
+    if (u.host.includes('youtube')) {
+      u.searchParams.set('origin', EMBED_BASE_URL);
+    }
+    finalUrl = u.toString();
+  } catch {
+    finalUrl = embedUrl.includes('?') ? `${embedUrl}&playsinline=1` : `${embedUrl}?playsinline=1`;
+  }
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+      html, body { margin: 0; padding: 0; background: #000; height: 100%; }
+      .frame { position: fixed; inset: 0; }
+      iframe { width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <iframe
+        src="${finalUrl}"
+        title="Embedded video"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+      ></iframe>
+    </div>
+  </body>
+</html>`;
+}
 
 type ReactionEmoji = {
   id?: number;
@@ -842,6 +893,24 @@ export default function PostDetailModal({
                 </View>
               );
             }
+            if (Platform.OS !== 'web' && embedUrl && NativeWebView) {
+              return (
+                <View key={`${postId}-lp-detail-embed-${idx}`} style={{ width: '100%', marginVertical: 8 } as any}>
+                  <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                    <NativeWebView
+                      source={{ html: buildEmbedHtml(embedUrl), baseUrl: EMBED_BASE_URL }}
+                      originWhitelist={['*']}
+                      allowsFullscreenVideo
+                      allowsInlineMediaPlayback
+                      mediaPlaybackRequiresUserAction={false}
+                      javaScriptEnabled
+                      domStorageEnabled
+                      style={{ flex: 1, backgroundColor: '#000' }}
+                    />
+                  </View>
+                </View>
+              );
+            }
             const preview = longEmbedPreviewByUrl[(block.url || '').trim()];
             if (preview) {
               return (
@@ -917,6 +986,30 @@ export default function PostDetailModal({
               border: '0',
             },
           } as any)}
+        </View>
+      );
+    }
+    if (
+      Platform.OS !== 'web' &&
+      resolvedShortLinkPreview.isVideo &&
+      resolvedShortLinkPreview.embedUrl &&
+      NativeWebView
+    ) {
+      return (
+        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+          <NativeWebView
+            source={{
+              html: buildEmbedHtml(resolvedShortLinkPreview.embedUrl),
+              baseUrl: EMBED_BASE_URL,
+            }}
+            originWhitelist={['*']}
+            allowsFullscreenVideo
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            javaScriptEnabled
+            domStorageEnabled
+            style={{ flex: 1, backgroundColor: '#000' }}
+          />
         </View>
       );
     }
@@ -1669,8 +1762,17 @@ export default function PostDetailModal({
   if (!activePost && !postRouteLoading) return null;
 
   return (
-    <Modal visible={visible} transparent={false} animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1 }}>
+    <Modal
+      visible={visible}
+      // On native we make the Modal transparent + skip the fade so the
+      // underlying Stack screen (which already paints #0B0E13 + spinner) is
+      // immediately visible during navigation. Web keeps the original
+      // opaque fade-in to match the desktop/mobile-web UX.
+      transparent={Platform.OS !== 'web'}
+      animationType={Platform.OS === 'web' ? 'fade' : 'none'}
+      onRequestClose={onClose}
+    >
+      <View style={{ flex: 1, backgroundColor: activePost ? '#0B0E13' : c.background }}>
       {activePost ? (
         hasActivePostMedia ? (
           <View
@@ -1694,12 +1796,13 @@ export default function PostDetailModal({
               ]}
             >
               <TouchableOpacity
-                style={[styles.postDetailClose, { backgroundColor: 'rgba(255,255,255,0.16)' }]}
+                style={[styles.postDetailClose, { backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }]}
                 onPress={onClose}
                 activeOpacity={0.85}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityLabel={t('home.closeNoticeAction')}
               >
-                <MaterialCommunityIcons name="close" size={22} color="#fff" />
+                <MaterialCommunityIcons name="close" size={26} color="#fff" />
               </TouchableOpacity>
 
               <View style={styles.postDetailMediaWrap}>
@@ -1961,14 +2064,25 @@ export default function PostDetailModal({
             style={[
               styles.postDetailTextOnlyRoot,
               { backgroundColor: '#0B0E13' },
+              // Narrow viewports: strip the desktop-style centering +
+              // padding so the card fills the full viewport edge-to-edge
+              // (matches the media branch's full-bleed layout).
+              isNarrow && { padding: 0, alignItems: 'stretch', justifyContent: 'flex-start' },
               isNarrow && (Platform.OS === 'web'
                 ? ({ paddingTop: 'env(safe-area-inset-top, 0px)' } as any)
                 : Platform.OS === 'ios'
                   ? { paddingTop: 44 }
                   : null),
             ]}
-          > 
-            <View style={[styles.postDetailTextOnlyCard, { backgroundColor: c.surface, borderColor: c.border }]}> 
+          >
+            <View style={[
+              styles.postDetailTextOnlyCard,
+              { backgroundColor: c.surface, borderColor: c.border },
+              // Drop max-width, rounded corners, and fixed height on
+              // narrow so the card becomes a full-screen sheet instead of
+              // a floating desktop-style modal.
+              isNarrow && { maxWidth: undefined, height: '100%', borderRadius: 0, borderWidth: 0 },
+            ]}>
               <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}> 
                 <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
                   {creatorAvatar ? (
@@ -2082,12 +2196,22 @@ export default function PostDetailModal({
           </View>
         )
       ) : (
-        <View style={[styles.postDetailRoot, { backgroundColor: '#0B0E13', alignItems: 'center', justifyContent: 'center' }]}> 
-          <ActivityIndicator color="#fff" size="large" />
+        <View style={[styles.postDetailRoot, { backgroundColor: c.background, alignItems: 'center', justifyContent: 'center' }]}>
+          <ActivityIndicator color={c.primary} size="large" />
         </View>
       )}
       </View>
       {overlayModal}
+      {/* GIF picker overlay — mounted inside this iOS Modal so the picker's
+       *  absolute view paints on top of the post detail content. The
+       *  app-root <GifPickerOverlay /> sits behind this Modal and stays
+       *  invisible while it's open; both subscribe to the same provider
+       *  state so closing here closes everywhere. */}
+      <GifPickerOverlay />
+      {/* Same reasoning as GifPickerOverlay above — mount the @mention /
+       *  #hashtag suggestion overlay inside this iOS Modal so the absolute
+       *  popup paints on top of the post detail content. */}
+      <MentionPopupOverlay />
     </Modal>
   );
 }

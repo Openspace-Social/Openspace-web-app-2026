@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "openspacesocial",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,17 +15,31 @@
     },
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Openspace.Social needs access to your photos so you can upload avatar and cover photos for your profile."
-      }
+        "NSPhotoLibraryUsageDescription": "Openspace.Social needs access to your photos so you can upload avatar and cover photos for your profile.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8",
+              "openspacesocial"
+            ]
+          }
+        ]
+      },
+      "bundleIdentifier": "com.mem1984.openspacesocial"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#6C5CE7"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.mem1984.openspacesocial"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,6 +50,14 @@
         "expo-image-picker",
         {
           "photosPermission": "Openspace.Social needs access to your photos so you can upload avatar and cover photos for your profile."
+        }
+      ],
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8"
         }
       ]
     ]

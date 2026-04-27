@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -422,11 +423,16 @@ function useStyles(c: any) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      gap: 12,
+      paddingHorizontal: Platform.select({ native: 24, default: 16 }),
+      paddingVertical: Platform.select({ native: 18, default: 14 }),
       borderBottomWidth: 1,
     },
-    headerTitle: { fontSize: 18, fontWeight: '700' },
+    headerTitle: {
+      fontSize: Platform.select({ native: 44, default: 18 }),
+      fontWeight: Platform.select({ native: '800', default: '700' }),
+      letterSpacing: Platform.select({ native: -0.8, default: 0 }),
+    },
     headerCount: { fontSize: 14 },
     searchBar: {
       flexDirection: 'row',
@@ -450,7 +456,7 @@ function useStyles(c: any) {
     errorText: { fontSize: 14, textAlign: 'center' },
     emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
     scroll: { flex: 1 },
-    grid: { padding: 10 },
+    grid: { padding: 10, paddingBottom: Platform.select({ native: 120, default: 10 }) },
     row: {
       flexDirection: 'row',
       justifyContent: 'flex-start',

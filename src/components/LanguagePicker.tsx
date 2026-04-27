@@ -57,7 +57,7 @@ export default function LanguagePicker({ compact = false, token }: LanguagePicke
         <Text style={styles.triggerFlag}>{current.flag}</Text>
         {!compact && (
           <>
-            <Text style={[styles.triggerLabel, { color: c.textSecondary }]}>
+            <Text style={[styles.triggerLabel, { color: c.textSecondary }]} numberOfLines={1}>
               {current.label}
             </Text>
             <Text style={[styles.chevron, { color: c.textMuted }]}>›</Text>
@@ -162,7 +162,6 @@ const styles = StyleSheet.create({
   triggerLabel: {
     fontSize: 14,
     fontWeight: '500',
-    flex: 1,
   },
   chevron: {
     fontSize: 18,

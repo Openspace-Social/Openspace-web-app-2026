@@ -561,7 +561,7 @@
           "Estos Términos de Uso constituyen un acuerdo legalmente vinculante celebrado entre usted, ya sea personalmente o en nombre de una entidad (\"usted\") y Openspace (\"Compañía\", \"nosotros\", \"nos\" o \"nuestro\"), con respecto a su acceso y uso del sitio web Openspacelive.com, así como cualquier otra forma de medios, canal de medios, sitio web móvil o aplicación móvil relacionada, vinculada o de otro modo conectada a este (colectivamente, el \"Sitio\"). El Sitio proporciona un mercado en línea para los siguientes bienes, productos y/o servicios: Servicios de Alojamiento (los \"Servicios\"). Usted acepta que al acceder al Sitio y/o los Servicios, ha leído, entendido y acepta estar sujeto a todos estos Términos de Uso. SI NO ESTÁ DE ACUERDO CON TODOS ESTOS TÉRMINOS DE USO, ENTONCES QUEDA EXPRESAMENTE PROHIBIDO USAR EL SITIO Y/O LOS SERVICIOS Y DEBE INTERRUMPIR SU USO INMEDIATAMENTE.",
           "Nos reservamos el derecho, a nuestra entera discreción, de realizar cambios o modificaciones a estos Términos de Uso en cualquier momento. Le avisaremos sobre cualquier cambio actualizando la fecha de \"Última actualización\" de estos Términos de Uso, y usted renuncia a cualquier derecho de recibir notificación específica de cada uno de estos cambios. Asegúrese de verificar los Términos aplicables cada vez que utilice nuestro Sitio para comprender qué Términos se aplican.",
           "El Sitio no está diseñado para cumplir con regulaciones específicas de la industria (HIPAA, FISMA, etc.), por lo que si sus interacciones estuvieran sujetas a dichas leyes, no puede utilizar este Sitio. No puede utilizar el Sitio de una manera que viole la Ley Gramm-Leach-Bliley (GLBA).",
-          "El Sitio está destinado a usuarios que tengan al menos 13 años de edad. Todos los usuarios que sean menores de edad en la jurisdicción en la que residen (generalmente menores de 18 años) deben tener el permiso de sus padres o tutores, y ser supervisados directamente por ellos, para utilizar el Sitio."
+          "El Sitio está destinado a usuarios que tengan al menos 16 años de edad. Todos los usuarios que sean menores de edad en la jurisdicción en la que residen (generalmente menores de 18 años) deben tener el permiso de sus padres o tutores, y ser supervisados directamente por ellos, para utilizar el Sitio."
         ]
       },
       {
@@ -1107,7 +1107,7 @@
       },
       {
         "title": "Menores",
-        "body": "Los usuarios menores de 13 años no están autorizados en Openspace. Si tiene entre 16 y 18 años de edad, por favor asegúrese de tener el consentimiento parental antes de utilizar la plataforma."
+        "body": "Los usuarios menores de 16 años no están autorizados en Openspace. Si tiene entre 16 y 18 años de edad, por favor asegúrese de tener el consentimiento parental antes de utilizar la plataforma."
       },
       {
         "title": "Cuentas múltiples",

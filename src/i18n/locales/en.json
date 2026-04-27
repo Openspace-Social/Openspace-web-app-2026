@@ -33,6 +33,7 @@
     "forgotEmail": "Forgot email?",
     "signUpAgreementPrefix": "By signing up, you agree to our",
     "signUpAgreementAnd": "and",
+    "signUpAgeRequirement": "You agree to being at least 16 years of age or older. Users aged 16–18 must have parental consent.",
     "recoverPasswordTitle": "Reset your password",
     "recoverPasswordDescription": "Enter your account email and we will send you a password reset link.",
     "recoveryEmailLabel": "Account email",
@@ -603,7 +604,7 @@
           "These Terms of Use constitute a legally binding agreement made between you, whether personally or on behalf of an entity (\"you\") and Openspace (\"Company\", \"we\", \"us\", or \"our\"), concerning your access to and use of the Openspacelive.com website as well as any other media form, media channel, mobile website or mobile application related, linked, or otherwise connected thereto (collectively, the \"Site\"). The Site provides an online marketplace for the following goods, products, and/or services: Hosting Services (the \"Services\"). You agree that by accessing the Site and/or the Services, you have read, understood, and agree to be bound by all of these Terms of Use. IF YOU DO NOT AGREE WITH ALL OF THESE TERMS OF USE, THEN YOU ARE EXPRESSLY PROHIBITED FROM USING THE SITE AND/OR THE SERVICES AND YOU MUST DISCONTINUE USE IMMEDIATELY.",
           "We reserve the right, in our sole discretion, to make changes or modifications to these Terms of Use from time to time. We will alert you about any changes by updating the \"Last updated\" date of these Terms of Use, and you waive any right to receive specific notice of each such change. Please ensure that you check the applicable Terms every time you use our Site so that you understand which Terms apply.",
           "The Site is not tailored to comply with industry-specific regulations (HIPAA, FISMA, etc.), so if your interactions would be subjected to such laws, you may not use this Site. You may not use the Site in a way that would violate the Gramm-Leach-Bliley Act (GLBA).",
-          "The Site is intended for users who are at least 13 years of age. All users who are minors in the jurisdiction in which they reside (generally under the age of 18) must have the permission of, and be directly supervised by, their parent or guardian to use the Site."
+          "The Site is intended for users who are at least 16 years of age. All users who are minors in the jurisdiction in which they reside (generally under the age of 18) must have the permission of, and be directly supervised by, their parent or guardian to use the Site."
         ]
       },
       {
@@ -1149,7 +1150,7 @@
       },
       {
         "title": "Minors",
-        "body": "Users under the age of 13 are not permitted on Openspace. If you are between 16 and 18 years old, please ensure you have parental consent before using the platform."
+        "body": "Users under the age of 16 are not permitted on Openspace. If you are between 16 and 18 years old, please ensure you have parental consent before using the platform."
       },
       {
         "title": "Multiple Accounts",

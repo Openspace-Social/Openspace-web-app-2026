@@ -74,6 +74,8 @@ import {
   extractFirstUrlFromText,
   fetchShortPostLinkPreviewCached,
 } from '../utils/shortPostEmbeds';
+import { parseExternalVideoUrl } from '../utils/externalVideoEmbeds';
+import { useGifPicker } from '../components/GifPickerProvider';
 
 interface HomeScreenProps {
   token: string;
@@ -436,7 +438,15 @@ function buildLongPostHtmlFromBlocks(blocks: LongPostBlock[]) {
       }
       if (block.type === 'embed') {
         if (!block.url) return '';
-        return `<p><a href=\"${escapeHtml(block.url)}\" target=\"_blank\" rel=\"noopener noreferrer\">${escapeHtml(block.url)}</a></p>`;
+        // Round-trip embeds back into markup the Lexical editor's
+        // importDOM accepts (iframe for video providers, figure with
+        // data-os-link-embed for article cards) so reopened drafts
+        // restore embed nodes instead of bare blue links.
+        const video = parseExternalVideoUrl(block.url);
+        if (video) {
+          return `<iframe src=\"${escapeHtml(video.embedUrl)}\" data-source-url=\"${escapeHtml(video.sourceUrl)}\" frameborder=\"0\" allowfullscreen=\"true\"></iframe>`;
+        }
+        return `<figure data-os-link-embed=\"true\" data-url=\"${escapeHtml(block.url)}\"><a href=\"${escapeHtml(block.url)}\" target=\"_blank\" rel=\"noopener noreferrer\">${escapeHtml(block.url)}</a></figure>`;
       }
       if (block.type === 'table') {
         const rawTable = (block.tableHtml || '').trim();
@@ -587,6 +597,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const { showToast } = useAppToast();
   const { t } = useTranslation();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const gifPicker = useGifPicker();
   const c = theme.colors;
   const sideDrawerWidth = Math.min(420, viewportWidth * 0.88);
 
@@ -2734,39 +2745,23 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setDraftReplyMediaByCommentId((prev) => ({ ...prev, [commentId]: null }));
   }
 
-  function setDraftCommentGif(postId: number) {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
-      return;
-    }
-    const value = window.prompt(t('home.commentGifPrompt', { defaultValue: 'Paste a GIF URL' }), 'https://');
-    if (!value) return;
-    const next = value.trim();
-    if (!/^https?:\/\//i.test(next)) {
-      setError(t('home.commentGifUrlInvalid', { defaultValue: 'Please enter a valid URL.' }));
-      return;
-    }
+  async function setDraftCommentGif(postId: number) {
+    // Same Giphy picker the native app uses — provider is mounted at app
+    // root so it works for both web (RN-Web) and native callers.
+    const url = await gifPicker.open();
+    if (!url || !/^https?:\/\//i.test(url)) return;
     setDraftCommentMediaByPostId((prev) => ({
       ...prev,
-      [postId]: { kind: 'gif', uri: next },
+      [postId]: { kind: 'gif', uri: url },
     }));
   }
 
-  function setDraftReplyGif(commentId: number) {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
-      return;
-    }
-    const value = window.prompt(t('home.commentGifPrompt', { defaultValue: 'Paste a GIF URL' }), 'https://');
-    if (!value) return;
-    const next = value.trim();
-    if (!/^https?:\/\//i.test(next)) {
-      setError(t('home.commentGifUrlInvalid', { defaultValue: 'Please enter a valid URL.' }));
-      return;
-    }
+  async function setDraftReplyGif(commentId: number) {
+    const url = await gifPicker.open();
+    if (!url || !/^https?:\/\//i.test(url)) return;
     setDraftReplyMediaByCommentId((prev) => ({
       ...prev,
-      [commentId]: { kind: 'gif', uri: next },
+      [commentId]: { kind: 'gif', uri: url },
     }));
   }
 
@@ -5818,12 +5813,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           if (h && h !== topChromeHeight) setTopChromeHeight(h);
         }}
         style={[
+          // Top chrome must stack above feed-post stacking contexts
+          // (feedPostHeader is zIndex 1600). Applied on both desktop and
+          // mobile web — otherwise Animated.View's implicit transform
+          // creates a stacking context that traps topNav's zIndex below
+          // sidebar/feed siblings, hiding the search dropdown.
+          { zIndex: 1700, position: 'relative' as const },
           showBottomTabs && {
             position: 'absolute' as const,
             top: 0,
             left: 0,
             right: 0,
-            zIndex: 50,
             transform: [{ translateY: topChromeTranslateY }],
           },
         ]}
@@ -9247,7 +9247,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    zIndex: 20,
+    // Raised above feedPostHeader (zIndex 1600) so the searchDropdown
+    // (a descendant of topNav) paints above the feed on desktop web.
+    // On mobile the Animated.View wrapper also declares a high zIndex,
+    // but this ensures desktop has the right stacking regardless.
+    zIndex: 1700,
   },
   topNavLeft: {
     flexDirection: 'row',
@@ -10585,6 +10589,10 @@ const styles = StyleSheet.create({
   profileCoverAction: {
     position: 'absolute',
     right: 16,
+    // Positioned relative to the outer profile-header wrapper (cover +
+    // identity row). 312 lands the pill at the bottom-right of the 360px
+    // desktop cover. The narrow override in MyProfileScreen.tsx retargets
+    // this to top:140 for the 180px mobile cover.
     top: 312,
     borderWidth: 1,
     borderRadius: 999,
@@ -10618,6 +10626,11 @@ const styles = StyleSheet.create({
     gap: 16,
     minWidth: 320,
     flex: 1,
+    // Allow the text column to truncate/wrap instead of overflowing into
+    // the actions column on desktop. Without this, Text elements with
+    // numberOfLines={1} compute their intrinsic full-line width and push
+    // past their flex bounds, visually running under the action buttons.
+    flexShrink: 1,
   },
   profileIdentityLeftCompact: {
     minWidth: 0,
@@ -10671,6 +10684,12 @@ const styles = StyleSheet.create({
   profileIdentityMeta: {
     gap: 10,
     paddingBottom: 14,
+    // Let the meta column shrink so <Text numberOfLines={1}> truncates
+    // when the action buttons take space on the right, rather than
+    // overflowing its flex bounds.
+    minWidth: 0,
+    flexShrink: 1,
+    flex: 1,
   },
   profileDisplayNameRow: {
     flexDirection: 'row',
@@ -10686,21 +10705,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   profileDisplayName: {
-    fontSize: 48,
+    fontSize: 32,
     fontWeight: '800',
-    lineHeight: 54,
+    lineHeight: 38,
   },
   profileDisplayNameCompact: {
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 26,
+    lineHeight: 32,
     textAlign: 'center',
   },
   profileMetaText: {
-    fontSize: 21,
+    fontSize: 15,
     fontWeight: '600',
   },
   profileMetaCountText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   profileVerifiedBadge: {

@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
   ImageBackground,
   useWindowDimensions,
 } from 'react-native';
@@ -24,6 +25,33 @@ import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
 import GuidelinesDrawer from '../components/GuidelinesDrawer';
 import { useAppToast } from '../toast/AppToastContext';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
+
+// Configure the Google Sign-In SDK once at module load. The webClientId is
+// what the backend verifies against (audience claim on the returned
+// id_token), so it must match the web OAuth client we registered. The
+// per-platform client IDs are used by Google's SDK to identify the app
+// to the OS for the native sign-in UI; they aren't the audience.
+const _googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+const _googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+if (_googleWebClientId) {
+  try {
+    GoogleSignin.configure({
+      webClientId: _googleWebClientId,
+      iosClientId: _googleIosClientId,
+      // We want an id_token back; the SDK requests it when scopes/profile
+      // are present.
+      scopes: ['openid', 'email', 'profile'],
+    });
+  } catch {
+    // Configuration is idempotent; ignore re-config errors during HMR.
+  }
+}
 
 interface LandingScreenProps {
   onLogin?: (token: string) => void;
@@ -88,6 +116,15 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     showToast(error, { type: 'error' });
     setError('');
   }, [error, showToast]);
+
+  const shortFooterLabel = (key: typeof headerLinks[number]) => {
+    switch (key) {
+      case 'aboutUs': return 'About';
+      case 'privacyPolicy': return 'Privacy';
+      case 'termsOfUse': return 'Terms';
+      case 'guidelines': return 'Guidelines';
+    }
+  };
 
   const handleHeaderLinkPress = (key: typeof headerLinks[number]) => {
     if (key === 'aboutUs') {
@@ -493,9 +530,123 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     console.log(`[social-auth] ${event}`, payload);
   }
 
+  // Native iOS / Android social auth — uses native flows that return an
+  // `id_token` the backend already accepts via api.socialAuth{Google,Apple}.
+  // Apple uses `expo-apple-authentication` (AuthenticationServices); Google
+  // uses `expo-auth-session` (system browser → custom URL scheme redirect).
+  async function nativeSocialAuth(provider: SocialProvider): Promise<string> {
+    if (provider === 'apple') {
+      // iOS — use AuthenticationServices via expo-apple-authentication.
+      if (Platform.OS === 'ios') {
+        const isAvailable = await AppleAuthentication.isAvailableAsync();
+        if (!isAvailable) {
+          throw new Error(t('auth.socialAppleUnavailable', { defaultValue: 'Sign in with Apple is not available on this device.' }));
+        }
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+        });
+        if (!credential.identityToken) {
+          throw new Error(t('auth.socialNoToken', { defaultValue: 'No identity token returned.' }));
+        }
+        return credential.identityToken;
+      }
+
+      // Android — Apple has no native SDK. We open Apple's web auth URL
+      // in Custom Tabs, redirect to a public HTTPS bridge page that we
+      // host on Netlify, and that page hands the id_token back to the app
+      // via the openspacesocial:// custom URL scheme our intent filter
+      // catches.
+      const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
+      if (!appleClientId) {
+        throw new Error(`${t('auth.socialConfigMissing')} (EXPO_PUBLIC_APPLE_CLIENT_ID)`);
+      }
+      const bridgeUrl = 'https://openspace-web-2026.netlify.app/auth/apple-bridge';
+      const appCallback = 'openspacesocial://apple-callback';
+      const state = createRandomState();
+      const nonce = createRandomState();
+      const params = new URLSearchParams();
+      params.set('client_id', appleClientId);
+      params.set('redirect_uri', bridgeUrl);
+      params.set('response_type', 'code id_token');
+      params.set('response_mode', 'fragment');
+      params.set('scope', 'openid');
+      params.set('state', state);
+      params.set('nonce', nonce);
+      const authUrl = `https://appleid.apple.com/auth/authorize?${params.toString()}`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, appCallback);
+      if (result.type !== 'success' || !result.url) {
+        if (result.type === 'cancel' || result.type === 'dismiss') {
+          throw new Error(t('auth.socialCancelled'));
+        }
+        throw new Error(t('auth.socialNoToken', { defaultValue: 'No identity token returned.' }));
+      }
+      const cbQuery = result.url.includes('?') ? result.url.split('?')[1].split('#')[0] : '';
+      const cbParams = new URLSearchParams(cbQuery);
+      const errFromCb = cbParams.get('error');
+      if (errFromCb) throw new Error(errFromCb);
+      const returnedState = cbParams.get('state');
+      if (returnedState && returnedState !== state) {
+        throw new Error(t('auth.socialStateMismatch'));
+      }
+      const idToken = cbParams.get('id_token');
+      if (!idToken) {
+        throw new Error(t('auth.socialNoToken', { defaultValue: 'No identity token returned.' }));
+      }
+      return idToken;
+    }
+
+    // Google native — uses Google's official Sign-In SDK on both iOS and
+    // Android. Google's 2023 OAuth policy disallows the generic browser
+    // code+PKCE flow on Android, requiring the SDK; the SDK works on iOS
+    // too, so we use it everywhere for consistency. The id_token returned
+    // has audience = webClientId, which the backend already accepts via
+    // SOCIAL_AUTH_GOOGLE_CLIENT_IDS.
+    if (!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID) {
+      throw new Error(`${t('auth.socialConfigMissing')} (EXPO_PUBLIC_GOOGLE_CLIENT_ID)`);
+    }
+    try {
+      // Make sure Google Play services are available on Android (no-op on
+      // iOS). Without this, signIn fails with a confusing module error.
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      // Sign out first so the account picker always shows; otherwise the
+      // SDK silently re-uses the last account, which is annoying when
+      // testing or when the user wants to switch.
+      try { await GoogleSignin.signOut(); } catch { /* not critical */ }
+      const result: any = await GoogleSignin.signIn();
+      // SDK shape varies slightly across versions. Normalize.
+      const idToken: string | undefined =
+        result?.idToken ||
+        result?.data?.idToken ||
+        result?.user?.idToken;
+      if (!idToken) {
+        throw new Error(t('auth.socialNoToken', { defaultValue: 'No identity token returned.' }));
+      }
+      return idToken;
+    } catch (e: any) {
+      const code = e?.code;
+      if (code === statusCodes.SIGN_IN_CANCELLED || code === 'SIGN_IN_CANCELLED') {
+        throw new Error(t('auth.socialCancelled'));
+      }
+      if (code === statusCodes.IN_PROGRESS || code === 'IN_PROGRESS') {
+        throw new Error(t('auth.socialInProgress', { defaultValue: 'A sign-in is already in progress.' }));
+      }
+      if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE || code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+        throw new Error(t('auth.socialPlayServicesMissing', { defaultValue: 'Google Play services are required.' }));
+      }
+      throw e;
+    }
+  }
+
   function openSocialPopup(provider: SocialProvider): Promise<string> {
+    if (Platform.OS !== 'web') {
+      return nativeSocialAuth(provider);
+    }
     return new Promise((resolve, reject) => {
-      if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      if (typeof window === 'undefined') {
         reject(new Error(t('auth.socialWebOnly')));
         return;
       }
@@ -678,61 +829,60 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       style={styles.rootInner}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.topHeader, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
-        <View style={styles.topHeaderInner}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.topHeaderLinks}
+      {Platform.OS === 'web' && (
+        <View style={styles.floatingTopControls} pointerEvents="box-none">
+          <LanguagePicker compact={!isWide} />
+          <TouchableOpacity
+            style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.background }]}
+            onPress={toggleTheme}
+            activeOpacity={0.75}
+            accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
           >
-            {headerLinks.map((key) => (
-              <TouchableOpacity
-                key={key}
-                onPress={() => handleHeaderLinkPress(key)}
-                style={styles.topHeaderButton}
-              >
-                <Text style={[styles.topHeaderLink, { color: c.textMuted }]}>
-                  {t(`footer.${key}`)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <View style={styles.topHeaderControls}>
-            <LanguagePicker />
-            <TouchableOpacity
-              style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.background }]}
-              onPress={toggleTheme}
-              activeOpacity={0.75}
-              accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-            >
-              <Text style={styles.themeToggleIcon}>
-                {isDark ? '☀️' : '🌙'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.themeToggleIcon}>
+              {isDark ? '☀️' : '🌙'}
+            </Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      )}
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, isWide && styles.scrollWide]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.mainContent, isWide && styles.mainContentWide]}>
           {/* Hero / branding */}
           <View style={[styles.hero, isWide && styles.heroWide]}>
-            <View style={[styles.logoMark, { shadowColor: c.primaryShadow }]}>
-              <Text style={styles.logoLetter}>O</Text>
+            {Platform.OS !== 'web' && (
+              <View style={styles.inlineTopControls}>
+                <LanguagePicker compact={!isWide} />
+                <TouchableOpacity
+                  style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.background }]}
+                  onPress={toggleTheme}
+                  activeOpacity={0.75}
+                  accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+                >
+                  <Text style={styles.themeToggleIcon}>
+                    {isDark ? '☀️' : '🌙'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <View style={styles.heroTitleRow}>
+              <Image
+                source={require('../../assets/logo.png')}
+                style={[styles.logoImage, isWide && styles.logoImageWide]}
+                resizeMode="contain"
+              />
+              <Text style={[styles.appName, isWide && styles.appNameWide, { color: c.textPrimary }]}>
+                Openspace<Text style={[styles.appNameDomain, isWide && styles.appNameDomainWide, { color: c.textMuted }]}>.Social</Text>
+              </Text>
             </View>
-            <Text style={[styles.appName, { color: c.textPrimary }]}>
-              Openspace<Text style={[styles.appNameDomain, { color: c.textMuted }]}>.Social</Text>
-            </Text>
-            <Text style={[styles.tagline, { color: c.textSecondary }]}>
+            <Text style={[styles.tagline, isWide && styles.taglineWide, { color: c.textSecondary }]}>
               {t('tagline')}
             </Text>
-            <View style={[styles.federationBadge, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
-              <MaterialCommunityIcons name="lan-connect" size={17} color={c.textLink} />
-              <Text style={[styles.federationBadgeText, { color: c.textPrimary }]}>
+            <View style={[styles.federationBadge, isWide && styles.federationBadgeWide, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+              <MaterialCommunityIcons name="lan-connect" size={isWide ? 17 : 15} color={c.textLink} />
+              <Text style={[styles.federationBadgeText, isWide && styles.federationBadgeTextWide, { color: c.textPrimary }]}>
                 {t('federationBadge')}
               </Text>
             </View>
@@ -742,6 +892,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
           <View
             style={[
               styles.card,
+              isWide && styles.cardWide,
             {
               backgroundColor: c.surface,
               borderColor: c.border,
@@ -749,7 +900,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
             },
           ]}
         >
-          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+          <Text style={[styles.cardTitle, isWide && styles.cardTitleWide, { color: c.textPrimary }]}>
             {authMode === 'login'
               ? t('auth.signIn')
               : authMode === 'signup'
@@ -799,38 +950,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
 
           {authMode === 'login' ? (
             <>
-              <TouchableOpacity
-                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                onPress={() => handleSocialAuth('google')}
-                disabled={loading || socialLoadingProvider !== null}
-                activeOpacity={0.85}
-              >
-                <View style={styles.socialButtonContent}>
-                  <AntDesign name="google" size={16} color="#DB4437" />
-                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
-                    {socialLoadingProvider === 'google' ? t('auth.socialLoadingGoogle') : t('auth.socialContinueGoogle')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                onPress={() => handleSocialAuth('apple')}
-                disabled={loading || socialLoadingProvider !== null}
-                activeOpacity={0.85}
-              >
-                <View style={styles.socialButtonContent}>
-                  <AntDesign name="apple" size={17} color={c.textPrimary} />
-                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
-                    {socialLoadingProvider === 'apple' ? t('auth.socialLoadingApple') : t('auth.socialContinueApple')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <Text style={[styles.socialDivider, { color: c.textMuted }]}>
-                {t('auth.socialOrDivider')}
-              </Text>
-
               <Text style={[styles.label, { color: c.textSecondary }]}>
                 {t('auth.username')}
               </Text>
@@ -903,9 +1022,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   <Text style={styles.buttonText}>{t('auth.signIn')}</Text>
                 )}
               </TouchableOpacity>
-            </>
-          ) : authMode === 'signup' ? (
-            <>
+
+              <Text style={[styles.socialDivider, styles.socialDividerBelow, { color: c.textMuted }]}>
+                {t('auth.socialOrDivider')}
+              </Text>
+
               <TouchableOpacity
                 style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                 onPress={() => handleSocialAuth('google')}
@@ -920,6 +1041,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 </View>
               </TouchableOpacity>
 
+              {/* Sign in with Apple — iOS + web only. Apple's policy requires
+               *  the native AuthenticationServices flow on iOS; Android has
+               *  no native Apple Sign-In, and we haven't wired the web
+               *  fallback yet, so we hide the button there. */}
               <TouchableOpacity
                 style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                 onPress={() => handleSocialAuth('apple')}
@@ -933,11 +1058,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </View>
               </TouchableOpacity>
-
-              <Text style={[styles.socialDivider, { color: c.textMuted }]}>
-                {t('auth.socialOrDivider')}
-              </Text>
-
+            </>
+          ) : authMode === 'signup' ? (
+            <>
               <Text style={[styles.label, { color: c.textSecondary }]}>
                 {t('auth.email')}
               </Text>
@@ -1026,6 +1149,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               />
 
               <Text style={[styles.agreementText, { color: c.textMuted }]}>
+                <Text style={[styles.agreementAge, { color: c.textPrimary }]}>
+                  {t('auth.signUpAgeRequirement', {
+                    defaultValue: 'You agree to being at least 16 years of age or older. Users aged 16–18 must have parental consent.',
+                  })}
+                </Text>
+                {' '}
                 {t('auth.signUpAgreementPrefix')}{' '}
                 <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => setTermsOfUseOpen(true)}>
                   {t('footer.termsOfUse')}
@@ -1056,6 +1185,38 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 ) : (
                   <Text style={styles.buttonText}>{t('auth.getStarted')}</Text>
                 )}
+              </TouchableOpacity>
+
+              <Text style={[styles.socialDivider, styles.socialDividerBelow, { color: c.textMuted }]}>
+                {t('auth.socialOrDivider')}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => handleSocialAuth('google')}
+                disabled={loading || socialLoadingProvider !== null}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <AntDesign name="google" size={16} color="#DB4437" />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {socialLoadingProvider === 'google' ? t('auth.socialLoadingGoogle') : t('auth.socialContinueGoogle')}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => handleSocialAuth('apple')}
+                disabled={loading || socialLoadingProvider !== null}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <AntDesign name="apple" size={17} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {socialLoadingProvider === 'apple' ? t('auth.socialLoadingApple') : t('auth.socialContinueApple')}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </>
           ) : authMode === 'socialUsername' ? (
@@ -1652,6 +1813,24 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
           </View>
         </View>
 
+        <View style={styles.bottomLinks}>
+          {headerLinks.map((key, idx) => (
+            <React.Fragment key={key}>
+              {idx > 0 && (
+                <Text style={[styles.bottomLinkSeparator, { color: c.textMuted }]}>·</Text>
+              )}
+              <TouchableOpacity
+                onPress={() => handleHeaderLinkPress(key)}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={[styles.bottomLink, { color: c.textMuted }]}>
+                  {t(`footer.${key}Short`, { defaultValue: shortFooterLabel(key) })}
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
+        </View>
+
         <Text style={[styles.copyright, { color: c.textMuted }]}>
           © 2026–2027 Openspace.Social. All rights reserved.
         </Text>
@@ -1677,57 +1856,61 @@ const styles = StyleSheet.create({
   backgroundImage: {
     opacity: 0.40,
   },
-  topHeader: {
-    width: '100%',
-    borderBottomWidth: 1,
-  },
-  topHeaderInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
-  },
-  topHeaderLinks: {
-    alignItems: 'center',
-    gap: 0,
-    paddingRight: 8,
-  },
-  topHeaderButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  topHeaderLink: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  topHeaderControls: {
+  floatingTopControls: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 12,
+    right: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    zIndex: 10,
+  },
+  inlineTopControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 14,
   },
   themeToggle: {
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   themeToggleIcon: {
-    fontSize: 20,
+    fontSize: 18,
+  },
+  bottomLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    gap: 6,
+  },
+  bottomLink: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  bottomLinkSeparator: {
+    fontSize: 13,
   },
   scroll: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  scrollWide: {
     paddingVertical: 48,
   },
   mainContent: {
     width: '100%',
     alignItems: 'center',
     flexDirection: 'column',
-    gap: 40,
+    gap: 20,
   },
   mainContentWide: {
     flexDirection: 'row',
@@ -1742,69 +1925,91 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: 400,
   },
-  logoMark: {
-    width: 72,
-    height: 72,
-    borderRadius: 22,
-    backgroundColor: '#6366F1',
+  heroTitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    gap: 10,
+    marginBottom: 4,
   },
-  logoLetter: {
-    fontSize: 38,
-    fontWeight: '800',
-    color: '#fff',
+  logoImage: {
+    width: 44,
+    height: 44,
+  },
+  logoImageWide: {
+    width: 56,
+    height: 56,
   },
   appName: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     letterSpacing: -0.5,
-    marginBottom: 8,
+  },
+  appNameWide: {
+    fontSize: 32,
   },
   appNameDomain: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '400',
     letterSpacing: -0.5,
   },
+  appNameDomainWide: {
+    fontSize: 32,
+  },
   tagline: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
     maxWidth: 300,
+    lineHeight: 20,
+  },
+  taglineWide: {
+    fontSize: 16,
     lineHeight: 24,
   },
   federationBadge: {
-    marginTop: 16,
+    marginTop: 10,
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  federationBadgeWide: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     gap: 10,
   },
   federationBadgeText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  federationBadgeTextWide: {
+    fontSize: 15,
   },
   card: {
     width: '100%',
     maxWidth: CARD_MAX_WIDTH,
     borderRadius: 20,
-    padding: 28,
+    padding: 20,
     borderWidth: 1,
     shadowOpacity: 0.12,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
+  cardWide: {
+    padding: 28,
+  },
   cardTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
+    marginBottom: 14,
+  },
+  cardTitleWide: {
+    fontSize: 22,
     marginBottom: 20,
   },
   errorBox: {
@@ -1848,9 +2053,9 @@ const styles = StyleSheet.create({
   socialButton: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   socialButtonContent: {
     flexDirection: 'row',
@@ -1865,8 +2070,12 @@ const styles = StyleSheet.create({
   socialDivider: {
     fontSize: 12,
     textAlign: 'center',
-    marginBottom: 14,
+    marginBottom: 10,
     marginTop: 2,
+  },
+  socialDividerBelow: {
+    marginTop: 14,
+    marginBottom: 10,
   },
   label: {
     fontSize: 14,
@@ -1877,9 +2086,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     fontSize: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     outlineStyle: 'none',
   } as any,
   authHelperText: {
@@ -1891,7 +2100,7 @@ const styles = StyleSheet.create({
   },
   button: {
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     marginTop: 4,
     shadowOpacity: 0.4,
@@ -1940,8 +2149,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: -8,
-    marginBottom: 16,
+    marginTop: -4,
+    marginBottom: 10,
     gap: 6,
   },
   forgotLink: {
@@ -1957,6 +2166,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginTop: 4,
   },
+  agreementAge: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   agreementLink: {
     fontSize: 12,
     fontWeight: '500',
@@ -1964,7 +2177,7 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 14,
     alignItems: 'center',
   },
   footerText: {
@@ -1976,7 +2189,7 @@ const styles = StyleSheet.create({
   },
   copyright: {
     fontSize: 12,
-    marginTop: 32,
+    marginTop: 10,
     textAlign: 'center',
   },
 });

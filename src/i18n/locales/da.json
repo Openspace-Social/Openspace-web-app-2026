@@ -561,7 +561,7 @@
           "Disse brugsbetingelser udgør en juridisk bindende aftale indgået mellem dig, enten personligt eller på vegne af en enhed (\"du\") og Openspace (\"Virksomheden\", \"vi\", \"os\" eller \"vores\"), vedrørende din adgang til og brug af Openspacelive.com-websitet samt enhver anden medieform, mediekanal, mobilt website eller mobilapplikation relateret, linket eller på anden måde forbundet hermed (samlet \"Websitet\"). Websitet tilbyder en online markedsplads for følgende varer, produkter og/eller tjenester: Hostingtjenester (\"Tjenesterne\"). Du accepterer, at du ved at tilgå Websitet og/eller Tjenesterne har læst, forstået og accepteret at være bundet af alle disse brugsbetingelser. HVIS DU IKKE ACCEPTERER ALLE DISSE BRUGSBETINGELSER, ER DU UDTRYKKELIGT FORBUDT FRA AT BRUGE WEBSITET OG/ELLER TJENESTERNE, OG DU SKAL STRAKS OPHØRE MED AT BRUGE DEM.",
           "Vi forbeholder os retten til efter eget skøn at foretage ændringer eller modifikationer i disse brugsbetingelser fra tid til anden. Vi vil informere dig om eventuelle ændringer ved at opdatere datoen \"Sidst opdateret\" i disse brugsbetingelser, og du giver afkald på enhver ret til at modtage specifik besked om hver sådan ændring. Sørg for at tjekke de gældende vilkår, hver gang du bruger vores Website, så du forstår, hvilke vilkår der gælder.",
           "Websitet er ikke tilpasset til at overholde branchespecifikke regler (HIPAA, FISMA osv.), så hvis dine interaktioner er underlagt sådanne love, må du ikke bruge dette Website. Du må ikke bruge Websitet på en måde, der ville krænke Gramm-Leach-Bliley Act (GLBA).",
-          "Websitet er beregnet til brugere, der er mindst 13 år gamle. Alle brugere, der er mindreårige i den jurisdiktion, de bor i (generelt under 18 år), skal have tilladelse fra og være under direkte opsyn af deres forælder eller værge for at bruge Websitet."
+          "Websitet er beregnet til brugere, der er mindst 16 år gamle. Alle brugere, der er mindreårige i den jurisdiktion, de bor i (generelt under 18 år), skal have tilladelse fra og være under direkte opsyn af deres forælder eller værge for at bruge Websitet."
         ]
       },
       {
@@ -1107,7 +1107,7 @@
       },
       {
         "title": "Mindreårige",
-        "body": "Brugere under 13 år er ikke tilladt den _ _ Openspace _ _. Hvis du er mellem 16 og 18 år, skal du sikre dig, at du har forældresamtykke, før du bruger platformen."
+        "body": "Brugere under 16 år er ikke tilladt den _ _ Openspace _ _. Hvis du er mellem 16 og 18 år, skal du sikre dig, at du har forældresamtykke, før du bruger platformen."
       },
       {
         "title": "Flere konti",
