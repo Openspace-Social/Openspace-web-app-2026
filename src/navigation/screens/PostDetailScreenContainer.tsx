@@ -59,6 +59,7 @@ export default function PostDetailScreenContainer() {
   const route = useRoute<RouteProp<HomeStackParamList, 'Post'>>();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const postUuid = route.params?.postUuid;
+  const focusComment = !!route.params?.focusComment;
 
   const {
     post, loading,
@@ -257,6 +258,7 @@ export default function PostDetailScreenContainer() {
       reactionListEmoji={null}
       reactionListUsers={[]}
       onCloseReactionList={() => {}}
+      autoFocusComposer={focusComment}
       />
     </View>
   );

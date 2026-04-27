@@ -43,6 +43,7 @@ import { useNativePostInteractions } from '../../hooks/useNativePostInteractions
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerModal from '../../components/ReactionPickerModal';
 import EditProfileModal from '../../components/EditProfileModal';
+import UserBadge from '../../components/UserBadge';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
 import { api, type FeedPost, type PostComment } from '../../api/client';
@@ -57,6 +58,7 @@ type PublicUser = {
     bio?: string;
     location?: string;
     url?: string;
+    badges?: Array<{ keyword?: string; keyword_description?: string }>;
   } | null;
   // The API omits `followers_count` (returns null/undefined) when the user
   // has hidden their followers count via privacy settings. Web treats that
@@ -679,6 +681,7 @@ export default function PublicProfileScreenContainer() {
               <Text numberOfLines={1} style={[styles.displayName, { color: c.textPrimary, flexShrink: 1 }]}>
                 {user?.profile?.name || user?.username || ''}
               </Text>
+              <UserBadge badges={user?.profile?.badges} size={20} />
               {isOwnProfile ? (
                 <TouchableOpacity
                   style={[styles.editProfileBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}

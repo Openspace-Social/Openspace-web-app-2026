@@ -293,6 +293,9 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         keyExtractor={(post) => `${feedType}-${(post as any).id}`}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
         onEndReachedThreshold={0.4}
         onEndReached={() => {
           void loadMore();

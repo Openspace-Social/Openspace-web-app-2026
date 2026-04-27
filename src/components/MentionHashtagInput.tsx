@@ -74,6 +74,7 @@ export type MentionHashtagInputProps = {
   editable?: boolean;
   textAlignVertical?: 'auto' | 'top' | 'bottom' | 'center';
   maxLength?: number;
+  autoFocus?: boolean;
   /** Kept for API compat — placement is now auto-detected */
   suggestionListAbove?: boolean;
   c?: any;
@@ -233,6 +234,7 @@ export default function MentionHashtagInput({
   editable,
   textAlignVertical,
   maxLength,
+  autoFocus,
   c,
 }: MentionHashtagInputProps) {
   const { height: screenH, width: screenW } = useWindowDimensions();
@@ -601,6 +603,7 @@ export default function MentionHashtagInput({
         editable={editable}
         textAlignVertical={textAlignVertical}
         maxLength={maxLength}
+        autoFocus={autoFocus}
       />
 
       {/* WEB — portal-based fixed overlay; mousedown preventDefault keeps focus */}

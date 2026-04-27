@@ -217,9 +217,10 @@ export function useNativePostInteractions({
       },
 
       // ── Navigation (real) ─────────────────────────────────────────
-      onOpenPostDetail: (post) => {
+      onOpenPostDetail: (post, options) => {
         const uuid = (post as any)?.uuid;
-        if (uuid) navigation.navigate('Post', { postUuid: uuid });
+        if (!uuid) return;
+        navigation.navigate('Post', { postUuid: uuid, focusComment: !!options?.focusComposer });
       },
       onNavigateProfile: (username) => navigation.navigate('Profile', { username }),
       onNavigateCommunity: (name) => navigation.navigate('Community', { name }),

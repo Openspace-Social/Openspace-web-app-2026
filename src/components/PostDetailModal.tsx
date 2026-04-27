@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
@@ -336,6 +338,10 @@ type Props = {
   reactionListEmoji: ReactionEmoji | null;
   reactionListUsers: PostReaction[];
   onCloseReactionList: () => void;
+  /** When true, focuses the post-level comment composer on mount so the
+   *  keyboard pops up immediately. Used when the user navigates here by
+   *  tapping the comment icon on a feed post. */
+  autoFocusComposer?: boolean;
 };
 
 export default function PostDetailModal({
@@ -404,7 +410,9 @@ export default function PostDetailModal({
   reactionListEmoji,
   reactionListUsers,
   onCloseReactionList,
+  autoFocusComposer,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postReactionPickerOpen, setPostReactionPickerOpen] = React.useState(false);
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
@@ -1772,6 +1780,10 @@ export default function PostDetailModal({
       animationType={Platform.OS === 'web' ? 'fade' : 'none'}
       onRequestClose={onClose}
     >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <View style={{ flex: 1, backgroundColor: activePost ? '#0B0E13' : c.background }}>
       {activePost ? (
         hasActivePostMedia ? (
@@ -1972,7 +1984,13 @@ export default function PostDetailModal({
                 ) : null}
               </View>
 
-              <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
+              <ScrollView
+                style={styles.postDetailBody}
+                contentContainerStyle={styles.postDetailBodyContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                automaticallyAdjustKeyboardInsets
+              >
                 {isLongPost && longPostBlocks.length > 0
                   ? renderLongPostBlocks(activePost.id)
                   : (!!getPostText(activePost)
@@ -2007,21 +2025,7 @@ export default function PostDetailModal({
                       </View>
                     ) : (
                       <View style={styles.commentComposer}>
-                        {renderDraftMediaPreview(
-                          draftCommentMediaByPostId[activePost.id],
-                          () => onClearDraftCommentMedia(activePost.id)
-                        )}
-                        <MentionHashtagInput
-                          style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                          value={localCommentDraft}
-                          onChangeText={setLocalCommentDraft}
-                          placeholder={t('home.commentPlaceholder')}
-                          placeholderTextColor={c.placeholder}
-                          token={token}
-                          c={c}
-                          multiline
-                        />
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
                             <TouchableOpacity
                               style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
@@ -2050,6 +2054,21 @@ export default function PostDetailModal({
                             <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
                           </TouchableOpacity>
                         </View>
+                        {renderDraftMediaPreview(
+                          draftCommentMediaByPostId[activePost.id],
+                          () => onClearDraftCommentMedia(activePost.id)
+                        )}
+                        <MentionHashtagInput
+                          style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                          value={localCommentDraft}
+                          onChangeText={setLocalCommentDraft}
+                          placeholder={t('home.commentPlaceholder')}
+                          placeholderTextColor={c.placeholder}
+                          token={token}
+                          c={c}
+                          multiline
+                          autoFocus={autoFocusComposer}
+                        />
                       </View>
                     )}
                   </View>
@@ -2100,7 +2119,13 @@ export default function PostDetailModal({
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.postDetailBody} contentContainerStyle={styles.postDetailBodyContent}>
+              <ScrollView
+                style={styles.postDetailBody}
+                contentContainerStyle={styles.postDetailBodyContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                automaticallyAdjustKeyboardInsets
+              >
                 {isLongPost && longPostBlocks.length > 0
                   ? renderLongPostBlocks(activePost.id)
                   : (!!getPostText(activePost)
@@ -2143,23 +2168,14 @@ export default function PostDetailModal({
                     </View>
                   </View>
                 ) : (
-                  <View style={[styles.postDetailTextOnlyComposerWrap, { borderTopColor: c.border }]}>
+                  <View
+                    style={[
+                      styles.postDetailTextOnlyComposerWrap,
+                      { borderTopColor: c.border, paddingBottom: insets.bottom + 12 },
+                    ]}
+                  >
                     <View style={styles.commentComposer}>
-                      {renderDraftMediaPreview(
-                        draftCommentMediaByPostId[activePost.id],
-                        () => onClearDraftCommentMedia(activePost.id)
-                      )}
-                      <MentionHashtagInput
-                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={localCommentDraft}
-                        onChangeText={setLocalCommentDraft}
-                        placeholder={t('home.commentPlaceholder')}
-                        placeholderTextColor={c.placeholder}
-                        token={token}
-                        c={c}
-                        multiline
-                      />
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                         <View style={{ flexDirection: 'row', gap: 6 }}>
                           <TouchableOpacity
                             style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
@@ -2188,6 +2204,21 @@ export default function PostDetailModal({
                           <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
                         </TouchableOpacity>
                       </View>
+                      {renderDraftMediaPreview(
+                        draftCommentMediaByPostId[activePost.id],
+                        () => onClearDraftCommentMedia(activePost.id)
+                      )}
+                      <MentionHashtagInput
+                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                        value={localCommentDraft}
+                        onChangeText={setLocalCommentDraft}
+                        placeholder={t('home.commentPlaceholder')}
+                        placeholderTextColor={c.placeholder}
+                        token={token}
+                        c={c}
+                        multiline
+                        autoFocus={autoFocusComposer}
+                      />
                     </View>
                   </View>
                 )
@@ -2201,6 +2232,7 @@ export default function PostDetailModal({
         </View>
       )}
       </View>
+      </KeyboardAvoidingView>
       {overlayModal}
       {/* GIF picker overlay — mounted inside this iOS Modal so the picker's
        *  absolute view paints on top of the post detail content. The

@@ -27,6 +27,7 @@ import {
   UpdateAuthenticatedUserPayload
 } from '../api/client';
 import ProfileActionsMenu from '../components/ProfileActionsMenu';
+import UserBadge from '../components/UserBadge';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
@@ -230,9 +231,7 @@ export default function MyProfileScreen({
     : safeProfilePosts.filter((post) => !post.community?.name);
   const safeJoinedCommunities = Array.isArray(myJoinedCommunities) ? myJoinedCommunities : [];
   const safeFollowings = Array.isArray(myFollowings) ? myFollowings : [];
-  const hasVerifiedBadge = Array.isArray(user?.profile?.badges)
-    ? user.profile.badges.some((badge: any) => (badge?.keyword || '').toUpperCase() === 'VERIFIED')
-    : false;
+  const profileBadges = Array.isArray(user?.profile?.badges) ? user.profile.badges : [];
   const pinnedIds = new Set(filteredPinnedPosts.map((post) => post.id));
   const regularProfilePosts = filteredProfilePosts.filter((post) => !pinnedIds.has(post.id));
   const safeProfileComments = Array.isArray(myProfileComments) ? myProfileComments : [];
@@ -1132,14 +1131,11 @@ export default function MyProfileScreen({
                 >
                 {user?.profile?.name || `@${user?.username || profileRouteUsername}`}
               </Text>
-              {hasVerifiedBadge ? (
-                <MaterialCommunityIcons
-                  name="check-decagram"
-                  size={isCompactProfileLayout ? 22 : 26}
-                  color="#1d9bf0"
-                  style={styles.profileVerifiedBadge}
-                />
-              ) : null}
+              <UserBadge
+                badges={profileBadges}
+                size={isCompactProfileLayout ? 22 : 26}
+                style={styles.profileVerifiedBadge}
+              />
               {!isOwnProfile && !!user?.is_blocked ? (
                 <View
                   style={{

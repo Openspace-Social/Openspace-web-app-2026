@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   Image,
@@ -77,6 +78,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryIdentifier, setRecoveryIdentifier] = useState('');
   const [passwordResetToken, setPasswordResetToken] = useState('');
+  const [passwordResetCode, setPasswordResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
@@ -101,14 +103,61 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
   const headerLinks = ['aboutUs', 'privacyPolicy', 'termsOfUse', 'guidelines'] as const;
 
+  // Extract a password-reset token from a URL we received from a deep link
+  // or a browser address bar. Accepts both the new path-based format
+  // (`/reset-password/<token>`) and the legacy query-string format
+  // (`/?reset_token=<token>`) so already-sent emails keep working.
+  function extractResetTokenFromUrl(rawUrl: string | null | undefined): string | null {
+    if (!rawUrl) return null;
+    try {
+      // URL constructor needs a base for relative input — but our reset URLs
+      // are always absolute (https://…). On native this is the Universal
+      // Link payload, on web it's window.location.href.
+      const parsed = new URL(rawUrl);
+      const pathMatch = parsed.pathname.match(/^\/reset-password\/([^/?#]+)/);
+      if (pathMatch?.[1]) return decodeURIComponent(pathMatch[1]);
+      const queryToken = parsed.searchParams.get('reset_token');
+      if (queryToken) return queryToken;
+    } catch {
+      // Fallback: regex the raw string when URL parsing fails (e.g. a
+      // custom-scheme URL like `openspacesocial://reset-password/X` won't
+      // always parse cleanly across RN URL polyfills).
+      const m = rawUrl.match(/reset-password\/([^/?#&\s]+)/);
+      if (m?.[1]) return decodeURIComponent(m[1]);
+      const q = rawUrl.match(/[?&]reset_token=([^&\s#]+)/);
+      if (q?.[1]) return decodeURIComponent(q[1]);
+    }
+    return null;
+  }
+
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const token = new URLSearchParams(window.location.search).get('reset_token');
-    if (!token) return;
-    setPasswordResetToken(token);
-    setAuthMode('resetPassword');
-    setError('');
-    setNotice('');
+    let cancelled = false;
+    function applyToken(token: string | null) {
+      if (!token || cancelled) return;
+      setPasswordResetToken(token);
+      setAuthMode('resetPassword');
+      setError('');
+      setNotice('');
+    }
+
+    if (Platform.OS === 'web') {
+      // Web: read from the current address bar.
+      applyToken(extractResetTokenFromUrl(typeof window !== 'undefined' ? window.location.href : null));
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Native: handle both cold-start (Linking.getInitialURL) and warm
+    // foreground (Linking.addEventListener) so the iOS Universal Link /
+    // Android App Link routes the user into reset mode whether the app
+    // was launched by the email tap or already running in the background.
+    Linking.getInitialURL().then((url) => applyToken(extractResetTokenFromUrl(url))).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => applyToken(extractResetTokenFromUrl(url)));
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -285,8 +334,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     }
   }
 
-  async function handlePasswordResetFromLink() {
-    if (!passwordResetToken) {
+  async function handlePasswordResetSubmit() {
+    // Accepts either path: a JWT auto-loaded from the email link or a 6-digit
+    // code typed manually. If both are blank the form can't proceed.
+    const sanitizedCode = passwordResetCode.replace(/\D/g, '');
+    if (!passwordResetToken && !sanitizedCode) {
       setError(t('auth.errorResetTokenMissing'));
       return;
     }
@@ -308,17 +360,37 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setNotice('');
     setLoading(true);
     try {
-      const message = await api.verifyPasswordReset(passwordResetToken, newPassword);
+      const message = await api.verifyPasswordReset(
+        passwordResetToken
+          ? { token: passwordResetToken }
+          : { code: sanitizedCode },
+        newPassword,
+      );
       setPasswordResetSuccess(true);
       setNotice(message || t('auth.passwordResetSuccess'));
       if (Platform.OS === 'web') {
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // Strip the reset token from the URL after success — this used to
+        // just clear the query string, but now the token can also live in
+        // the pathname (`/reset-password/<token>`) via the new email link
+        // format, so reset to the root path.
+        window.history.replaceState({}, document.title, '/');
       }
     } catch (e: any) {
       setError(e.message || t('auth.passwordResetFailed'));
     } finally {
       setLoading(false);
     }
+  }
+
+  function switchToEnterResetCode() {
+    setAuthMode('resetPassword');
+    setPasswordResetToken('');
+    setPasswordResetCode('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setPasswordResetSuccess(false);
+    setError('');
+    setNotice('');
   }
 
   function switchToLogin() {
@@ -330,6 +402,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setRecoveryEmail('');
     setRecoveryIdentifier('');
     setPasswordResetSuccess(false);
+    setPasswordResetCode('');
     setNewPassword('');
     setConfirmNewPassword('');
     setSocialOnboardingToken('');
@@ -1004,6 +1077,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     {t('auth.forgotEmail')}
                   </Text>
                 </TouchableOpacity>
+                <Text style={[styles.forgotSeparator, { color: c.textMuted }]}>·</Text>
+                <TouchableOpacity onPress={switchToEnterResetCode}>
+                  <Text style={[styles.forgotLink, { color: c.textLink }]}>
+                    {t('auth.useResetCode', { defaultValue: 'Use a code' })}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -1024,7 +1103,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               </TouchableOpacity>
 
               <Text style={[styles.socialDivider, styles.socialDividerBelow, { color: c.textMuted }]}>
-                {t('auth.socialOrDivider')}
+                {t('auth.socialOrDividerLogin')}
               </Text>
 
               <TouchableOpacity
@@ -1568,8 +1647,38 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               ) : (
                 <>
                   <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
-                    {t('auth.resetPasswordDescription')}
+                    {passwordResetToken
+                      ? t('auth.resetPasswordDescription')
+                      : t('auth.resetPasswordCodeDescription', { defaultValue: "Enter the 6-digit code from your reset email and choose a new password." })}
                   </Text>
+
+                  {!passwordResetToken ? (
+                    <>
+                      <Text style={[styles.label, { color: c.textSecondary }]}>
+                        {t('auth.resetCodeLabel', { defaultValue: 'Reset code' })}
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.input,
+                          {
+                            backgroundColor: c.inputBackground,
+                            borderColor: c.inputBorder,
+                            color: c.textPrimary,
+                            letterSpacing: 4,
+                          },
+                        ]}
+                        value={passwordResetCode}
+                        onChangeText={(v) => setPasswordResetCode(v.replace(/\D/g, '').slice(0, 6))}
+                        placeholder={t('auth.resetCodePlaceholder', { defaultValue: '123456' })}
+                        placeholderTextColor={c.placeholder}
+                        keyboardType="number-pad"
+                        autoComplete="one-time-code"
+                        textContentType="oneTimeCode"
+                        maxLength={6}
+                        returnKeyType="next"
+                      />
+                    </>
+                  ) : null}
 
                   <Text style={[styles.label, { color: c.textSecondary }]}>
                     {t('auth.newPasswordLabel')}
@@ -1612,7 +1721,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     placeholderTextColor={c.placeholder}
                     secureTextEntry
                     returnKeyType="done"
-                    onSubmitEditing={handlePasswordResetFromLink}
+                    onSubmitEditing={handlePasswordResetSubmit}
                   />
 
                   <TouchableOpacity
@@ -1621,7 +1730,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                       { backgroundColor: c.primary, shadowColor: c.primaryShadow },
                       loading && styles.buttonDisabled,
                     ]}
-                    onPress={handlePasswordResetFromLink}
+                    onPress={handlePasswordResetSubmit}
                     disabled={loading}
                     activeOpacity={0.85}
                   >

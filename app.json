@@ -16,6 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:openspace.social",
+        "applinks:staging.openspace.social"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Openspace.Social needs access to your photos so you can upload avatar and cover photos for your profile.",
@@ -28,7 +32,8 @@
           }
         ]
       },
-      "bundleIdentifier": "com.mem1984.openspacesocial"
+      "bundleIdentifier": "com.mem1984.openspacesocial",
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +45,29 @@
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.mem1984.openspacesocial"
+      "package": "com.mem1984.openspacesocial",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "openspace.social",
+              "pathPrefix": "/reset-password/"
+            },
+            {
+              "scheme": "https",
+              "host": "staging.openspace.social",
+              "pathPrefix": "/reset-password/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

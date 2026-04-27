@@ -561,7 +561,7 @@ export type PostCardProps = {
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
   onReactToPostWithEmoji?: (post: FeedPost, emojiId?: number) => void | Promise<void>;
   onToggleFollow: (username: string, currentlyFollowing: boolean) => void;
-  onOpenPostDetail: (post: FeedPost, options?: { resumeTimeSec?: number }) => void;
+  onOpenPostDetail: (post: FeedPost, options?: { resumeTimeSec?: number; focusComposer?: boolean }) => void;
   onToggleExpand: (postId: number) => void;
   onOpenReactionList: (post: FeedPost, emoji?: { id?: number; keyword?: string; image?: string }) => void | Promise<void>;
   onOpenReactionPicker: (post: FeedPost) => void;
@@ -2407,6 +2407,10 @@ function PostCard({
         <TouchableOpacity
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
           onPress={() => {
+            if (Platform.OS !== 'web') {
+              onOpenPostDetail(post, { focusComposer: true });
+              return;
+            }
             if (effectiveHasInlineMedia) {
               onToggleCommentBox(post.id);
             } else {
@@ -2488,17 +2492,7 @@ function PostCard({
                   </View>
                   {isEditingComment ? (
                     <View>
-                      <MentionHashtagInput
-                        style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={localCommentEditDrafts[comment.id] ?? (comment.text || '')}
-                        onChangeText={(value) => setLocalCommentEditDrafts((prev) => ({ ...prev, [comment.id]: value }))}
-                        placeholder={t('home.commentPlaceholder')}
-                        placeholderTextColor={c.placeholder}
-                        token={token}
-                        c={c}
-                        multiline
-                      />
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                         <TouchableOpacity
                           style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                           disabled={!!commentMutationLoadingById[comment.id]}
@@ -2523,6 +2517,16 @@ function PostCard({
                           </Text>
                         </TouchableOpacity>
                       </View>
+                      <MentionHashtagInput
+                        style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
+                        value={localCommentEditDrafts[comment.id] ?? (comment.text || '')}
+                        onChangeText={(value) => setLocalCommentEditDrafts((prev) => ({ ...prev, [comment.id]: value }))}
+                        placeholder={t('home.commentPlaceholder')}
+                        placeholderTextColor={c.placeholder}
+                        token={token}
+                        c={c}
+                        multiline
+                      />
                     </View>
                   ) : (
                     <>
@@ -2697,17 +2701,7 @@ function PostCard({
                           </View>
                           {isEditingReply ? (
                             <View>
-                              <MentionHashtagInput
-                                style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                                value={localReplyEditDrafts[reply.id] ?? (reply.text || '')}
-                                onChangeText={(value) => setLocalReplyEditDrafts((prev) => ({ ...prev, [reply.id]: value }))}
-                                placeholder={t('home.replyPlaceholder')}
-                                placeholderTextColor={c.placeholder}
-                                token={token}
-                                c={c}
-                                multiline
-                              />
-                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                                 <TouchableOpacity
                                   style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
                                   disabled={!!commentMutationLoadingById[reply.id]}
@@ -2732,6 +2726,16 @@ function PostCard({
                                   </Text>
                                 </TouchableOpacity>
                               </View>
+                              <MentionHashtagInput
+                                style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
+                                value={localReplyEditDrafts[reply.id] ?? (reply.text || '')}
+                                onChangeText={(value) => setLocalReplyEditDrafts((prev) => ({ ...prev, [reply.id]: value }))}
+                                placeholder={t('home.replyPlaceholder')}
+                                placeholderTextColor={c.placeholder}
+                                token={token}
+                                c={c}
+                                multiline
+                              />
                             </View>
                           ) : (
                             <>
@@ -2779,21 +2783,7 @@ function PostCard({
                   );
                 })}
                   <View style={styles.commentReplyComposer}>
-                    {renderDraftMediaPreview(
-                      draftReplyMediaByCommentId[comment.id],
-                      () => onClearDraftReplyMedia(comment.id)
-                    )}
-                    <MentionHashtagInput
-                      style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-                      value={localReplyDrafts[comment.id] || ''}
-                      onChangeText={(value) => setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: value }))}
-                      placeholder={t('home.replyPlaceholder')}
-                      placeholderTextColor={c.placeholder}
-                      token={token}
-                      c={c}
-                      multiline
-                    />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                       <View style={{ flexDirection: 'row', gap: 6 }}>
                         <TouchableOpacity
                           style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
@@ -2825,6 +2815,20 @@ function PostCard({
                         <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
                       </TouchableOpacity>
                     </View>
+                    {renderDraftMediaPreview(
+                      draftReplyMediaByCommentId[comment.id],
+                      () => onClearDraftReplyMedia(comment.id)
+                    )}
+                    <MentionHashtagInput
+                      style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
+                      value={localReplyDrafts[comment.id] || ''}
+                      onChangeText={(value) => setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: value }))}
+                      placeholder={t('home.replyPlaceholder')}
+                      placeholderTextColor={c.placeholder}
+                      token={token}
+                      c={c}
+                      multiline
+                    />
                   </View>
                 </View>
               ) : null}
@@ -2833,21 +2837,7 @@ function PostCard({
           })}
 
           <View style={styles.commentComposer}>
-            {renderDraftMediaPreview(
-              draftCommentMediaByPostId[post.id],
-              () => onClearDraftCommentMedia(post.id)
-            )}
-            <MentionHashtagInput
-              style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
-              value={localCommentDraft}
-              onChangeText={setLocalCommentDraft}
-              placeholder={t('home.commentPlaceholder')}
-              placeholderTextColor={c.placeholder}
-              token={token}
-              c={c}
-              multiline
-            />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 <TouchableOpacity
                   style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
@@ -2876,6 +2866,20 @@ function PostCard({
                 <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
               </TouchableOpacity>
             </View>
+            {renderDraftMediaPreview(
+              draftCommentMediaByPostId[post.id],
+              () => onClearDraftCommentMedia(post.id)
+            )}
+            <MentionHashtagInput
+              style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.surface, color: c.textPrimary }]}
+              value={localCommentDraft}
+              onChangeText={setLocalCommentDraft}
+              placeholder={t('home.commentPlaceholder')}
+              placeholderTextColor={c.placeholder}
+              token={token}
+              c={c}
+              multiline
+            />
           </View>
         </View>
       ) : null}

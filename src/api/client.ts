@@ -1146,10 +1146,17 @@ export const api = {
       body: JSON.stringify({ identifier }),
     }).then(extractSuccessMessage),
 
-  verifyPasswordReset: (token: string, newPassword: string) =>
+  verifyPasswordReset: (
+    credential: { token?: string; code?: string },
+    newPassword: string,
+  ) =>
     request<unknown>('/api/auth/password/verify/', {
       method: 'POST',
-      body: JSON.stringify({ token, new_password: newPassword }),
+      body: JSON.stringify({
+        token: credential.token,
+        code: credential.code,
+        new_password: newPassword,
+      }),
     }).then(extractSuccessMessage),
 
   socialAuthGoogle: (idToken: string) =>
