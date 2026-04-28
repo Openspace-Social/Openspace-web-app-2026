@@ -32,20 +32,20 @@
 # split conceptually (web on the apex, API behind a /api/ prefix proxy).
 [[redirects]]
   from = "/api/*"
-  to = "https://api.staging.openspace.social/api/:splat"
+  to = "https://staging-api.openspace.social/api/:splat"
   status = 200
   force = true
 
 # Same proxy for the federation/health endpoints if any clients hit them.
 [[redirects]]
   from = "/health/*"
-  to = "https://api.staging.openspace.social/health/:splat"
+  to = "https://staging-api.openspace.social/health/:splat"
   status = 200
   force = true
 
 [[redirects]]
   from = "/.well-known/webfinger"
-  to = "https://api.staging.openspace.social/.well-known/webfinger"
+  to = "https://staging-api.openspace.social/.well-known/webfinger"
   status = 200
   force = true
 
