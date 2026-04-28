@@ -20,9 +20,38 @@
     Content-Type = "application/json"
     Cache-Control = "public, max-age=300"
 
-# SPA fallback. The static files above match before this rule fires, so
-# /.well-known/* paths are served directly and never get rewritten to the
-# React index.html.
+# Proxy /api/* through to the staging Django API on Elastic Beanstalk so the
+# React Native + RN-Web app can keep calling https://staging.openspace.social/api/...
+# (the URL baked into the TestFlight build via EXPO_PUBLIC_API_BASE_URL) even
+# now that staging.openspace.social is the Netlify-served React app. status=200
+# is a true rewrite — the browser/app sees the response as if it came from
+# staging.openspace.social directly.
+#
+# This matches the long-term prod shape where openspace.social will serve the
+# React app and api.openspace.social will be the API: staging now mirrors that
+# split conceptually (web on the apex, API behind a /api/ prefix proxy).
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.staging.openspace.social/api/:splat"
+  status = 200
+  force = true
+
+# Same proxy for the federation/health endpoints if any clients hit them.
+[[redirects]]
+  from = "/health/*"
+  to = "https://api.staging.openspace.social/health/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/.well-known/webfinger"
+  to = "https://api.staging.openspace.social/.well-known/webfinger"
+  status = 200
+  force = true
+
+# SPA fallback. The static files + proxies above match before this rule
+# fires, so /.well-known/apple-app-site-association, /api/*, etc. are
+# routed correctly and the SPA fallback only applies to actual app routes.
 [[redirects]]
   from = "/*"
   to = "/index.html"
