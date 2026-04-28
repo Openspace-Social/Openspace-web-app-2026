@@ -1159,6 +1159,16 @@ export const api = {
       }),
     }).then(extractSuccessMessage),
 
+  /** Step 1 of the manual two-step OTP flow on native: exchange a 6-digit
+   *  reset code for the underlying JWT, which the caller then submits with
+   *  the new password via `verifyPasswordReset`. The code is consumed
+   *  server-side on success; subsequent calls with the same code fail. */
+  exchangePasswordResetCode: (code: string) =>
+    request<{ token: string }>('/api/auth/password/exchange-code/', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
   socialAuthGoogle: (idToken: string) =>
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/google/', {
       method: 'POST',

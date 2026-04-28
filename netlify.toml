@@ -1,6 +1,28 @@
 [build]
+  command = "npm run build:web"
   publish = "dist"
 
+# Apple requires apple-app-site-association to be served as application/json
+# with no Content-Disposition header that would force a download. We declare
+# both files explicitly so the SPA fallback below cannot intercept them and
+# so Netlify doesn't auto-pick the wrong content type for an extensionless
+# file. Same file content works for staging.openspace.social and
+# (eventually) the production openspace.social custom domain.
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+# SPA fallback. The static files above match before this rule fires, so
+# /.well-known/* paths are served directly and never get rewritten to the
+# React index.html.
 [[redirects]]
   from = "/*"
   to = "/index.html"

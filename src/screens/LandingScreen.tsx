@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -307,6 +308,18 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setLoading(true);
     try {
       const message = await api.requestPasswordReset(recoveryEmail.trim());
+      // Auto-advance the flow: now that the recovery email is on its way,
+      // drop the user straight onto the OTP entry step instead of leaving
+      // them parked on the email-input screen wondering what to do next.
+      // The token state is cleared so the resetPassword screen renders
+      // step 1 (code entry) — the email's link tap will still also work
+      // and override the token via the Linking listener if used.
+      setPasswordResetToken('');
+      setPasswordResetCode('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordResetSuccess(false);
+      setAuthMode('resetPassword');
       setNotice(message || t('auth.passwordRecoverySent'));
     } catch (e: any) {
       setError(e.message || t('auth.passwordRecoveryFailed'));
@@ -335,10 +348,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   }
 
   async function handlePasswordResetSubmit() {
-    // Accepts either path: a JWT auto-loaded from the email link or a 6-digit
-    // code typed manually. If both are blank the form can't proceed.
-    const sanitizedCode = passwordResetCode.replace(/\D/g, '');
-    if (!passwordResetToken && !sanitizedCode) {
+    // By the time we reach this submit we always have a JWT in state — it
+    // arrived either from the email-link deep-link path or from the OTP
+    // exchange in step 1. If it's somehow missing, bail rather than send a
+    // half-formed request.
+    if (!passwordResetToken) {
       setError(t('auth.errorResetTokenMissing'));
       return;
     }
@@ -361,9 +375,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setLoading(true);
     try {
       const message = await api.verifyPasswordReset(
-        passwordResetToken
-          ? { token: passwordResetToken }
-          : { code: sanitizedCode },
+        { token: passwordResetToken },
         newPassword,
       );
       setPasswordResetSuccess(true);
@@ -391,6 +403,37 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setPasswordResetSuccess(false);
     setError('');
     setNotice('');
+  }
+
+  // Step 1 of the manual OTP flow: exchange the 6-digit code for the
+  // underlying JWT. On success we drop the token into state, which causes
+  // the resetPassword UI to advance to step 2 (new-password fields).
+  async function handleVerifyResetCode() {
+    const sanitizedCode = passwordResetCode.replace(/\D/g, '');
+    if (sanitizedCode.length < 6) {
+      setError(t('auth.errorResetCodeRequired', { defaultValue: 'Enter the 6-digit code from your reset email.' }));
+      return;
+    }
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const { token } = await api.exchangePasswordResetCode(sanitizedCode);
+      // Force-dismiss the OTP-step keyboard before re-rendering. Without
+      // this iOS sometimes leaves the number-pad keyboard "stuck" — the
+      // step 2 password TextInputs then refuse to focus on tap because the
+      // keyboard's internal first-responder state still points at the
+      // unmounted OTP input.
+      Keyboard.dismiss();
+      setPasswordResetToken(token);
+      // Clear the code from state — it's been consumed server-side and we
+      // only need the JWT from here.
+      setPasswordResetCode('');
+    } catch (e: any) {
+      setError(e.message || t('auth.passwordResetCodeFailed', { defaultValue: 'That reset code is invalid or expired.' }));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function switchToLogin() {
@@ -1077,12 +1120,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     {t('auth.forgotEmail')}
                   </Text>
                 </TouchableOpacity>
-                <Text style={[styles.forgotSeparator, { color: c.textMuted }]}>·</Text>
-                <TouchableOpacity onPress={switchToEnterResetCode}>
-                  <Text style={[styles.forgotLink, { color: c.textLink }]}>
-                    {t('auth.useResetCode', { defaultValue: 'Use a code' })}
-                  </Text>
-                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -1644,46 +1681,76 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     </Text>
                   </View>
                 </>
-              ) : (
+              ) : !passwordResetToken ? (
+                // ── Step 1: enter the 6-digit code ─────────────────────────
+                // Shown when the user came in via "Use a code" rather than
+                // tapping the Universal Link in the email. The code is
+                // exchanged for a JWT server-side; once we have the JWT,
+                // state flips and we render Step 2.
                 <>
                   <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
-                    {passwordResetToken
-                      ? t('auth.resetPasswordDescription')
-                      : t('auth.resetPasswordCodeDescription', { defaultValue: "Enter the 6-digit code from your reset email and choose a new password." })}
+                    {t('auth.resetPasswordCodeDescription', { defaultValue: 'Enter the 6-digit code from your reset email.' })}
                   </Text>
 
-                  {!passwordResetToken ? (
-                    <>
-                      <Text style={[styles.label, { color: c.textSecondary }]}>
-                        {t('auth.resetCodeLabel', { defaultValue: 'Reset code' })}
+                  <Text style={[styles.label, { color: c.textSecondary }]}>
+                    {t('auth.resetCodeLabel', { defaultValue: 'Reset code' })}
+                  </Text>
+                  <TextInput
+                    key="reset-otp-input"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: c.inputBackground,
+                        borderColor: c.inputBorder,
+                        color: c.textPrimary,
+                        letterSpacing: 4,
+                      },
+                    ]}
+                    value={passwordResetCode}
+                    onChangeText={(v) => setPasswordResetCode(v.replace(/\D/g, '').slice(0, 6))}
+                    placeholder={t('auth.resetCodePlaceholder', { defaultValue: '123456' })}
+                    placeholderTextColor={c.placeholder}
+                    keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
+                    maxLength={6}
+                    returnKeyType="done"
+                    onSubmitEditing={handleVerifyResetCode}
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                      loading && styles.buttonDisabled,
+                    ]}
+                    onPress={handleVerifyResetCode}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.buttonText}>
+                        {t('auth.verifyResetCodeButton', { defaultValue: 'Verify code' })}
                       </Text>
-                      <TextInput
-                        style={[
-                          styles.input,
-                          {
-                            backgroundColor: c.inputBackground,
-                            borderColor: c.inputBorder,
-                            color: c.textPrimary,
-                            letterSpacing: 4,
-                          },
-                        ]}
-                        value={passwordResetCode}
-                        onChangeText={(v) => setPasswordResetCode(v.replace(/\D/g, '').slice(0, 6))}
-                        placeholder={t('auth.resetCodePlaceholder', { defaultValue: '123456' })}
-                        placeholderTextColor={c.placeholder}
-                        keyboardType="number-pad"
-                        autoComplete="one-time-code"
-                        textContentType="oneTimeCode"
-                        maxLength={6}
-                        returnKeyType="next"
-                      />
-                    </>
-                  ) : null}
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                // ── Step 2: choose a new password ──────────────────────────
+                // Reached either by tapping the email link (token loaded
+                // automatically from the URL) or by completing Step 1 above.
+                <>
+                  <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                    {t('auth.resetPasswordDescription')}
+                  </Text>
 
                   <Text style={[styles.label, { color: c.textSecondary }]}>
                     {t('auth.newPasswordLabel')}
                   </Text>
                   <TextInput
+                    key="reset-new-password-input"
                     style={[
                       styles.input,
                       {
@@ -1707,6 +1774,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     {t('auth.confirmNewPasswordLabel')}
                   </Text>
                   <TextInput
+                    key="reset-confirm-password-input"
                     style={[
                       styles.input,
                       {
