@@ -2,6 +2,19 @@
   command = "npm run build:web"
   publish = "dist"
 
+# Build-time environment variables baked into the web bundle. These match
+# the testflight EAS profile so staging.openspace.social/api/* calls hit
+# the Netlify proxy below, which forwards to the Django API on EB. For prod
+# you'll override in the Netlify dashboard (or use a separate netlify.toml
+# branch) — set EXPO_PUBLIC_API_BASE_URL=https://openspace.social there.
+[build.environment]
+  EXPO_PUBLIC_API_BASE_URL = "https://staging.openspace.social"
+  EXPO_PUBLIC_GIPHY_KEY = "ySpehlbqPIWtFFkeEk7TdKiMuaj6cONU"
+  EXPO_PUBLIC_GOOGLE_CLIENT_ID = "767950302419-reisjv6d4veo5sh5t57i69jrr101fr8u.apps.googleusercontent.com"
+  EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID = "767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8.apps.googleusercontent.com"
+  EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID = "767950302419-r4l1balbmusajnp6cape3anmt8bu2oie.apps.googleusercontent.com"
+  EXPO_PUBLIC_APPLE_CLIENT_ID = "openspace.web-authentication"
+
 # Apple requires apple-app-site-association to be served as application/json
 # with no Content-Disposition header that would force a download. We declare
 # both files explicitly so the SPA fallback below cannot intercept them and
