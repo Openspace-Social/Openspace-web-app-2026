@@ -79,7 +79,7 @@ export default function ProfileMenuDrawer({
   const { t } = useTranslation();
   const { showToast } = useAppToast();
   const { onLogout } = useAuth();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const c = theme.colors;
@@ -231,6 +231,13 @@ export default function ProfileMenuDrawer({
           styles.panel,
           {
             width: drawerWidth,
+            // Explicit height instead of relying on top/bottom anchors —
+            // the Modal portal on RN-Web doesn't always establish a
+            // positioning context, which leaves the panel without a
+            // computed height and prevents the inner ScrollView from
+            // scrolling. Pinning to viewportHeight is the reliable shape
+            // on every platform.
+            height: viewportHeight,
             backgroundColor: c.surface,
             borderColor: c.border,
             paddingTop: Platform.OS === 'ios' ? insets.top + 8 : insets.top + 8,
@@ -239,7 +246,11 @@ export default function ProfileMenuDrawer({
           },
         ]}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: c.border }]}>
             <View style={[styles.avatar, { backgroundColor: c.primary }]}>
@@ -343,6 +354,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: -3, height: 0 },
     shadowRadius: 12,
     elevation: 24,
+  },
+  scroll: {
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 14,

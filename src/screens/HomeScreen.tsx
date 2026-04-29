@@ -6194,11 +6194,20 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             styles.drawerPanel,
             {
               width: sideDrawerWidth,
+              // Pin to viewport height so the inner ScrollView has a
+              // constrained parent on web. `top: 0; bottom: 0` alone
+              // doesn't always resolve correctly inside the Modal portal.
+              height: viewportHeight,
               backgroundColor: c.surface,
               transform: [{ translateX: menuDrawerTranslateX }],
             },
           ]}
         >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={[styles.sideMenuCard, { backgroundColor: c.surface, borderColor: c.border, width: '100%' }]}>
 
               {/* ── Header ────────────────────────────────── */}
@@ -6303,6 +6312,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               </TouchableOpacity>
 
             </View>
+          </ScrollView>
         </Animated.View>
       </Modal>
 

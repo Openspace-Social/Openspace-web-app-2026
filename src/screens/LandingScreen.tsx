@@ -28,6 +28,7 @@ import GuidelinesDrawer from '../components/GuidelinesDrawer';
 import { useAppToast } from '../toast/AppToastContext';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 import { AppleSignInCancelled, webAppleSignIn } from '../utils/webAppleAuth';
+import { WebForm } from '../utils/WebForm';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -1101,7 +1102,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
           )}
 
           {authMode === 'login' ? (
-            <>
+            <WebForm onSubmit={handleLogin}>
               <Text style={[styles.label, { color: c.textSecondary }]}>
                 {t('auth.username')}
               </Text>
@@ -1210,9 +1211,9 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </View>
               </TouchableOpacity>
-            </>
+            </WebForm>
           ) : authMode === 'signup' ? (
-            <>
+            <WebForm onSubmit={handleRegister}>
               <Text style={[styles.label, { color: c.textSecondary }]}>
                 {t('auth.email')}
               </Text>
@@ -1370,7 +1371,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </View>
               </TouchableOpacity>
-            </>
+            </WebForm>
           ) : authMode === 'socialUsername' ? (
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
@@ -1777,7 +1778,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 // ── Step 2: choose a new password ──────────────────────────
                 // Reached either by tapping the email link (token loaded
                 // automatically from the URL) or by completing Step 1 above.
-                <>
+                <WebForm onSubmit={handlePasswordResetSubmit}>
                   <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
                     {t('auth.resetPasswordDescription')}
                   </Text>
@@ -1844,7 +1845,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                       <Text style={styles.buttonText}>{t('auth.resetPasswordButton')}</Text>
                     )}
                   </TouchableOpacity>
-                </>
+                </WebForm>
               )}
             </>
           ) : (
