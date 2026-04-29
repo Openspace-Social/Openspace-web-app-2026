@@ -83,9 +83,16 @@ export async function webAppleSignIn(
     throw new Error('Apple sign-in SDK is not available.');
   }
 
+  // Empty scope on purpose. Requesting `name email` triggers Apple's
+  // first-time consent screen, which then PUTs /oauth/consent/complete
+  // and 403s for some Service IDs (likely a missing email-source /
+  // domain-verification config). With no scope requested, Apple skips
+  // the consent step and issues an id_token with just `sub` — enough
+  // for the backend to identify the user. The signup flow already asks
+  // for an email separately on the username step.
   AppleID.auth.init({
     clientId: opts.clientId,
-    scope: opts.scope ?? 'name email',
+    scope: opts.scope ?? '',
     redirectURI: opts.redirectURI,
     state: opts.state,
     nonce: opts.nonce,
