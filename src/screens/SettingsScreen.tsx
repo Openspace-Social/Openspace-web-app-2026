@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import LanguagePicker from '../components/LanguagePicker';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
@@ -1060,6 +1061,10 @@ function SettingsRightDrawerModal({
 }) {
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(420, screenWidth * 0.88);
+  // The drawer renders inside an iOS Modal — outside the app's
+  // SafeAreaView. Without this inset the heading sits under the status
+  // bar / Dynamic Island.
+  const insets = useSafeAreaInsets();
   const translateX = React.useRef(new Animated.Value(drawerWidth)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(visible);
@@ -1110,6 +1115,8 @@ function SettingsRightDrawerModal({
             backgroundColor: c.surface,
             borderColor: c.border,
             transform: [{ translateX }],
+            paddingTop: Math.max(insets.top + 12, 22),
+            paddingBottom: Math.max(insets.bottom + 12, 18),
           },
         ]}
       >

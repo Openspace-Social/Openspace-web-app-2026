@@ -33,7 +33,7 @@
         ]
       },
       "bundleIdentifier": "com.mem1984.openspacesocial",
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
@@ -87,7 +87,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8"
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "eas": {

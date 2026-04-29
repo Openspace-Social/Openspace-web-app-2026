@@ -17,8 +17,9 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useFeedData } from '../../hooks/useFeedData';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
+import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
-import ReactionPickerModal from '../../components/ReactionPickerModal';
+import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import MovePostCommunitiesSheet from '../../components/MovePostCommunitiesSheet';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
@@ -36,6 +37,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
   const { token } = useAuth();
   const { theme } = useTheme();
   const { t } = useTranslation();
+  const autoPlayMedia = useAutoPlayMedia();
   const route = useRoute<RouteProp<HomeStackParamList, 'Feed'>>();
   const feedType: FeedType = feedTypeProp || (route.params?.feed as FeedType) || 'home';
 
@@ -237,7 +239,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         currentUsername={currentUsername}
         token={token ?? undefined}
         translationLanguageCode={translationLanguageCode}
-        autoPlayMedia={false}
+        autoPlayMedia={autoPlayMedia}
         isPostDetailOpen={false}
         allowExpandControl
         showFollowButton
@@ -264,7 +266,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
 
   return (
     <PostInteractionsProvider value={interactions}>
-      <ReactionPickerModal
+      <ReactionPickerDrawer
         visible={!!reactionPickerPost}
         groups={reactionGroups}
         loading={reactionGroupsLoading}
@@ -273,6 +275,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onClose={closeReactionPicker}
         c={c}
         t={t}
+        title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
       />
       <MovePostCommunitiesSheet
         visible={!!movePost}

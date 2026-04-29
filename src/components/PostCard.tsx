@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment, UserProfile } from '../api/client';
 import UserHoverCard from './UserHoverCard';
 import MentionHashtagInput from './MentionHashtagInput';
+import NativeInlineVideo, { type NativeInlineVideoHandle } from './NativeInlineVideo';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
@@ -720,6 +721,10 @@ function PostCard({
   const postActionMenuHostRef = React.useRef<any>(null);
   const inlineVideoRef = React.useRef<any>(null);
   const inlineVideoContainerRef = React.useRef<any>(null);
+  // Native equivalent of the inline web <video>. Holds the imperative
+  // handle from NativeInlineVideo so we can pause/getCurrentTime when
+  // expanding to the post-detail screen.
+  const inlineNativeVideoRef = React.useRef<NativeInlineVideoHandle | null>(null);
   const creatorAvatar = post.creator?.avatar || post.creator?.profile?.avatar;
   const hasReacted = !!post.reaction?.id || !!post.reaction?.emoji?.id;
   const mediaPreviewItems = React.useMemo(() => {
@@ -1293,49 +1298,61 @@ function PostCard({
   const menuCardBg = '#ffffff';
   const menuTileBg = '#f3f6fb';
   function openPostDetailWithPause() {
-    const video = inlineVideoRef.current as HTMLVideoElement | null;
-    const resumeTimeSec =
-      video && Number.isFinite(video.currentTime) && video.currentTime > 0
-        ? Number(video.currentTime)
-        : undefined;
-    if (video) {
-      video.pause();
+    let resumeTimeSec: number | undefined;
+    if (Platform.OS === 'web') {
+      const video = inlineVideoRef.current as HTMLVideoElement | null;
+      if (video && Number.isFinite(video.currentTime) && video.currentTime > 0) {
+        resumeTimeSec = Number(video.currentTime);
+      }
+      if (video) video.pause();
+    } else {
+      const native = inlineNativeVideoRef.current;
+      if (native) {
+        const t = native.getCurrentTime();
+        if (t > 0) resumeTimeSec = t;
+        native.pause();
+      }
     }
     setInlineManualPlaybackStarted(false);
     onOpenPostDetail(post, { resumeTimeSec });
   }
 
   function replayInlineVideo() {
-    const video = inlineVideoRef.current as HTMLVideoElement | null;
-    if (!video) return;
-    try {
-      video.currentTime = 0;
-    } catch {
-      // Ignore browser edge-case errors on seek.
+    if (Platform.OS === 'web') {
+      const video = inlineVideoRef.current as HTMLVideoElement | null;
+      if (!video) return;
+      try { video.currentTime = 0; } catch { /* swallow seek errors */ }
+      setInlineVideoEnded(false);
+      void video.play().catch(() => {});
+      return;
     }
+    const native = inlineNativeVideoRef.current;
+    if (!native) return;
+    native.seekTo(0);
     setInlineVideoEnded(false);
-    void video.play().catch(() => {});
+    native.play();
   }
 
   function startInlineVideoPlayback() {
     setInlineVideoEnded(false);
     setInlineManualPlaybackStarted(true);
-    const video = inlineVideoRef.current as HTMLVideoElement | null;
-    if (!video) return;
-    try {
-      video.currentTime = 0;
-    } catch {
-      // Ignore browser edge-case errors on seek.
+    if (Platform.OS === 'web') {
+      const video = inlineVideoRef.current as HTMLVideoElement | null;
+      if (!video) return;
+      try { video.currentTime = 0; } catch { /* swallow seek errors */ }
+      video.muted = false;
+      void video.play().catch(() => {});
+      return;
     }
-    video.muted = false;
-    void video.play().catch(() => {});
+    // On native the player isn't mounted until the JSX condition flips, so
+    // play() is fired by NativeInlineVideo's autoPlay prop on next render.
+    // This function just trips the state that mounts the player.
   }
 
   function handleSingleMediaPress() {
     const single = galleryPreviewItems[0];
     const canInlineVideo =
       !!single?.isVideo &&
-      Platform.OS === 'web' &&
       !!single?.videoUri &&
       !autoPlayMedia;
     if (canInlineVideo && !inlineManualPlaybackStarted) {
@@ -2133,45 +2150,70 @@ function PostCard({
         >
           <View>
             {galleryPreviewItems[0].isVideo &&
-            Platform.OS === 'web' &&
             galleryPreviewItems[0].videoUri &&
             (autoPlayMedia || inlineManualPlaybackStarted) ? (
-              <View
-                ref={(node) => {
-                  inlineVideoContainerRef.current = node;
-                }}
-                style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}
-              >
-                {React.createElement('video', {
-                  key: `${post.id}-video-preview`,
-                  src: galleryPreviewItems[0].videoUri,
-                  poster: galleryPreviewItems[0].previewUri,
-                  ref: (node: HTMLVideoElement | null) => {
-                    inlineVideoRef.current = node;
-                  },
-                  style: { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: '#000' },
-                  playsInline: true,
-                  controls: true,
-                  autoPlay: autoPlayMedia || inlineManualPlaybackStarted,
-                  defaultMuted: autoPlayMedia,
-                  loop: false,
-                  preload: 'metadata',
-                  onEnded: () => {
-                    setInlineVideoEnded(true);
-                    if (!autoPlayMedia) {
-                      setInlineManualPlaybackStarted(false);
-                    }
-                  },
-                  onPlay: () => {
-                    setInlineVideoEnded(false);
-                  },
-                })}
-              </View>
+              Platform.OS === 'web' ? (
+                <View
+                  ref={(node) => {
+                    inlineVideoContainerRef.current = node;
+                  }}
+                  style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}
+                >
+                  {React.createElement('video', {
+                    key: `${post.id}-video-preview`,
+                    src: galleryPreviewItems[0].videoUri,
+                    poster: galleryPreviewItems[0].previewUri,
+                    ref: (node: HTMLVideoElement | null) => {
+                      inlineVideoRef.current = node;
+                    },
+                    style: { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: '#000' },
+                    playsInline: true,
+                    controls: true,
+                    autoPlay: autoPlayMedia || inlineManualPlaybackStarted,
+                    defaultMuted: autoPlayMedia,
+                    loop: false,
+                    preload: 'metadata',
+                    onEnded: () => {
+                      setInlineVideoEnded(true);
+                      if (!autoPlayMedia) {
+                        setInlineManualPlaybackStarted(false);
+                      }
+                    },
+                    onPlay: () => {
+                      setInlineVideoEnded(false);
+                    },
+                  })}
+                </View>
+              ) : (
+                // Native inline preview — driven by the same state as web
+                // (autoPlayMedia + inlineManualPlaybackStarted). nativeControls
+                // is off because tapping anywhere on the card already routes
+                // to the post-detail screen (with resumeTimeSec), where the
+                // full controls live. Mute on autoplay so a scrolling feed
+                // doesn't blast audio.
+                <View style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}>
+                  <NativeInlineVideo
+                    key={`${post.id}-video-preview-native`}
+                    ref={(handle) => {
+                      inlineNativeVideoRef.current = handle;
+                    }}
+                    uri={galleryPreviewItems[0].videoUri as string}
+                    autoPlay={autoPlayMedia || inlineManualPlaybackStarted}
+                    nativeControls={false}
+                    contentFit="contain"
+                    onEnded={() => {
+                      setInlineVideoEnded(true);
+                      if (!autoPlayMedia) {
+                        setInlineManualPlaybackStarted(false);
+                      }
+                    }}
+                  />
+                </View>
+              )
             ) : (
               <Image source={{ uri: galleryPreviewItems[0].previewUri }} style={[styles.feedMedia, { backgroundColor: c.surface }]} resizeMode="contain" />
             )}
             {galleryPreviewItems[0].isVideo &&
-            Platform.OS === 'web' &&
             galleryPreviewItems[0].videoUri &&
             inlineManualPlaybackStarted &&
             !autoPlayMedia ? (
@@ -2199,7 +2241,7 @@ function PostCard({
                 </TouchableOpacity>
               </View>
             ) : null}
-            {galleryPreviewItems[0].isVideo && Platform.OS === 'web' && autoPlayMedia && inlineVideoEnded ? (
+            {galleryPreviewItems[0].isVideo && autoPlayMedia && inlineVideoEnded ? (
               <View
                 style={{
                   position: 'absolute',
@@ -2229,7 +2271,7 @@ function PostCard({
               </View>
             ) : null}
             {galleryPreviewItems[0].isVideo &&
-            !(Platform.OS === 'web' && galleryPreviewItems[0].videoUri && (autoPlayMedia || inlineManualPlaybackStarted)) ? (
+            !(galleryPreviewItems[0].videoUri && (autoPlayMedia || inlineManualPlaybackStarted)) ? (
               <View
                 style={{
                   position: 'absolute',

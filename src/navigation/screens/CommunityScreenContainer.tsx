@@ -14,9 +14,10 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useAppToast } from '../../toast/AppToastContext';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
+import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
-import ReactionPickerModal from '../../components/ReactionPickerModal';
+import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import CommunityScreen from '../../screens/CommunityScreen';
 import { postCardStyles } from '../../styles/postCardStyles';
 import {
@@ -38,6 +39,7 @@ export default function CommunityScreenContainer() {
   const { token } = useAuth();
   const { theme } = useTheme();
   const { t } = useTranslation();
+  const autoPlayMedia = useAutoPlayMedia();
   const { showToast } = useAppToast();
   const route = useRoute<RouteProp<HomeStackParamList, RouteName>>();
   const navigation = useNavigation<any>();
@@ -362,7 +364,7 @@ export default function CommunityScreenContainer() {
       t={t}
       currentUsername={currentUsername}
       token={token ?? undefined}
-      autoPlayMedia={false}
+      autoPlayMedia={autoPlayMedia}
       isPostDetailOpen={false}
       allowExpandControl
       showFollowButton={false}
@@ -373,7 +375,7 @@ export default function CommunityScreenContainer() {
 
   return (
     <PostInteractionsProvider value={interactions}>
-      <ReactionPickerModal
+      <ReactionPickerDrawer
         visible={!!reactionPickerPost}
         groups={reactionGroups}
         loading={reactionGroupsLoading}
@@ -382,6 +384,7 @@ export default function CommunityScreenContainer() {
         onClose={closeReactionPicker}
         c={c}
         t={t}
+        title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
       />
       <View style={styles.root}>
         <CommunityScreen

@@ -27,6 +27,7 @@ import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
 import GuidelinesDrawer from '../components/GuidelinesDrawer';
 import { useAppToast } from '../toast/AppToastContext';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
+import { AppleSignInCancelled, webAppleSignIn } from '../utils/webAppleAuth';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -761,58 +762,93 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     if (Platform.OS !== 'web') {
       return nativeSocialAuth(provider);
     }
-    return new Promise((resolve, reject) => {
-      if (typeof window === 'undefined') {
-        reject(new Error(t('auth.socialWebOnly')));
-        return;
-      }
+    if (typeof window === 'undefined') {
+      return Promise.reject(new Error(t('auth.socialWebOnly')));
+    }
 
+    // Apple on web: Apple's spec requires response_mode=form_post when
+    // requesting an id_token, which breaks the popup-polling pattern Google
+    // uses. Use Apple's hosted "Sign in with Apple JS" SDK instead — it
+    // handles the form_post + postMessage handoff to the parent window for
+    // us and returns the id_token directly.
+    if (provider === 'apple') {
+      const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
+      if (!appleClientId) {
+        return Promise.reject(
+          new Error(`${t('auth.socialConfigMissing')} (EXPO_PUBLIC_APPLE_CLIENT_ID)`),
+        );
+      }
+      const redirectURI =
+        process.env.EXPO_PUBLIC_SOCIAL_AUTH_REDIRECT_URI || window.location.origin;
+      const state = createRandomState();
+      const nonce = createRandomState();
+      debugSocial('init', {
+        provider,
+        origin: window.location.origin,
+        redirectUri: redirectURI,
+        appleClientId: maskClientId(appleClientId),
+        method: 'apple-jssdk',
+      });
+      return webAppleSignIn({
+        clientId: appleClientId,
+        redirectURI,
+        state,
+        nonce,
+      })
+        .then((result) => {
+          if (result.state && result.state !== state) {
+            debugSocial('state-mismatch', {
+              provider,
+              expectedState: state,
+              returnedState: result.state,
+            });
+            throw new Error(t('auth.socialStateMismatch'));
+          }
+          debugSocial('token-received', {
+            provider,
+            tokenLength: result.idToken.length,
+            returnedState: result.state,
+          });
+          return result.idToken;
+        })
+        .catch((e) => {
+          if (e instanceof AppleSignInCancelled) {
+            debugSocial('popup-closed', { provider });
+            throw new Error(t('auth.socialCancelled'));
+          }
+          debugSocial('provider-error', { provider, message: e?.message });
+          throw e;
+        });
+    }
+
+    return new Promise((resolve, reject) => {
       const redirectUri = process.env.EXPO_PUBLIC_SOCIAL_AUTH_REDIRECT_URI || window.location.origin;
       const nonce = createRandomState();
       const state = createRandomState();
       const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-      const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
 
       debugSocial('init', {
         provider,
         origin: window.location.origin,
         redirectUri,
         googleClientId: maskClientId(googleClientId),
-        appleClientId: maskClientId(appleClientId),
       });
 
-      if (provider === 'google' && !googleClientId) {
+      if (!googleClientId) {
         reject(new Error(`${t('auth.socialConfigMissing')} (EXPO_PUBLIC_GOOGLE_CLIENT_ID)`));
-        return;
-      }
-      if (provider === 'apple' && !appleClientId) {
-        reject(new Error(`${t('auth.socialConfigMissing')} (EXPO_PUBLIC_APPLE_CLIENT_ID)`));
         return;
       }
 
       const params = new URLSearchParams();
-      if (provider === 'google') {
-        params.set('client_id', googleClientId as string);
-        params.set('redirect_uri', redirectUri);
-        params.set('response_type', 'id_token');
-        params.set('scope', 'openid email profile');
-        params.set('prompt', 'select_account');
-        params.set('nonce', nonce);
-        params.set('state', state);
-      } else {
-        params.set('client_id', appleClientId as string);
-        params.set('redirect_uri', redirectUri);
-        params.set('response_type', 'code id_token');
-        params.set('response_mode', 'fragment');
-        // Keep popup+hash flow for web: requesting name/email requires form_post.
-        params.set('scope', 'openid');
-        params.set('nonce', nonce);
-        params.set('state', state);
-      }
+      params.set('client_id', googleClientId);
+      params.set('redirect_uri', redirectUri);
+      params.set('response_type', 'id_token');
+      params.set('scope', 'openid email profile');
+      params.set('prompt', 'select_account');
+      params.set('nonce', nonce);
+      params.set('state', state);
 
-      const authUrl = provider === 'google'
-        ? `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-        : `https://appleid.apple.com/auth/authorize?${params.toString()}`;
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 
       debugSocial('auth-url', { provider, authUrl });
 

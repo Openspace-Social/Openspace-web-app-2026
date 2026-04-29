@@ -25,24 +25,16 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState('');
   const [type, setType] = useState<ToastType>('error');
   const [visible, setVisible] = useState(false);
-  const [remainingMs, setRemainingMs] = useState(0);
-  const [durationMs, setDurationMs] = useState(DEFAULT_DURATION_MS);
   const translateY = useRef(new Animated.Value(-14)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const toastDeadlineRef = useRef<number>(0);
   const c = theme.colors;
-  const colorMap = c as Record<string, string | undefined>;
+  const isDark = theme.dark;
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
-    }
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
     }
   }, []);
 
@@ -53,8 +45,6 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
     ]).start(() => {
       setVisible(false);
       setMessage('');
-      setRemainingMs(0);
-      setDurationMs(DEFAULT_DURATION_MS);
     });
   }, [opacity, translateY]);
 
@@ -73,51 +63,37 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
     ]).start();
 
     const duration = Math.max(1200, options?.durationMs ?? DEFAULT_DURATION_MS);
-    const deadline = Date.now() + duration;
-    toastDeadlineRef.current = deadline;
-    setDurationMs(duration);
-    setRemainingMs(duration);
-    countdownTimerRef.current = setInterval(() => {
-      const nextRemaining = Math.max(0, toastDeadlineRef.current - Date.now());
-      setRemainingMs(nextRemaining);
-      if (nextRemaining <= 0 && countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-    }, 100);
-
-    hideTimerRef.current = setTimeout(
-      hideToast,
-      duration,
-    );
+    hideTimerRef.current = setTimeout(hideToast, duration);
   }, [clearHideTimer, hideToast, opacity, translateY]);
 
   useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   const ctx = useMemo(() => ({ showToast }), [showToast]);
 
-  // Use strong, high-contrast colours regardless of theme — toasts must be
-  // immediately noticeable, especially errors shown over drawer overlays.
-  const bg =
-    type === 'success' ? '#166534'
-    : type === 'info'  ? '#1d4ed8'
-    : '#991b1b';
-  const border =
-    type === 'success' ? '#86efac'
-    : type === 'info'  ? '#93c5fd'
-    : '#fca5a5';
-  const fg =
-    type === 'success' ? '#dcfce7'
-    : type === 'info'  ? '#eff6ff'
-    : '#fee2e2';
+  // Soft, theme-aware palette. Success now uses the platform's brand
+  // indigo so the toast matches the rest of the UI rather than fighting
+  // it with a hard green. Error uses the same softer red the theme uses
+  // elsewhere (e.g., the SettingsScreen error rows). Info is a neutral
+  // slate so it doesn't compete with the brand colour.
+  const palette = (() => {
+    if (type === 'success') {
+      return isDark
+        ? { bg: '#1E1B4B', border: '#4338CA', fg: '#C7D2FE' }
+        : { bg: '#EEF2FF', border: '#C7D2FE', fg: '#4338CA' };
+    }
+    if (type === 'info') {
+      return isDark
+        ? { bg: c.surface, border: c.border, fg: c.textSecondary }
+        : { bg: '#F1F5F9', border: '#CBD5E1', fg: '#475569' };
+    }
+    // error — softer than the previous near-black/red. Reuses the theme's
+    // existing error tokens so any future palette change flows through.
+    return { bg: c.errorBackground, border: c.errorBorder, fg: c.errorText };
+  })();
 
   const title =
-    type === 'success'
-      ? 'Success'
-      : type === 'info'
-        ? 'Notice'
-        : 'Error';
-  const progress = durationMs > 0 ? Math.max(0, Math.min(1, remainingMs / durationMs)) : 0;
+    type === 'success' ? 'Success' : type === 'info' ? 'Notice' : 'Error';
+
   const toastLayer = (
     <View pointerEvents="box-none" style={styles.modalRoot}>
       <View pointerEvents="none" style={styles.overlay}>
@@ -130,22 +106,19 @@ export function AppToastProvider({ children }: { children: React.ReactNode }) {
               // (search pill + sub-tabs + progress bar) on native. On web
               // the legacy top nav is fixed around 72pt.
               marginTop: Platform.OS === 'web' ? 72 : insets.top + 110,
-              backgroundColor: bg,
-              borderColor: border,
+              backgroundColor: palette.bg,
+              borderColor: palette.border,
               transform: [{ translateY }],
               opacity,
             },
           ]}
         >
-          <Text style={[styles.title, { color: fg }]}>
+          <Text style={[styles.title, { color: palette.fg }]}>
             {title}
           </Text>
-          <Text style={[styles.message, { color: fg }]} numberOfLines={4}>
+          <Text style={[styles.message, { color: palette.fg }]} numberOfLines={4}>
             {message}
           </Text>
-          <View style={[styles.progressTrack, { borderColor: border }]}>
-            <View style={[styles.progressFill, { backgroundColor: fg, width: `${progress * 100}%` }]} />
-          </View>
         </Animated.View>
       </View>
     </View>
@@ -182,15 +155,15 @@ const styles = StyleSheet.create({
     elevation: 9999,
   },
   toast: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 20,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
   title: {
     fontSize: 11,
@@ -199,22 +172,12 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     textTransform: 'uppercase',
     textAlign: 'center',
+    opacity: 0.85,
   },
   message: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
-  },
-  progressTrack: {
-    marginTop: 6,
-    height: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    overflow: 'hidden',
-    opacity: 0.85,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
+    lineHeight: 20,
   },
 });

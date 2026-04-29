@@ -220,7 +220,14 @@ export function useNativePostInteractions({
       onOpenPostDetail: (post, options) => {
         const uuid = (post as any)?.uuid;
         if (!uuid) return;
-        navigation.navigate('Post', { postUuid: uuid, focusComment: !!options?.focusComposer });
+        navigation.navigate('Post', {
+          postUuid: uuid,
+          focusComment: !!options?.focusComposer,
+          // Pass the inline-feed video's playback position through so the
+          // detail player resumes where the feed cell left off (mirrors
+          // web's resumeTimeSec hand-off via openPostDetailWithPause).
+          resumeTimeSec: options?.resumeTimeSec,
+        });
       },
       onNavigateProfile: (username) => navigation.navigate('Profile', { username }),
       onNavigateCommunity: (name) => navigation.navigate('Community', { name }),

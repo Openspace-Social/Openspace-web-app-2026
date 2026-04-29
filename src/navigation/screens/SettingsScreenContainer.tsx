@@ -113,10 +113,8 @@ export default function SettingsScreenContainer() {
   }, [navigation]);
 
   const handleOpenLinkedAccounts = useCallback(() => {
-    // Linked accounts still lives in the legacy HomeScreen drawer — surface
-    // a notice until it migrates. Temporary.
-    showToast(t('settings.linkedAccountsComingSoon', { defaultValue: 'Linked accounts will return soon in the new navigator.' }));
-  }, [showToast, t]);
+    navigation.navigate('LinkedAccounts');
+  }, [navigation]);
 
   const handleNotice = useCallback((message: string) => {
     showToast(message);

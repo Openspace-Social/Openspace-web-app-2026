@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { usePostDetailData } from '../../hooks/usePostDetailData';
 import { useCommentsData } from '../../hooks/useCommentsData';
+import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import { useAppToast } from '../../toast/AppToastContext';
 import PostDetailModal from '../../components/PostDetailModal';
 import { postCardStyles } from '../../styles/postCardStyles';
@@ -60,6 +61,8 @@ export default function PostDetailScreenContainer() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const postUuid = route.params?.postUuid;
   const focusComment = !!route.params?.focusComment;
+  const autoPlayMedia = useAutoPlayMedia();
+  const initialMediaTimeSec = route.params?.resumeTimeSec ?? null;
 
   const {
     post, loading,
@@ -91,6 +94,63 @@ export default function PostDetailScreenContainer() {
   useEffect(() => {
     if (post) void ensureReactionGroups();
   }, [post, ensureReactionGroups]);
+
+  // ── Reaction-list state ────────────────────────────────────────────────
+  // The PostDetail "Reactions" tab shows who reacted with each emoji. The
+  // chips along the top are filters (tap an emoji → fetch reactors filtered
+  // to that emoji; tap nothing → fetch all reactors). Mirrors HomeScreen's
+  // implementation on web via the same `api.getPostReactions` endpoint.
+  type ReactionListEmoji = { id?: number; keyword?: string; image?: string };
+  type ReactionListUser = {
+    id?: number;
+    created?: string;
+    emoji?: ReactionListEmoji;
+    reactor?: { id?: number; username?: string; profile?: { avatar?: string } };
+  };
+  const [reactionListLoading, setReactionListLoading] = useState(false);
+  const [reactionListEmoji, setReactionListEmoji] = useState<ReactionListEmoji | null>(null);
+  const [reactionListUsers, setReactionListUsers] = useState<ReactionListUser[]>([]);
+  // Bumped on each call so a slow-returning earlier request can't stomp the
+  // user list of a later (different-emoji) tap.
+  const reactionListRequestRef = React.useRef(0);
+
+  const loadReactionList = useCallback(
+    async (targetPost: FeedPost, emoji?: ReactionListEmoji) => {
+      if (!token) return;
+      const targetUuid = (targetPost as any)?.uuid as string | undefined;
+      if (!targetUuid) return;
+
+      const requestId = ++reactionListRequestRef.current;
+      setReactionListEmoji(emoji ?? null);
+      setReactionListLoading(true);
+      setReactionListUsers([]);
+      try {
+        const users = await api.getPostReactions(token, targetUuid, emoji?.id);
+        // Drop the response if a newer request fired in the meantime.
+        if (requestId !== reactionListRequestRef.current) return;
+        setReactionListUsers(Array.isArray(users) ? users : []);
+      } catch (e: any) {
+        if (requestId !== reactionListRequestRef.current) return;
+        showToast(
+          e?.message || t('home.reactionListFailed', { defaultValue: 'Could not load reactions.' }),
+          { type: 'error' },
+        );
+        setReactionListUsers([]);
+      } finally {
+        if (requestId === reactionListRequestRef.current) {
+          setReactionListLoading(false);
+        }
+      }
+    },
+    [token, showToast, t],
+  );
+
+  const closeReactionList = useCallback(() => {
+    reactionListRequestRef.current += 1;
+    setReactionListEmoji(null);
+    setReactionListUsers([]);
+    setReactionListLoading(false);
+  }, []);
 
   // Fetch current user for PostCard owner-only gating.
   const [currentUsername, setCurrentUsername] = useState<string | undefined>(undefined);
@@ -219,10 +279,10 @@ export default function PostDetailScreenContainer() {
       getPostText={getPostText}
       getPostReactionCount={getPostReactionCount}
       getPostCommentsCount={getPostCommentsCount}
-      initialMediaTimeSec={null}
+      initialMediaTimeSec={initialMediaTimeSec}
       onConsumeInitialMediaTime={() => {}}
       onClose={handleClose}
-      onLoadReactionList={async () => { stub('Reaction list'); }}
+      onLoadReactionList={loadReactionList}
       onEnsureReactionGroups={ensureReactionGroups}
       onReactToPostWithEmoji={async (p, emojiId) => {
         if (emojiId != null) await reactToPost(p, emojiId);
@@ -253,12 +313,13 @@ export default function PostDetailScreenContainer() {
       onNavigateProfile={handleNavigateProfile}
       onNavigateHashtag={handleNavigateHashtag}
       token={token ?? undefined}
-      reactionListOpen={false}
-      reactionListLoading={false}
-      reactionListEmoji={null}
-      reactionListUsers={[]}
-      onCloseReactionList={() => {}}
+      reactionListOpen={reactionListUsers.length > 0 || reactionListLoading}
+      reactionListLoading={reactionListLoading}
+      reactionListEmoji={reactionListEmoji}
+      reactionListUsers={reactionListUsers}
+      onCloseReactionList={closeReactionList}
       autoFocusComposer={focusComment}
+      autoPlayMedia={autoPlayMedia}
       />
     </View>
   );

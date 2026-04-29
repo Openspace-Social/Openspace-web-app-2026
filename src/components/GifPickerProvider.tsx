@@ -64,10 +64,15 @@ type Ctx = {
 
 const GifPickerContext = createContext<Ctx | null>(null);
 
-const GIPHY_KEY: string =
-  (process.env as any)?.EXPO_PUBLIC_GIPHY_KEY ||
-  (globalThis as any)?.process?.env?.EXPO_PUBLIC_GIPHY_KEY ||
-  '';
+// IMPORTANT: use the bare `process.env.EXPO_PUBLIC_GIPHY_KEY` pattern (no
+// optional chaining `?.`). Metro's babel-plugin-transform-inline-environment-
+// variables only matches plain MemberExpressions and silently leaves
+// optional-chained accesses untouched — which means the value gets
+// statically inlined in the simulator (where Metro hot-loads env at
+// runtime) but is `undefined` in the production / TestFlight bundle
+// (where `process.env` itself is empty). That mismatch is exactly what
+// caused this to look "configured" in dev and missing in TestFlight.
+const GIPHY_KEY: string = process.env.EXPO_PUBLIC_GIPHY_KEY || '';
 
 const ENDPOINT_TRENDING = 'https://api.giphy.com/v1/gifs/trending';
 const ENDPOINT_SEARCH = 'https://api.giphy.com/v1/gifs/search';

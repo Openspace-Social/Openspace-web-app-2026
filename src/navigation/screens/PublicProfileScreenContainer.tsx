@@ -40,8 +40,9 @@ import { useAppToast } from '../../toast/AppToastContext';
 import { useUserPostsData } from '../../hooks/useUserPostsData';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
+import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
-import ReactionPickerModal from '../../components/ReactionPickerModal';
+import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import EditProfileModal from '../../components/EditProfileModal';
 import UserBadge from '../../components/UserBadge';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
@@ -113,6 +114,7 @@ export default function PublicProfileScreenContainer() {
   const { token } = useAuth();
   const { theme } = useTheme();
   const { t } = useTranslation();
+  const autoPlayMedia = useAutoPlayMedia();
   const { showToast } = useAppToast();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<HomeStackParamList, 'Profile'>>();
@@ -567,7 +569,7 @@ export default function PublicProfileScreenContainer() {
           t={t}
           currentUsername={currentUsername}
           token={token ?? undefined}
-          autoPlayMedia={false}
+          autoPlayMedia={autoPlayMedia}
           isPostDetailOpen={false}
           allowExpandControl
           showFollowButton={false}
@@ -594,7 +596,7 @@ export default function PublicProfileScreenContainer() {
 
   return (
     <PostInteractionsProvider value={interactions}>
-      <ReactionPickerModal
+      <ReactionPickerDrawer
         visible={!!reactionPickerPost}
         groups={reactionGroups}
         loading={reactionGroupsLoading}
@@ -603,6 +605,7 @@ export default function PublicProfileScreenContainer() {
         onClose={closeReactionPicker}
         c={c}
         t={t}
+        title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
       />
       {isOwnProfile ? (
         <EditProfileModal

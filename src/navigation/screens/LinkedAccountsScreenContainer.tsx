@@ -1,21 +1,22 @@
 /**
- * LinkedAccountsScreenContainer — list of linked social-auth identities.
+ * LinkedAccountsScreenContainer — manage social-auth identities.
  *
- * Read-only on native: shows which providers (Google, Apple) are currently
- * connected and the linked email. Linking and unlinking aren't supported
- * on native yet because the legacy flow (HomeScreen.openSocialPopup)
- * relies on a browser window.popup, which doesn't exist outside web. A
- * future pass with expo-auth-session can implement native OAuth and turn
- * this into a fully-fledged manage screen.
+ * Mirrors HomeScreen's web flow (handleLinkProvider / handleUnlinkProvider)
+ * but uses the native Google + Apple SDKs (via `nativeSocialIdToken`) to
+ * obtain an id_token, then exchanges it with the same backend endpoints
+ * the web app uses. Per-provider loading state keeps the rest of the list
+ * tappable while one provider is busy.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
+import { useAppToast } from '../../toast/AppToastContext';
 import { api, type SocialIdentity, type SocialProvider } from '../../api/client';
+import { nativeSocialIdToken } from '../../utils/nativeSocialAuth';
 
 const PROVIDERS: SocialProvider[] = ['google', 'apple'];
 
@@ -31,11 +32,13 @@ export default function LinkedAccountsScreenContainer() {
   const { token } = useAuth();
   const { theme } = useTheme();
   const { t } = useTranslation();
+  const { showToast } = useAppToast();
   const c = theme.colors;
 
   const [identities, setIdentities] = useState<SocialIdentity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [providerBusy, setProviderBusy] = useState<SocialProvider | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -45,11 +48,11 @@ export default function LinkedAccountsScreenContainer() {
       const list = await api.getLinkedSocialIdentities(token);
       setIdentities(Array.isArray(list) ? list : []);
     } catch (e: any) {
-      setError(e?.message || 'Could not load linked accounts.');
+      setError(e?.message || t('home.linkedAccountsLoadFailed', { defaultValue: 'Could not load linked accounts.' }));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => {
     void load();
@@ -58,6 +61,92 @@ export default function LinkedAccountsScreenContainer() {
   const getIdentity = (provider: SocialProvider) =>
     identities.find((i) => i.provider === provider) || null;
 
+  const getProviderName = (provider: SocialProvider) => providerLabel(provider);
+
+  // ── Link / Unlink handlers ─────────────────────────────────────────────
+  const handleLink = useCallback(
+    async (provider: SocialProvider) => {
+      if (!token || providerBusy) return;
+      setProviderBusy(provider);
+      try {
+        const idToken = await nativeSocialIdToken(provider, t);
+        const message = await api.linkSocialIdentity(token, provider, idToken);
+        await load();
+        showToast(
+          message ||
+            t('home.linkSuccess', {
+              provider: getProviderName(provider),
+              defaultValue: `${getProviderName(provider)} connected.`,
+            }),
+          { type: 'success' },
+        );
+      } catch (e: any) {
+        const raw = String(e?.message || '').toLowerCase();
+        // Same heuristics as HomeScreen — backend errors aren't perfectly
+        // typed so we sniff the message text for the common "this email is
+        // already linked elsewhere" failure mode and surface a friendlier
+        // message instead of the raw backend string.
+        const friendlyAlreadyLinked =
+          raw.includes('invalid token') ||
+          raw.includes('already linked') ||
+          raw.includes('another user') ||
+          raw.includes('email already') ||
+          raw.includes('already exists');
+        const cancelled = raw.includes(t('auth.socialCancelled', { defaultValue: 'cancelled' }).toLowerCase());
+        if (cancelled) {
+          // Quiet cancellation — no toast.
+          return;
+        }
+        showToast(
+          friendlyAlreadyLinked
+            ? t('home.linkEmailAlreadyLinked', {
+                defaultValue: 'Email already linked to an Openspace account.',
+              })
+            : e?.message ||
+                t('home.linkFailed', {
+                  provider: getProviderName(provider),
+                  defaultValue: `Could not link ${getProviderName(provider)}.`,
+                }),
+          { type: 'error' },
+        );
+      } finally {
+        setProviderBusy(null);
+      }
+    },
+    [token, providerBusy, t, load, showToast],
+  );
+
+  const handleUnlink = useCallback(
+    async (provider: SocialProvider) => {
+      if (!token || providerBusy) return;
+      setProviderBusy(provider);
+      try {
+        const message = await api.unlinkSocialIdentity(token, provider);
+        await load();
+        showToast(
+          message ||
+            t('home.unlinkSuccess', {
+              provider: getProviderName(provider),
+              defaultValue: `${getProviderName(provider)} disconnected.`,
+            }),
+          { type: 'success' },
+        );
+      } catch (e: any) {
+        showToast(
+          e?.message ||
+            t('home.unlinkFailed', {
+              provider: getProviderName(provider),
+              defaultValue: `Could not disconnect ${getProviderName(provider)}.`,
+            }),
+          { type: 'error' },
+        );
+      } finally {
+        setProviderBusy(null);
+      }
+    },
+    [token, providerBusy, t, load, showToast],
+  );
+
   return (
     <ScrollView
       style={{ backgroundColor: c.background }}
@@ -65,7 +154,7 @@ export default function LinkedAccountsScreenContainer() {
     >
       <Text style={[styles.subtitle, { color: c.textMuted }]}>
         {t('home.linkedAccountsDescription', {
-          defaultValue: 'See which sign-in providers are connected to your account.',
+          defaultValue: 'Connect or disconnect the providers you use to sign in.',
         })}
       </Text>
 
@@ -80,6 +169,7 @@ export default function LinkedAccountsScreenContainer() {
           {PROVIDERS.map((provider) => {
             const identity = getIdentity(provider);
             const isLinked = !!identity;
+            const isBusy = providerBusy === provider;
             return (
               <View
                 key={provider}
@@ -97,41 +187,52 @@ export default function LinkedAccountsScreenContainer() {
                   <Text style={[styles.providerStatus, { color: c.textMuted }]}>
                     {isLinked
                       ? identity?.email
-                        ? t('home.linkedStatusWithEmail', { email: identity.email, defaultValue: `Connected as ${identity.email}` })
+                        ? t('home.linkedStatusWithEmail', {
+                            email: identity.email,
+                            defaultValue: `Connected as ${identity.email}`,
+                          })
                         : t('home.linkedStatusConnected', { defaultValue: 'Connected' })
                       : t('home.linkedStatusNotConnected', { defaultValue: 'Not connected' })}
                   </Text>
                 </View>
-                <View
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={isBusy || !!providerBusy}
+                  onPress={() => (isLinked ? handleUnlink(provider) : handleLink(provider))}
                   style={[
-                    styles.statusPill,
+                    styles.actionButton,
                     {
-                      borderColor: c.border,
-                      backgroundColor: isLinked ? (c.primary + '20') : c.background,
+                      borderColor: isLinked ? c.errorText ?? '#ef4444' : c.primary,
+                      backgroundColor: isLinked
+                        ? `${c.errorText ?? '#ef4444'}1A`
+                        : `${c.primary}1A`,
+                      opacity: isBusy || (!!providerBusy && !isBusy) ? 0.6 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.statusPillText, { color: isLinked ? c.primary : c.textMuted }]}>
-                    {isLinked
-                      ? t('home.linkedStatusActive', { defaultValue: 'Active' })
-                      : t('home.linkedStatusInactive', { defaultValue: 'None' })}
-                  </Text>
-                </View>
+                  {isBusy ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={isLinked ? c.errorText ?? '#ef4444' : c.primary}
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.actionButtonText,
+                        { color: isLinked ? c.errorText ?? '#ef4444' : c.primary },
+                      ]}
+                    >
+                      {isLinked
+                        ? t('home.unlinkAction', { defaultValue: 'Disconnect' })
+                        : t('home.linkAction', { defaultValue: 'Connect' })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
             );
           })}
         </View>
       )}
-
-      <View style={[styles.notice, { borderColor: c.border, backgroundColor: c.surface }]}>
-        <MaterialCommunityIcons name="information-outline" size={18} color={c.textSecondary} />
-        <Text style={[styles.noticeText, { color: c.textSecondary }]}>
-          {t('home.linkedAccountsManageOnWeb', {
-            defaultValue:
-              'Connecting and disconnecting providers is currently only available on the web. Visit openspacelive.com from a browser to manage your linked accounts.',
-          })}
-        </Text>
-      </View>
     </ScrollView>
   );
 }
@@ -175,28 +276,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  actionButton: {
+    minWidth: 92,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  notice: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-    marginTop: 6,
-  },
-  noticeText: {
-    flex: 1,
+  actionButtonText: {
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

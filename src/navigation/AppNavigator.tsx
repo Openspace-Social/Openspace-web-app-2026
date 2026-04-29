@@ -82,7 +82,7 @@ export type RootTabParamList = {
 
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' } | undefined;
-  Post: { postUuid: string; focusComment?: boolean };
+  Post: { postUuid: string; focusComment?: boolean; resumeTimeSec?: number };
   Profile: { username: string };
   Community: { name: string };
   Hashtag: { name: string };
