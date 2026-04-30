@@ -12,11 +12,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type FeedPost, type FeedType } from '../api/client';
+import { usePostReactions } from './usePostReactions';
 
 const FEED_PAGE_SIZE = 10;
 
 type ReactionGroup = any; // api type — keep loose until we own a proper ReactionGroup type
-type EmojiSummary = { id?: number; keyword?: string; image?: string };
 
 type UseFeedDataResult = {
   posts: FeedPost[];
@@ -130,7 +130,6 @@ export function useFeedData(token: string | null, feed: FeedType): UseFeedDataRe
   // ── Reactions ───────────────────────────────────────────────────────────
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [reactionGroupsLoading, setReactionGroupsLoading] = useState(false);
-  const [reactionActionLoading, setReactionActionLoading] = useState(false);
 
   // In-place edit of a single post by id — used for optimistic reaction updates.
   const patchPost = useCallback((postId: number, mutate: (p: FeedPost) => FeedPost) => {
@@ -154,82 +153,14 @@ export function useFeedData(token: string | null, feed: FeedType): UseFeedDataRe
     }
   }, [token, reactionGroups.length, reactionGroupsLoading]);
 
-  const reactToPost = useCallback(
-    async (post: FeedPost, emojiId: number) => {
-      const uuid = (post as any)?.uuid;
-      const postId = (post as any)?.id;
-      if (!token || !uuid || typeof postId !== 'number' || !emojiId || reactionActionLoading) return;
-
-      const current: any = post;
-      const isAlreadyMine = current?.reaction?.emoji?.id === emojiId;
-      const prevId: number | undefined = current?.reaction?.emoji?.id;
-      // Try the post's own counts first; if this is the first time anyone
-      // reacts with this emoji, the post has no entry for it, so fall back
-      // to the emoji library loaded by the reaction picker. Without this
-      // fallback the optimistic update produces an empty reaction object
-      // and the UI shows nothing until a full refetch.
-      let emojiMeta: EmojiSummary | undefined = (current.reactions_emoji_counts || []).find(
-        (e: any) => e.emoji?.id === emojiId,
-      )?.emoji;
-      if (!emojiMeta) {
-        for (const group of reactionGroups) {
-          const found = (group?.emojis || []).find((e: any) => e?.id === emojiId);
-          if (found) {
-            emojiMeta = found as EmojiSummary;
-            break;
-          }
-        }
-      }
-
-      // Optimistic update
-      if (isAlreadyMine) {
-        patchPost(postId, (p: any) => ({
-          ...p,
-          reaction: null,
-          reactions_emoji_counts: (p.reactions_emoji_counts || [])
-            .map((e: any) => (e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e))
-            .filter((e: any) => (e.count || 0) > 0),
-        }));
-      } else {
-        patchPost(postId, (p: any) => ({
-          ...p,
-          reaction: { emoji: emojiMeta },
-          reactions_emoji_counts: (() => {
-            const counts = (p.reactions_emoji_counts || []).map((e: any) => {
-              if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
-              if (prevId && e.emoji?.id === prevId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
-              return e;
-            });
-            // First-time reaction with this emoji — add an entry.
-            if (!counts.some((e: any) => e.emoji?.id === emojiId) && emojiMeta) {
-              counts.push({ emoji: emojiMeta, count: 1 });
-            }
-            return counts.filter((e: any) => (e.count || 0) > 0);
-          })(),
-        }));
-      }
-
-      setReactionActionLoading(true);
-      try {
-        if (isAlreadyMine) {
-          await api.removeReactionFromPost(token, uuid);
-        } else {
-          await api.reactToPost(token, uuid, emojiId);
-        }
-      } catch {
-        // Roll back to ground truth on failure — refetch this post's counts.
-        try {
-          const counts = await api.getPostReactionCounts(token, uuid);
-          patchPost(postId, (p: any) => ({ ...p, reactions_emoji_counts: counts }));
-        } catch {
-          // Leave optimistic state if both calls fail.
-        }
-      } finally {
-        setReactionActionLoading(false);
-      }
-    },
-    [token, reactionActionLoading, patchPost, reactionGroups],
-  );
+  // The optimistic-update + API + rollback dance is shared with the post
+  // detail and HomeScreen flows — see usePostReactions for the canonical
+  // implementation.
+  const { reactionActionLoading, reactToPost } = usePostReactions({
+    token,
+    reactionGroups,
+    patchPost,
+  });
 
   return {
     posts,

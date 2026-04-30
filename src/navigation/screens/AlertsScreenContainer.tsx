@@ -12,8 +12,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,6 +25,7 @@ import {
   matchesNotificationFilter,
   type NotificationFilterKey,
 } from '../../components/NotificationDrawer';
+import ThemedFlatList from '../../components/ThemedFlatList';
 import { api, AppNotification } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -151,9 +150,17 @@ export default function AlertsScreenContainer() {
     navigation.navigate('ProfileTab', { screen: 'Profile', params: { username } });
   }, [navigation]);
 
-  const onNavigatePost = useCallback((_postId: number, postUuid?: string) => {
+  const onNavigatePost = useCallback((
+    _postId: number,
+    postUuid?: string,
+    commentId?: number,
+    parentCommentId?: number,
+  ) => {
     if (!postUuid) return;
-    navigation.navigate('HomeTab', { screen: 'Post', params: { postUuid } });
+    navigation.navigate('HomeTab', {
+      screen: 'Post',
+      params: { postUuid, focusCommentId: commentId, focusParentCommentId: parentCommentId },
+    });
   }, [navigation]);
 
   const onNavigateCommunity = useCallback((name: string) => {
@@ -327,7 +334,7 @@ export default function AlertsScreenContainer() {
       </View>
 
       {/* List */}
-      <FlatList
+      <ThemedFlatList
         data={filtered}
         keyExtractor={(n) => `notif-${n.id}`}
         renderItem={({ item }) => (
@@ -352,14 +359,9 @@ export default function AlertsScreenContainer() {
         contentContainerStyle={{ paddingBottom: 140 }}
         onEndReached={() => { void onLoadMore(); }}
         onEndReachedThreshold={0.4}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { void onRefresh(); }}
-            tintColor={c.primary}
-            colors={[c.primary]}
-          />
-        }
+        refreshing={refreshing}
+        onRefresh={() => { void onRefresh(); }}
+        refreshTintColor={c.textPrimary}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <MaterialCommunityIcons name="bell-sleep-outline" size={48} color={c.textMuted} />

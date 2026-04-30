@@ -10,8 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type FeedPost } from '../api/client';
 import type { ReactionGroup } from '../components/PostCard';
-
-type EmojiSummary = { id?: number; keyword?: string; image?: string };
+import { usePostReactions } from './usePostReactions';
 
 export type UseUserPostsDataResult = {
   posts: FeedPost[];
@@ -38,7 +37,6 @@ export function useUserPostsData(
   const [error, setError] = useState('');
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [reactionGroupsLoading, setReactionGroupsLoading] = useState(false);
-  const [reactionActionLoading, setReactionActionLoading] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -88,76 +86,13 @@ export function useUserPostsData(
     setPosts((prev) => prev.map((p) => ((p as any).id === postId ? mutate(p) : p)));
   }, []);
 
-  const reactToPost = useCallback(
-    async (post: FeedPost, emojiId: number) => {
-      const uuid = (post as any)?.uuid;
-      const postId = (post as any)?.id;
-      if (!token || !uuid || typeof postId !== 'number' || !emojiId || reactionActionLoading) return;
-
-      const current: any = post;
-      const isAlreadyMine = current?.reaction?.emoji?.id === emojiId;
-      const prevId: number | undefined = current?.reaction?.emoji?.id;
-      let emojiMeta: EmojiSummary | undefined = (current.reactions_emoji_counts || []).find(
-        (e: any) => e.emoji?.id === emojiId,
-      )?.emoji;
-      if (!emojiMeta) {
-        for (const group of reactionGroups) {
-          const found = (group?.emojis || []).find((e: any) => e?.id === emojiId);
-          if (found) {
-            emojiMeta = found as EmojiSummary;
-            break;
-          }
-        }
-      }
-
-      const patch = (p: any): any => {
-        if (isAlreadyMine) {
-          return {
-            ...p,
-            reaction: null,
-            reactions_emoji_counts: (p.reactions_emoji_counts || [])
-              .map((e: any) =>
-                e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e,
-              )
-              .filter((e: any) => (e.count || 0) > 0),
-          };
-        }
-        const counts = (p.reactions_emoji_counts || []).map((e: any) => {
-          if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
-          if (prevId && e.emoji?.id === prevId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
-          return e;
-        });
-        if (!counts.some((e: any) => e.emoji?.id === emojiId) && emojiMeta) {
-          counts.push({ emoji: emojiMeta, count: 1 });
-        }
-        return {
-          ...p,
-          reaction: { emoji: emojiMeta },
-          reactions_emoji_counts: counts.filter((e: any) => (e.count || 0) > 0),
-        };
-      };
-      patchPost(postId, patch as (p: FeedPost) => FeedPost);
-
-      setReactionActionLoading(true);
-      try {
-        if (isAlreadyMine) {
-          await api.removeReactionFromPost(token, uuid);
-        } else {
-          await api.reactToPost(token, uuid, emojiId);
-        }
-      } catch {
-        try {
-          const counts = await api.getPostReactionCounts(token, uuid);
-          patchPost(postId, ((p: any) => ({ ...p, reactions_emoji_counts: counts })) as (p: FeedPost) => FeedPost);
-        } catch {
-          // give up
-        }
-      } finally {
-        setReactionActionLoading(false);
-      }
-    },
-    [token, reactionActionLoading, reactionGroups, patchPost],
-  );
+  // Shared optimistic-update hook — see usePostReactions for the full
+  // logic (toggle, swap, add, rollback on failure).
+  const { reactionActionLoading, reactToPost } = usePostReactions({
+    token,
+    reactionGroups,
+    patchPost,
+  });
 
   return {
     posts,

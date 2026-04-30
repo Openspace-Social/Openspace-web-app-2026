@@ -8,12 +8,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,6 +20,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, GlobalModeratedObject, ModeratedObjectReport } from '../api/client';
+import ThemedFlatList from '../components/ThemedFlatList';
 
 type Status = 'P' | 'A' | 'R';
 type ModAction = 'approve' | 'reject' | 'verify';
@@ -238,20 +237,15 @@ export default function ModerationTasksScreen({ token, c, t, onError, onNotice }
           <ActivityIndicator color={c.primary} size="large" />
         </View>
       ) : (
-        <FlatList
+        <ThemedFlatList
           data={items}
           keyExtractor={(item) => `mod-${item.id}`}
           renderItem={renderRow}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => { void onRefresh(); }}
-              tintColor={c.primary}
-              colors={[c.primary]}
-            />
-          }
+          refreshing={refreshing}
+          onRefresh={() => { void onRefresh(); }}
+          refreshTintColor={c.textPrimary}
           ListEmptyComponent={
             <Text style={[styles.emptyText, { color: c.textMuted }]}>
               {t('home.modTasksEmpty', { defaultValue: 'No items in this queue.' })}

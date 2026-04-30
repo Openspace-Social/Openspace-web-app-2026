@@ -35,6 +35,10 @@ type Input = {
   reactToPost: (post: FeedPost, emojiId: number) => Promise<void>;
   /** Open a reaction picker modal for this post — owned by FeedScreenContainer. */
   openReactionPicker: (post: FeedPost) => void;
+  /** Open the "who reacted" drawer — owned by the feed container so the
+   *  drawer can be mounted alongside the picker. When omitted, the
+   *  reactions-count tap falls back to a "coming soon" toast (legacy). */
+  openReactionList?: (post: FeedPost) => void;
   /** Full comments state + handlers from useCommentsData. */
   comments: UseCommentsDataResult;
   /** Remove a post from the local feed after a successful delete. */
@@ -51,6 +55,7 @@ export function useNativePostInteractions({
   ensureReactionGroups,
   reactToPost,
   openReactionPicker,
+  openReactionList,
   comments,
   removePost,
   patchPost,
@@ -209,8 +214,9 @@ export function useNativePostInteractions({
         void ensureReactionGroups();
         openReactionPicker(post);
       },
-      onOpenReactionList: () => {
-        stub('Reaction details');
+      onOpenReactionList: (post: FeedPost) => {
+        if (openReactionList) openReactionList(post);
+        else stub('Reaction details');
       },
       onReactToComment: () => {
         stub('Comment reactions');
@@ -227,6 +233,10 @@ export function useNativePostInteractions({
           // detail player resumes where the feed cell left off (mirrors
           // web's resumeTimeSec hand-off via openPostDetailWithPause).
           resumeTimeSec: options?.resumeTimeSec,
+          // Lets the detail screen pick the right initial view mode (media
+          // tap → mediaFull, comment-icon tap → commentsFull). Without this
+          // every entry would default to the same mode regardless of intent.
+          initialView: options?.initialView,
         });
       },
       onNavigateProfile: (username) => navigation.navigate('Profile', { username }),
@@ -433,6 +443,7 @@ export function useNativePostInteractions({
       showToast,
       removePost,
       patchPost,
+      openReactionList,
       followStateByUsername,
       followActionLoadingByUsername,
       handleToggleFollow,

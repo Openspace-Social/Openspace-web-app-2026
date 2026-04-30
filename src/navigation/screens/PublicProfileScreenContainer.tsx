@@ -22,7 +22,6 @@ import {
   Image,
   Modal,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,9 +39,12 @@ import { useAppToast } from '../../toast/AppToastContext';
 import { useUserPostsData } from '../../hooks/useUserPostsData';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
+import { useReactionList } from '../../hooks/useReactionList';
 import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
+import ReactionListDrawer from '../../components/ReactionListDrawer';
+import { ThemedScrollView } from '../../components/ThemedFlatList';
 import EditProfileModal from '../../components/EditProfileModal';
 import UserBadge from '../../components/UserBadge';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
@@ -513,6 +515,7 @@ export default function PublicProfileScreenContainer() {
     [reactionPickerPost, reactToPost],
   );
 
+  const reactionList = useReactionList(token);
   const interactions = useNativePostInteractions({
     reactionGroups,
     reactionPickerLoading: reactionGroupsLoading,
@@ -520,6 +523,7 @@ export default function PublicProfileScreenContainer() {
     ensureReactionGroups,
     reactToPost,
     openReactionPicker,
+    openReactionList: reactionList.open,
     comments,
   });
 
@@ -607,6 +611,21 @@ export default function PublicProfileScreenContainer() {
         t={t}
         title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
       />
+      <ReactionListDrawer
+        visible={!!reactionList.post}
+        emojiCounts={reactionList.post?.reactions_emoji_counts || []}
+        activeEmoji={reactionList.emoji}
+        users={reactionList.users}
+        loading={reactionList.loading}
+        onSelectEmoji={reactionList.selectEmoji}
+        onSelectUser={(usernameToOpen) => {
+          reactionList.close();
+          interactions.onNavigateProfile(usernameToOpen);
+        }}
+        onClose={reactionList.close}
+        c={c}
+        t={t}
+      />
       {isOwnProfile ? (
         <EditProfileModal
           visible={editOpen}
@@ -620,17 +639,12 @@ export default function PublicProfileScreenContainer() {
           onSave={saveProfileFields}
         />
       ) : null}
-      <ScrollView
+      <ThemedScrollView
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { void refresh(); }}
-            tintColor={c.primary}
-            colors={[c.primary]}
-          />
-        }
+        refreshing={refreshing}
+        onRefresh={() => { void refresh(); }}
+        refreshTintColor={c.textPrimary}
       >
         {/* Cover */}
         <View style={[styles.cover, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
@@ -1017,7 +1031,7 @@ export default function PublicProfileScreenContainer() {
             </View>
           )}
         </SectionCard>
-      </ScrollView>
+      </ThemedScrollView>
 
       {/* More-actions page — full-screen modal opened from the ⋯ button.
        *  Replaces the inline dropdown so each action gets a clear, tappable

@@ -1,9 +1,9 @@
 import './src/i18n'; // initialise i18next before any component renders
 import { StatusBar } from 'expo-status-bar';
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme as RNDefaultTheme, DarkTheme as RNDarkTheme, type Theme as RNTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from './src/i18n';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -32,7 +32,7 @@ function isPublicRoute(r: AppRoute): boolean {
 }
 
 function Root() {
-  const { isDark } = useTheme();
+  const { isDark, theme } = useTheme();
   const [token, setToken] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => {
@@ -187,10 +187,14 @@ function Root() {
   //     status bar / camera cutout.
   //   - Web: env(safe-area-inset-*) is applied via inline style.
   const RootContainer: any = Platform.OS === 'web' ? View : SafeAreaView;
+  // Apply the theme background to the root so the safe-area-inset regions
+  // (iOS notch + home-indicator bar) match the theme rather than rendering
+  // the system-default white — otherwise dark mode shows white bars at
+  // the very top and bottom of the screen.
   const rootStyle =
     Platform.OS === 'web'
-      ? [styles.root, webSafeAreaStyle as any]
-      : styles.root;
+      ? [styles.root, webSafeAreaStyle as any, { backgroundColor: theme.colors.background }]
+      : [styles.root, { backgroundColor: theme.colors.background }];
 
   // Single source of truth for auth — consumed by both the legacy HomeScreen
   // route-switcher and any migrated react-navigation screens.
@@ -225,26 +229,58 @@ const webSafeAreaStyle = {
   paddingRight: 'env(safe-area-inset-right, 0px)',
 } as const;
 
+/**
+ * Bridges our ThemeContext into react-navigation's NavigationContainer.
+ * Without this the stack/tab headers always render in RN-Nav's default
+ * (light) theme — white card, black text — even when our app is in dark
+ * mode. By feeding NavigationContainer a theme derived from `isDark`,
+ * the header background, title text, and back chevron all flip with
+ * the rest of the UI.
+ */
+function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
+  const { isDark, theme } = useTheme();
+  const navTheme: RNTheme = React.useMemo(() => {
+    const base = isDark ? RNDarkTheme : RNDefaultTheme;
+    return {
+      ...base,
+      dark: isDark,
+      colors: {
+        ...base.colors,
+        primary: theme.colors.primary,
+        background: theme.colors.background,
+        card: theme.colors.surface,        // stack/tab header background
+        text: theme.colors.textPrimary,    // header title + back chevron
+        border: theme.colors.border,
+        notification: theme.colors.errorText,
+      },
+    };
+  }, [isDark, theme]);
+
+  return (
+    <NavigationContainer
+      theme={navTheme}
+      // Without a fallback, NavigationContainer's useDocumentTitle hook
+      // writes `document.title = options?.title ?? route?.name` which
+      // is literally `undefined` on web (the new navigator isn't mounted
+      // there yet), so the browser tab reads "undefined".
+      documentTitle={{
+        formatter: (options, route) =>
+          (options as any)?.title ?? route?.name ?? 'Openspace.Social',
+      }}
+    >
+      {children}
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      {/* NavigationContainer mounted at the root so future react-navigation
-          navigators + useNavigation() calls have context available. The custom
-          routing in Root() is still the source of truth until USE_NEW_NAVIGATOR
-          flips on, at which point AppNavigator owns routing.
-          Linking disabled for now — the config has overlapping paths across
-          tabs that need deduplication before it can be enabled. */}
-      <NavigationContainer
-        // Without a fallback, NavigationContainer's useDocumentTitle hook
-        // writes `document.title = options?.title ?? route?.name` which
-        // is literally `undefined` on web (the new navigator isn't mounted
-        // there yet), so the browser tab reads "undefined".
-        documentTitle={{
-          formatter: (options, route) =>
-            (options as any)?.title ?? route?.name ?? 'Openspace.Social',
-        }}
-      >
-        <ThemeProvider>
+      {/* ThemeProvider must be ABOVE NavigationContainer so the
+          ThemedNavigationContainer wrapper can read isDark/theme via
+          useTheme() before constructing the navigator's theme prop. */}
+      <ThemeProvider>
+        <ThemedNavigationContainer>
           <AppToastProvider>
             <GifPickerProvider>
               <MentionPopupProvider>
@@ -252,8 +288,8 @@ export default function App() {
               </MentionPopupProvider>
             </GifPickerProvider>
           </AppToastProvider>
-        </ThemeProvider>
-      </NavigationContainer>
+        </ThemedNavigationContainer>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

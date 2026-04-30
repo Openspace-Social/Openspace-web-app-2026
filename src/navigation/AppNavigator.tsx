@@ -82,7 +82,24 @@ export type RootTabParamList = {
 
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' } | undefined;
-  Post: { postUuid: string; focusComment?: boolean; resumeTimeSec?: number };
+  Post: {
+    postUuid: string;
+    /** Auto-focuses the post-level composer (used by "tap comment icon" entry). */
+    focusComment?: boolean;
+    /** Resume video playback from this offset on the post detail. */
+    resumeTimeSec?: number;
+    /** Scroll to (and highlight) the comment with this id on mount. Used by notification-tile taps. */
+    focusCommentId?: number;
+    /** When focusCommentId is a reply, this is the parent comment id —
+     *  PostDetailModal needs it to expand the parent thread first. */
+    focusParentCommentId?: number;
+    /** Drives the post-detail's initial view mode based on what the
+     *  user tapped to get here:
+     *  - 'media'    → mediaFull (player fills viewport)
+     *  - 'comments' → commentsFull (comments fill viewport)
+     *  Omit to use the existing post-type default. */
+    initialView?: 'media' | 'comments';
+  };
   Profile: { username: string };
   Community: { name: string };
   Hashtag: { name: string };

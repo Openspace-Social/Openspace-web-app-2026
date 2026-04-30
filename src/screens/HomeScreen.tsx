@@ -50,6 +50,7 @@ import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
 import PublicProfileScreen from './PublicProfileScreen';
 import CommunityProfileScreen from './CommunityProfileScreen';
+import { usePostReactions } from '../hooks/usePostReactions';
 import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
@@ -724,7 +725,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
   const [reactionPickerPostId, setReactionPickerPostId] = useState<number | null>(null);
   const [reactionPickerLoading, setReactionPickerLoading] = useState(false);
-  const [reactionActionLoading, setReactionActionLoading] = useState(false);
+  // Separate from the post-level `reactionActionLoading` (which lives in
+  // the shared usePostReactions hook) — comment reactions are an
+  // independent operation and shouldn't block / be blocked by post
+  // reactions in flight.
+  const [commentReactionActionLoading, setCommentReactionActionLoading] = useState(false);
   const [reactionListOpen, setReactionListOpen] = useState(false);
   const [reactionListPost, setReactionListPost] = useState<FeedPost | null>(null);
   const [reactionListLoading, setReactionListLoading] = useState(false);
@@ -3058,6 +3063,21 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setActivePost((prev) => (prev && prev.id === postId ? patch(prev) : prev));
   }
 
+  // Shared optimistic-react logic. The wrapper below (`reactToPostWithEmoji`)
+  // adds the HomeScreen-specific bits: closing the picker, refreshing
+  // canonical counts after a successful add, and surfacing errors to the user.
+  const { reactionActionLoading, reactToPost: reactToPostBase } = usePostReactions({
+    token,
+    reactionGroups,
+    patchPost: applyPostPatch,
+    onAfterReact: async (post, wasAdd) => {
+      if (wasAdd) await refreshPostReactionCounts(post);
+    },
+    onError: (e: any) => {
+      setError(e?.message || t('home.reactionLoadFailed'));
+    },
+  });
+
   function openLongPostEdit(post: FeedPost) {
     const sourceBlocks = Array.isArray(post.long_text_blocks) ? post.long_text_blocks : [];
     const blocks: LongPostBlock[] = sourceBlocks.map((b, idx) => {
@@ -3461,56 +3481,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function reactToPostWithEmoji(post: FeedPost, emojiId?: number) {
-    if (!post.uuid || !emojiId || reactionActionLoading) return;
-    const isAlreadyMyReaction = post.reaction?.emoji?.id === emojiId;
-    const prevReactionEmojiId = post.reaction?.emoji?.id;
-    const emojiMeta = (post.reactions_emoji_counts || []).find((e) => e.emoji?.id === emojiId)?.emoji;
-
-    // Optimistic update — apply immediately so the UI feels instant
-    if (isAlreadyMyReaction) {
-      applyPostPatch(post.id, (current) => ({
-        ...current,
-        reaction: null,
-        reactions_emoji_counts: (current.reactions_emoji_counts || [])
-          .map((e) => e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e)
-          .filter((e) => (e.count || 0) > 0),
-      }));
-    } else {
-      applyPostPatch(post.id, (current) => ({
-        ...current,
-        reaction: { emoji: emojiMeta },
-        reactions_emoji_counts: (current.reactions_emoji_counts || []).map((e) => {
-          if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
-          if (prevReactionEmojiId && e.emoji?.id === prevReactionEmojiId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
-          return e;
-        }),
-      }));
-    }
-
-    setReactionActionLoading(true);
-    try {
-      if (isAlreadyMyReaction) {
-        // Removal: optimistic update is already correct — no reconciliation needed
-        await api.removeReactionFromPost(token, post.uuid);
-      } else {
-        // Add: reconcile with server to get canonical reaction object and counts
-        const reaction = await api.reactToPost(token, post.uuid, emojiId);
-        applyPostPatch(post.id, (current) => ({ ...current, reaction }));
-        await refreshPostReactionCounts(post);
-      }
-      setReactionPickerPostId(null);
-    } catch (e: any) {
-      // Revert optimistic update on failure
-      applyPostPatch(post.id, () => post);
-      setError(e?.message || t('home.reactionLoadFailed'));
-    } finally {
-      setReactionActionLoading(false);
-    }
+    if (!post.uuid || !emojiId) return;
+    await reactToPostBase(post, emojiId);
+    // Close the picker after the action settles. (The hook already handled
+    // the optimistic update, the API call, and on-success canonical-count
+    // refresh via the onAfterReact callback wired above.)
+    setReactionPickerPostId(null);
   }
 
   async function reactToComment(postId: number, commentId: number, emojiId?: number) {
     const sourcePost = getSourcePost(postId);
-    if (!sourcePost?.uuid || !emojiId || reactionActionLoading) return;
+    if (!sourcePost?.uuid || !emojiId || commentReactionActionLoading) return;
 
     const currentComment = (localComments[postId] || []).find((c) => c.id === commentId);
     const isAlreadyMyReaction = currentComment?.reaction?.emoji?.id === emojiId;
@@ -3543,7 +3524,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }),
     }));
 
-    setReactionActionLoading(true);
+    setCommentReactionActionLoading(true);
     try {
       if (isAlreadyMyReaction) {
         // Removal: optimistic update is already correct — no reconciliation needed
@@ -3569,7 +3550,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }
       setError(e?.message || t('home.reactionLoadFailed'));
     } finally {
-      setReactionActionLoading(false);
+      setCommentReactionActionLoading(false);
     }
   }
 
@@ -4314,9 +4295,19 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
-  function handleNotificationNavigatePost(postId: number, postUuid?: string) {
+  function handleNotificationNavigatePost(
+    postId: number,
+    postUuid?: string,
+    commentId?: number,
+    parentCommentId?: number,
+  ) {
     setNotifDrawerOpen(false);
-    onNavigate({ screen: 'post', postUuid: postUuid || String(postId) });
+    onNavigate({
+      screen: 'post',
+      postUuid: postUuid || String(postId),
+      focusCommentId: commentId,
+      focusParentCommentId: parentCommentId,
+    });
   }
 
   function handleNotificationNavigateProfile(username: string) {
@@ -8635,8 +8626,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             <RefreshControl
               refreshing={feedRefreshing}
               onRefresh={handleRefreshFeed}
-              tintColor={c.primary}
-              colors={[c.primary]}
+              tintColor={c.textPrimary}
+              colors={[c.textPrimary]}
             />
           }
         onScroll={({ nativeEvent }) => {

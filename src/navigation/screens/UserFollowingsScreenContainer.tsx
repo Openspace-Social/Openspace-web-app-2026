@@ -9,9 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
-  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -22,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api } from '../../api/client';
+import ThemedFlatList from '../../components/ThemedFlatList';
 import type { HomeStackParamList } from '../AppNavigator';
 
 type FollowingUser = {
@@ -158,7 +157,7 @@ export default function UserFollowingsScreenContainer() {
   }
 
   return (
-    <FlatList
+    <ThemedFlatList
       style={{ backgroundColor: c.background }}
       contentContainerStyle={styles.listContent}
       data={items}
@@ -167,9 +166,9 @@ export default function UserFollowingsScreenContainer() {
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       onEndReachedThreshold={0.4}
       onEndReached={() => { void loadMore(); }}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => { void onRefresh(); }} tintColor={c.primary} colors={[c.primary]} />
-      }
+      refreshing={refreshing}
+      onRefresh={() => { void onRefresh(); }}
+      refreshTintColor={c.textPrimary}
       ListEmptyComponent={
         error ? (
           <Text style={[styles.emptyText, { color: c.errorText }]}>{error}</Text>

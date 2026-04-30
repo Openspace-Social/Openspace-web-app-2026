@@ -562,7 +562,21 @@ export type PostCardProps = {
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
   onReactToPostWithEmoji?: (post: FeedPost, emojiId?: number) => void | Promise<void>;
   onToggleFollow: (username: string, currentlyFollowing: boolean) => void;
-  onOpenPostDetail: (post: FeedPost, options?: { resumeTimeSec?: number; focusComposer?: boolean }) => void;
+  onOpenPostDetail: (
+    post: FeedPost,
+    options?: {
+      resumeTimeSec?: number;
+      focusComposer?: boolean;
+      /**
+       * Tells the post detail screen which surface to lead with on mount.
+       * 'media' → mediaFull (player fills viewport, comments tucked away).
+       * 'comments' → commentsFull (media collapsed, comments fill viewport).
+       * Omitted → use the existing default (mediaFull for video posts,
+       * split otherwise).
+       */
+      initialView?: 'media' | 'comments';
+    },
+  ) => void;
   onToggleExpand: (postId: number) => void;
   onOpenReactionList: (post: FeedPost, emoji?: { id?: number; keyword?: string; image?: string }) => void | Promise<void>;
   onOpenReactionPicker: (post: FeedPost) => void;
@@ -1314,7 +1328,9 @@ function PostCard({
       }
     }
     setInlineManualPlaybackStarted(false);
-    onOpenPostDetail(post, { resumeTimeSec });
+    // Tap on the inline media → land on the media-full layout in the
+    // post detail so the player fills the viewport.
+    onOpenPostDetail(post, { resumeTimeSec, initialView: 'media' });
   }
 
   function replayInlineVideo() {
@@ -2450,13 +2466,16 @@ function PostCard({
           style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
           onPress={() => {
             if (Platform.OS !== 'web') {
-              onOpenPostDetail(post, { focusComposer: true });
+              // Comment icon → land on commentsFull so the comments list
+              // fills the viewport. Composer auto-focus is preserved so
+              // the keyboard pops up immediately.
+              onOpenPostDetail(post, { focusComposer: true, initialView: 'comments' });
               return;
             }
             if (effectiveHasInlineMedia) {
               onToggleCommentBox(post.id);
             } else {
-              onOpenPostDetail(post);
+              onOpenPostDetail(post, { initialView: 'comments' });
             }
           }}
           activeOpacity={0.85}

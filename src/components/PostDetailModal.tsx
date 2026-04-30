@@ -474,6 +474,18 @@ type Props = {
   getPostCommentsCount: (post: FeedPost) => number;
   initialMediaTimeSec?: number | null;
   onConsumeInitialMediaTime?: () => void;
+  /** Comment id to scroll-to + briefly highlight on mount. Used by
+   *  notification-tile taps. Cleared via onConsumeInitialFocusComment. */
+  initialFocusCommentId?: number | null;
+  /** When initialFocusCommentId is a reply, this is its parent — the
+   *  modal expands the parent's reply thread before scrolling. */
+  initialFocusParentCommentId?: number | null;
+  onConsumeInitialFocusComment?: () => void;
+  /** What surface to lead with on mount. When set this overrides the
+   *  post-type-based default. 'media' → mediaFull, 'comments' →
+   *  commentsFull. Routed from a PostCard tap on the media region vs
+   *  the comment icon. */
+  initialView?: 'media' | 'comments' | null;
   onClose: () => void;
   onLoadReactionList: (post: FeedPost, emoji?: ReactionEmoji) => void | Promise<void>;
   onEnsureReactionGroups: () => Promise<void>;
@@ -551,6 +563,10 @@ export default function PostDetailModal({
   getPostCommentsCount,
   initialMediaTimeSec,
   onConsumeInitialMediaTime,
+  initialFocusCommentId,
+  initialFocusParentCommentId,
+  onConsumeInitialFocusComment,
+  initialView,
   onClose,
   onLoadReactionList,
   onEnsureReactionGroups,
@@ -655,23 +671,30 @@ export default function PostDetailModal({
     setViewMode(next);
   }
 
-  // Pull-down on a viewport area expands media (commentsFull → split → mediaFull).
-  // Pull-up does the opposite. Returns true if the gesture moved state, false
-  // otherwise so callers can decide what to do (e.g. ignore short scrolls).
+  // Swipe transitions are binary by design: a single pull-up from anywhere
+  // that isn't already commentsFull lands on commentsFull (so the user
+  // sees the full comments + reactions panel, not a 50/50 split). A
+  // pull-down does the inverse — straight to mediaFull. The intermediate
+  // 'split' mode is reachable as an initial render state but the gestures
+  // skip past it for less friction.
+  // Returns true if the gesture moved state, false otherwise so callers
+  // can decide what to do (e.g. ignore short scrolls).
   function applySwipe(dy: number): boolean {
     if (dy <= -SWIPE_TRIGGER_DY) {
       // Pull up — toward comments.
-      if (viewMode === 'mediaFull') transitionViewMode('split');
-      else if (viewMode === 'split') transitionViewMode('commentsFull');
-      else return false;
-      return true;
+      if (viewMode !== 'commentsFull') {
+        transitionViewMode('commentsFull');
+        return true;
+      }
+      return false;
     }
     if (dy >= SWIPE_TRIGGER_DY) {
       // Pull down — toward media.
-      if (viewMode === 'commentsFull') transitionViewMode('split');
-      else if (viewMode === 'split') transitionViewMode('mediaFull');
-      else return false;
-      return true;
+      if (viewMode !== 'mediaFull') {
+        transitionViewMode('mediaFull');
+        return true;
+      }
+      return false;
     }
     return false;
   }
@@ -727,16 +750,143 @@ export default function PostDetailModal({
 
   // Reset draft + pick the right initial viewMode each time the user
   // navigates to a different post.
+  //
+  // Priority order:
+  //  1. Comment-notification tap (initialFocusCommentId set) → commentsFull,
+  //     so the targeted comment isn't buried under the media.
+  //  2. Explicit initialView from the entry point — PostCard sends
+  //     'media' on a media tap and 'comments' on the comment-icon tap.
+  //  3. Post-type default — video posts default to mediaFull, others to split.
   const prevPostIdRef = React.useRef<number | null>(null);
   if (activePost && activePost.id !== prevPostIdRef.current) {
     prevPostIdRef.current = activePost.id;
     if (localCommentDraft !== '') setLocalCommentDraft('');
-    const targetMode: DetailViewMode = activePostHasVideo ? 'mediaFull' : 'split';
+    const targetMode: DetailViewMode = initialFocusCommentId
+      ? 'commentsFull'
+      : initialView === 'comments'
+        ? 'commentsFull'
+        : initialView === 'media'
+          ? 'mediaFull'
+          : activePostHasVideo
+            ? 'mediaFull'
+            : 'split';
     if (viewMode !== targetMode) setViewMode(targetMode);
   }
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postReactionHostRef = React.useRef<any>(null);
   const detailVideoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  // Refs for the comment-focus behavior triggered by notification taps.
+  // - detailScrollRef: the post detail body ScrollView (scroll target).
+  // - commentItemRefs: keyed by commentId, used to measureLayout into the
+  //   ScrollView so we know exactly how far to scroll.
+  // - highlightedCommentId: temporarily highlighted target so the user
+  //   can spot the comment after the scroll animation lands.
+  const detailScrollRef = React.useRef<ScrollView | null>(null);
+  // A non-collapsable wrapper inside the ScrollView. Used as the relative
+  // host for measureLayout — Fabric requires a ReactNativeElement ref
+  // there, and ScrollView's own ref is a JS component (not a host).
+  const detailScrollContentRef = React.useRef<View | null>(null);
+  const commentItemRefs = React.useRef<Record<number, any>>({});
+  const [highlightedCommentId, setHighlightedCommentId] = React.useState<number | null>(null);
+  const focusedCommentIdRef = React.useRef<number | null>(null);
+
+  // Keep latest values accessible without putting them in the
+  // focus-effect's deps. If the deps include unstable callbacks (the
+  // parent often re-creates onConsume* on every render via inline
+  // arrows), the effect would re-run on every parent render, the
+  // cleanup would cancel the in-flight retry loop, and the focus would
+  // silently never apply.
+  const commentRepliesExpandedRef = React.useRef(commentRepliesExpanded);
+  const onToggleCommentRepliesRef = React.useRef(onToggleCommentReplies);
+  const onConsumeInitialFocusCommentRef = React.useRef(onConsumeInitialFocusComment);
+  React.useEffect(() => {
+    commentRepliesExpandedRef.current = commentRepliesExpanded;
+    onToggleCommentRepliesRef.current = onToggleCommentReplies;
+    onConsumeInitialFocusCommentRef.current = onConsumeInitialFocusComment;
+  });
+
+  React.useEffect(() => {
+    if (!initialFocusCommentId || !activePost?.id) return;
+    if (focusedCommentIdRef.current === initialFocusCommentId) return;
+    focusedCommentIdRef.current = initialFocusCommentId;
+    const targetId = initialFocusCommentId;
+    const parentId = initialFocusParentCommentId ?? null;
+    const postId = activePost.id;
+
+    // If the target is a reply, expand the parent's thread first so the
+    // reply gets rendered (and thus measurable). Use refs so we don't
+    // re-trigger the effect when commentRepliesExpanded changes.
+    if (parentId && !commentRepliesExpandedRef.current[parentId]) {
+      onToggleCommentRepliesRef.current(postId, parentId);
+    }
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    const MAX_WAIT_MS = 8000;
+    const POLL_MS = 250;
+    let consumed = false;
+
+    const tryFocus = () => {
+      if (cancelled) return;
+      if (Date.now() - startedAt > MAX_WAIT_MS) {
+        if (!consumed) onConsumeInitialFocusCommentRef.current?.();
+        return;
+      }
+
+      const node = commentItemRefs.current[targetId];
+      const scrollView = detailScrollRef.current;
+      const scrollContent = detailScrollContentRef.current;
+      if (!node || !scrollView || !scrollContent) {
+        setTimeout(tryFocus, POLL_MS);
+        return;
+      }
+
+      try {
+        // Pass the wrapper View ref directly (Fabric requires a host
+        // component ref, NOT a node handle from findNodeHandle).
+        node.measureLayout(
+          scrollContent as any,
+          (_x: number, y: number, _w: number, h: number) => {
+            if (cancelled) return;
+            // Layout not finalized yet — try again. h===0 means the row
+            // hasn't been measured (common right after a fresh expand).
+            if (!h || h <= 0) {
+              setTimeout(tryFocus, POLL_MS);
+              return;
+            }
+            scrollView.scrollTo({ y: Math.max(0, y - 80), animated: true });
+            setHighlightedCommentId(targetId);
+            setTimeout(() => {
+              if (!cancelled) {
+                setHighlightedCommentId((curr) => (curr === targetId ? null : curr));
+              }
+            }, 3500);
+            consumed = true;
+            onConsumeInitialFocusCommentRef.current?.();
+          },
+          () => {
+            setTimeout(tryFocus, POLL_MS);
+          },
+        );
+      } catch {
+        setTimeout(tryFocus, POLL_MS);
+      }
+    };
+
+    const startTimer = setTimeout(tryFocus, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(startTimer);
+    };
+    // Deliberately exclude callback props — accessed via refs above so the
+    // effect re-runs only when the focus *target* changes, not on every
+    // parent render (which would cancel the in-flight retry loop).
+  }, [
+    initialFocusCommentId,
+    initialFocusParentCommentId,
+    activePost?.id,
+  ]);
   const creatorAvatar = activePost?.creator?.avatar || activePost?.creator?.profile?.avatar;
   const hasReacted = !!activePost?.reaction?.id || !!activePost?.reaction?.emoji?.id;
   const mediaGalleryItems = React.useMemo(() => {
@@ -1087,7 +1237,7 @@ export default function PostDetailModal({
 
   function renderLinkedText(text: string, keyPrefix: string, textStyle?: any) {
     return (
-      <Text style={textStyle}>
+      <Text key={keyPrefix} style={textStyle}>
         {extractTextSegmentsWithLinks(text).map((segment, idx) => {
           if (segment.isLink) return (
             <Text key={`${keyPrefix}-${idx}`} onPress={() => onOpenLink(segment.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>
@@ -1363,7 +1513,25 @@ export default function PostDetailModal({
       const repliesCount = Math.max(comment.replies_count || 0, (commentRepliesById[comment.id] || []).length);
 
       return (
-      <View key={`${postId}-detail-comment-${comment.id || index}`} style={styles.detailCommentItem}>
+      <View
+        key={`${postId}-detail-comment-${comment.id || index}`}
+        ref={(node) => { if (comment.id) commentItemRefs.current[comment.id] = node; }}
+        // collapsable=false prevents React Native (Fabric) from flattening
+        // this View away — without it, measureLayout fails because the ref
+        // points to a non-host node.
+        collapsable={false}
+        style={[
+          styles.detailCommentItem,
+          highlightedCommentId === comment.id && {
+            backgroundColor: c.primary + '4d',
+            borderRadius: 10,
+            borderWidth: 2,
+            borderColor: c.primary,
+            paddingHorizontal: 8,
+            paddingVertical: 6,
+          },
+        ]}
+      >
         <View style={styles.detailCommentRow}>
           <View style={[styles.detailCommentAvatar, { backgroundColor: c.primary }]}> 
             {comment.commenter?.profile?.avatar ? (
@@ -1527,7 +1695,22 @@ export default function PostDetailModal({
               const isEditingReply = !!editingReplyById[reply.id];
 
               return (
-              <View key={`reply-${comment.id}-${reply.id || replyIndex}`} style={styles.commentReplyRow}>
+              <View
+                key={`reply-${comment.id}-${reply.id || replyIndex}`}
+                ref={(node) => { if (reply.id) commentItemRefs.current[reply.id] = node; }}
+                collapsable={false}
+                style={[
+                  styles.commentReplyRow,
+                  highlightedCommentId === reply.id && {
+                    backgroundColor: c.primary + '4d',
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: c.primary,
+                    paddingHorizontal: 8,
+                    paddingVertical: 6,
+                  },
+                ]}
+              >
                 <View style={styles.commentReplyMainRow}>
                   <View style={[styles.commentReplyAvatar, { backgroundColor: c.primary }]}> 
                     {reply.commenter?.profile?.avatar ? (
@@ -2216,11 +2399,13 @@ export default function PostDetailModal({
 
               {/* mediaFull: render a compact "Show comments" tap-bar in
                 *  place of the full header + body. Tapping or pulling up
-                *  restores the split view. */}
+                *  jumps straight to commentsFull so the entire comments +
+                *  reactions panel takes over (matches the swipe-up
+                *  behavior — both use the same spring animation). */}
               {isNarrow && viewMode === 'mediaFull' ? (
                 <TouchableOpacity
                   activeOpacity={0.75}
-                  onPress={() => transitionViewMode('split')}
+                  onPress={() => transitionViewMode('commentsFull')}
                   style={{
                     flex: 1,
                     alignItems: 'center',
@@ -2281,6 +2466,7 @@ export default function PostDetailModal({
               )}
 
               <ScrollView
+                ref={detailScrollRef}
                 style={[
                   styles.postDetailBody,
                   // mediaFull on narrow: collapse the body out of the
@@ -2295,6 +2481,7 @@ export default function PostDetailModal({
                 keyboardDismissMode="interactive"
                 automaticallyAdjustKeyboardInsets
               >
+                <View ref={detailScrollContentRef} collapsable={false}>
                 {isLongPost && longPostBlocks.length > 0
                   ? renderLongPostBlocks(activePost.id)
                   : (!!getPostText(activePost)
@@ -2379,6 +2566,7 @@ export default function PostDetailModal({
                 ) : (
                   renderReactionsPanel(activePost)
                 )}
+                </View>
               </ScrollView>
             </Animated.View>
           </View>
@@ -2424,12 +2612,14 @@ export default function PostDetailModal({
               </View>
 
               <ScrollView
+                ref={detailScrollRef}
                 style={styles.postDetailBody}
                 contentContainerStyle={styles.postDetailBodyContent}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
                 automaticallyAdjustKeyboardInsets
               >
+                <View ref={detailScrollContentRef} collapsable={false}>
                 {isLongPost && longPostBlocks.length > 0
                   ? renderLongPostBlocks(activePost.id)
                   : (!!getPostText(activePost)
@@ -2453,12 +2643,13 @@ export default function PostDetailModal({
                 {renderDetailPanelTabs(activePost)}
 
                 {detailPanel === 'comments' ? (
-                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}> 
+                  <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
                     {renderCommentThread(activePost.id)}
                   </View>
                 ) : (
                   renderReactionsPanel(activePost)
                 )}
+                </View>
               </ScrollView>
 
               {detailPanel === 'comments' ? (

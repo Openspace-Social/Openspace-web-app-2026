@@ -9,8 +9,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -20,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api, type ModerationPenalty } from '../../api/client';
+import ThemedFlatList from '../../components/ThemedFlatList';
 
 function formatExpiration(value: string | null, fallback: string) {
   if (!value) return fallback;
@@ -73,20 +72,15 @@ export default function ModerationPenaltiesScreenContainer() {
   }
 
   return (
-    <FlatList
+    <ThemedFlatList
       style={{ backgroundColor: c.background }}
       contentContainerStyle={styles.listContent}
       data={items}
       keyExtractor={(item) => `penalty-${item.id}`}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => { void onRefresh(); }}
-          tintColor={c.primary}
-          colors={[c.primary]}
-        />
-      }
+      refreshing={refreshing}
+      onRefresh={() => { void onRefresh(); }}
+      refreshTintColor={c.textPrimary}
       ListHeaderComponent={
         <Text style={[styles.subtitle, { color: c.textMuted }]}>
           {t('home.moderationPenaltiesDescription', {

@@ -11,9 +11,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
-  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -24,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api } from '../../api/client';
+import ThemedFlatList from '../../components/ThemedFlatList';
 import type { HomeStackParamList } from '../AppNavigator';
 
 type Community = {
@@ -127,16 +126,16 @@ export default function UserCommunitiesScreenContainer() {
   }
 
   return (
-    <FlatList
+    <ThemedFlatList
       style={{ backgroundColor: c.background }}
       contentContainerStyle={styles.listContent}
       data={items}
       keyExtractor={(item, idx) => `community-${item.id || item.name || idx}`}
       renderItem={renderItem}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => { void onRefresh(); }} tintColor={c.primary} colors={[c.primary]} />
-      }
+      refreshing={refreshing}
+      onRefresh={() => { void onRefresh(); }}
+      refreshTintColor={c.textPrimary}
       ListEmptyComponent={
         error ? (
           <Text style={[styles.emptyText, { color: c.errorText }]}>{error}</Text>

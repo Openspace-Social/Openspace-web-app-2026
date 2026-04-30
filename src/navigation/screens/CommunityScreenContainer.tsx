@@ -13,11 +13,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAppToast } from '../../toast/AppToastContext';
 import { useCommentsData } from '../../hooks/useCommentsData';
+import { usePostReactions } from '../../hooks/usePostReactions';
+import { useReactionList } from '../../hooks/useReactionList';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
 import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
+import ReactionListDrawer from '../../components/ReactionListDrawer';
 import CommunityScreen from '../../screens/CommunityScreen';
 import { postCardStyles } from '../../styles/postCardStyles';
 import {
@@ -70,7 +73,6 @@ export default function CommunityScreenContainer() {
   // using that hook); keeps the picker working when the user reacts.
   const [reactionGroups, setReactionGroups] = useState<ReactionGroupType[]>([]);
   const [reactionGroupsLoading, setReactionGroupsLoading] = useState(false);
-  const [reactionActionLoading, setReactionActionLoading] = useState(false);
   const [reactionPickerPost, setReactionPickerPost] = useState<FeedPost | null>(null);
   const fetchSeqRef = useRef(0);
 
@@ -289,42 +291,19 @@ export default function CommunityScreenContainer() {
     } catch {} finally { setReactionGroupsLoading(false); }
   }, [token, reactionGroups.length, reactionGroupsLoading]);
 
-  const reactToPost = useCallback(async (post: FeedPost, emojiId: number) => {
-    if (!token || reactionActionLoading) return;
-    const uuid = (post as any)?.uuid;
-    if (!uuid) return;
-    const current: any = posts.find((p) => (p as any).id === (post as any).id) || post;
-    const prevId: number | undefined = current?.reaction?.emoji?.id;
-    const isAlreadyMine = prevId === emojiId;
-    let emojiMeta: any = (current.reactions_emoji_counts || []).find((e: any) => e.emoji?.id === emojiId)?.emoji;
-    if (!emojiMeta) {
-      for (const g of reactionGroups) {
-        const found = (g as any)?.emojis?.find?.((e: any) => e?.id === emojiId);
-        if (found) { emojiMeta = found; break; }
-      }
-    }
-    setPosts((prev) => prev.map((p) => {
-      if ((p as any).id !== (post as any).id) return p;
-      const counts = ((p as any).reactions_emoji_counts || []).map((e: any) => {
-        if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + (isAlreadyMine ? -1 : 1) };
-        if (prevId && e.emoji?.id === prevId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
-        return e;
-      }).filter((e: any) => (e.count || 0) > 0);
-      if (!isAlreadyMine && !counts.some((e: any) => e.emoji?.id === emojiId) && emojiMeta) {
-        counts.push({ emoji: emojiMeta, count: 1 });
-      }
-      return {
-        ...(p as any),
-        reaction: isAlreadyMine ? null : { emoji: emojiMeta },
-        reactions_emoji_counts: counts,
-      } as FeedPost;
-    }));
-    setReactionActionLoading(true);
-    try {
-      if (isAlreadyMine) await api.removeReactionFromPost(token, uuid);
-      else await api.reactToPost(token, uuid, emojiId);
-    } catch {} finally { setReactionActionLoading(false); }
-  }, [token, reactionActionLoading, posts, reactionGroups]);
+  // Use the shared optimistic-update hook so this container's reaction
+  // logic stays in sync with the feed and post-detail flows.
+  const patchPostInList = useCallback(
+    (postId: number, fn: (p: FeedPost) => FeedPost) => {
+      setPosts((prev) => prev.map((p) => ((p as any).id === postId ? fn(p) : p)));
+    },
+    [],
+  );
+  const { reactionActionLoading, reactToPost } = usePostReactions({
+    token,
+    reactionGroups,
+    patchPost: patchPostInList,
+  });
 
   const openReactionPicker = useCallback((post: FeedPost) => setReactionPickerPost(post), []);
   const closeReactionPicker = useCallback(() => setReactionPickerPost(null), []);
@@ -343,6 +322,7 @@ export default function CommunityScreenContainer() {
   }, []);
 
   const comments = useCommentsData(token, posts);
+  const reactionList = useReactionList(token);
   const interactions = useNativePostInteractions({
     reactionGroups,
     reactionPickerLoading: reactionGroupsLoading,
@@ -350,6 +330,7 @@ export default function CommunityScreenContainer() {
     ensureReactionGroups,
     reactToPost,
     openReactionPicker,
+    openReactionList: reactionList.open,
     comments,
     removePost: removeFromPosts,
     patchPost: patchInPosts,
@@ -385,6 +366,21 @@ export default function CommunityScreenContainer() {
         c={c}
         t={t}
         title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
+      />
+      <ReactionListDrawer
+        visible={!!reactionList.post}
+        emojiCounts={reactionList.post?.reactions_emoji_counts || []}
+        activeEmoji={reactionList.emoji}
+        users={reactionList.users}
+        loading={reactionList.loading}
+        onSelectEmoji={reactionList.selectEmoji}
+        onSelectUser={(username) => {
+          reactionList.close();
+          interactions.onNavigateProfile(username);
+        }}
+        onClose={reactionList.close}
+        c={c}
+        t={t}
       />
       <View style={styles.root}>
         <CommunityScreen

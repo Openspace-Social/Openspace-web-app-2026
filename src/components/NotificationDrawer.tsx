@@ -36,7 +36,7 @@ type Props = {
   onDeleteAll: () => void;
   onDeleteFiltered: (ids: number[]) => Promise<void>;
   onNavigateProfile: (username: string) => void;
-  onNavigatePost: (postId: number, postUuid?: string) => void;
+  onNavigatePost: (postId: number, postUuid?: string, commentId?: number, parentCommentId?: number) => void;
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
@@ -407,7 +407,7 @@ type RowProps = {
   onMarkRead: (id: number) => void;
   onDelete: (id: number) => void;
   onNavigateProfile: (username: string) => void;
-  onNavigatePost: (postId: number, postUuid?: string) => void;
+  onNavigatePost: (postId: number, postUuid?: string, commentId?: number, parentCommentId?: number) => void;
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
@@ -459,6 +459,30 @@ export function NotificationRow({
     if (!notif.read) onMarkRead(notif.id);
     onPress?.();
   }
+
+  // Avatar tap → user profile (or community page for community-keyed
+  // notifications). For user-actor types, `actor` already holds the
+  // username. For community-actor types (CNP/CB) it holds the community
+  // name. MT (moderation task) doesn't render an avatar image so no
+  // action is needed there.
+  const userActorTypes: NotificationType[] = [
+    'F', 'FR', 'FRA', 'PR', 'PC', 'PCR', 'PCRA', 'CR', 'CC',
+    'PUM', 'PCUM', 'CI', 'UNP', 'PRE',
+  ];
+  const communityActorTypes: NotificationType[] = ['CNP', 'CB'];
+  const onAvatarPress = !actor
+    ? undefined
+    : userActorTypes.includes(notif.notification_type)
+      ? () => {
+          if (!notif.read) onMarkRead(notif.id);
+          onNavigateProfile(actor);
+        }
+      : communityActorTypes.includes(notif.notification_type)
+        ? () => {
+            if (!notif.read) onMarkRead(notif.id);
+            onNavigateCommunity(actor);
+          }
+        : undefined;
 
   async function handleAccept() {
     if (!requesterUsername || connectionState !== 'idle') return;
@@ -562,8 +586,17 @@ export function NotificationRow({
         }} />
       )}
 
-      {/* Avatar with notification type badge */}
-      <View style={{ position: 'relative', flexShrink: 0 }}>
+      {/* Avatar with notification type badge. Tapping the avatar jumps to
+       *  the actor's profile (or the community page for community-keyed
+       *  notifications) instead of the notification's primary destination. */}
+      <TouchableOpacity
+        style={{ position: 'relative', flexShrink: 0 }}
+        activeOpacity={onAvatarPress ? 0.7 : 1}
+        onPress={onAvatarPress}
+        disabled={!onAvatarPress}
+        accessibilityRole={onAvatarPress ? 'button' : undefined}
+        accessibilityLabel={onAvatarPress && actor ? `Open profile of ${actor}` : undefined}
+      >
         <View style={{
           width: 44,
           height: 44,
@@ -595,7 +628,7 @@ export function NotificationRow({
         }}>
           <MaterialCommunityIcons name={icon as any} size={11} color="#fff" />
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Text + thumbnail */}
       <View style={{ flex: 1, gap: 2 }}>
@@ -857,7 +890,7 @@ function resolveNotification(
   c: any,
   t: (key: string, options?: any) => string,
   onNavigateProfile: (u: string) => void,
-  onNavigatePost: (id: number, uuid?: string) => void,
+  onNavigatePost: (id: number, uuid?: string, commentId?: number, parentCommentId?: number) => void,
   onNavigateCommunity: (name: string) => void,
   onOpenModerationTasks?: () => void,
 ) {
@@ -922,7 +955,7 @@ function resolveNotification(
         body: t('home.notificationTypePostComment', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(post?.text, 120) || null,
-        onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
+        onPress: () => post?.id && onNavigatePost(post.id, post.uuid, cmt?.id),
       };
     }
     case 'PCR': {
@@ -937,7 +970,7 @@ function resolveNotification(
         body: t('home.notificationTypePostCommentReply', { name, text: truncate(cmt?.text, 60) }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(parentCmt?.text || post?.text, 120) || null,
-        onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
+        onPress: () => post?.id && onNavigatePost(post.id, post.uuid, cmt?.id, parentCmt?.id),
       };
     }
     case 'PCRA': {
@@ -952,7 +985,7 @@ function resolveNotification(
         body: t('home.notificationTypeCommentReaction', { name, emoji }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(cmt?.text, 120) || null,
-        onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
+        onPress: () => post?.id && onNavigatePost(post.id, post.uuid, cmt?.id, cmt?.parent_comment?.id),
       };
     }
     case 'CR': {
@@ -1001,7 +1034,7 @@ function resolveNotification(
         body: t('home.notificationTypeCommentMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(cmt?.text, 120) || null,
-        onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
+        onPress: () => post?.id && onNavigatePost(post.id, post.uuid, cmt?.id, cmt?.parent_comment?.id),
       };
     }
     case 'CI': {

@@ -9,7 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -17,9 +17,12 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useFeedData } from '../../hooks/useFeedData';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
+import { useReactionList } from '../../hooks/useReactionList';
 import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
+import ReactionListDrawer from '../../components/ReactionListDrawer';
+import ThemedFlatList from '../../components/ThemedFlatList';
 import MovePostCommunitiesSheet from '../../components/MovePostCommunitiesSheet';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
@@ -93,6 +96,11 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
     },
     [reactionPickerPost, reactToPost],
   );
+
+  // "Who reacted" drawer state — opened when the user taps the reactions
+  // count or the people icon on a post. Mirrors what the post-detail
+  // screen does inline, but in a side drawer at feed level.
+  const reactionList = useReactionList(token);
 
   // Comments state + CRUD. Needs the `posts` array so it can resolve a
   // post's uuid from the id that PostCard hands us.
@@ -198,6 +206,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
     ensureReactionGroups,
     reactToPost,
     openReactionPicker,
+    openReactionList: reactionList.open,
     comments,
     removePost,
     patchPost,
@@ -277,6 +286,21 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         t={t}
         title={t('home.reactToPostTitle', { defaultValue: 'React to post' })}
       />
+      <ReactionListDrawer
+        visible={!!reactionList.post}
+        emojiCounts={reactionList.post?.reactions_emoji_counts || []}
+        activeEmoji={reactionList.emoji}
+        users={reactionList.users}
+        loading={reactionList.loading}
+        onSelectEmoji={reactionList.selectEmoji}
+        onSelectUser={(username) => {
+          reactionList.close();
+          baseInteractions.onNavigateProfile(username);
+        }}
+        onClose={reactionList.close}
+        c={c}
+        t={t}
+      />
       <MovePostCommunitiesSheet
         visible={!!movePost}
         c={c}
@@ -289,7 +313,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onClose={closeMovePostCommunities}
         onSave={() => void submitMovePostCommunities()}
       />
-      <FlatList
+      <ThemedFlatList
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.listContent}
         data={posts}
@@ -303,16 +327,11 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onEndReached={() => {
           void loadMore();
         }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              void refresh();
-            }}
-            tintColor={c.primary}
-            colors={[c.primary]}
-          />
-        }
+        refreshing={refreshing}
+        onRefresh={() => {
+          void refresh();
+        }}
+        refreshTintColor={c.textPrimary}
         ListEmptyComponent={
           <View style={styles.centered}>
             <Text style={[styles.emptyText, { color: c.textMuted }]}>{t('home.feedEmpty')}</Text>

@@ -14,12 +14,10 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,6 +32,7 @@ import type {
   ModerationCategory,
   SearchCommunityResult,
 } from '../api/client';
+import ThemedFlatList from '../components/ThemedFlatList';
 
 type Props = {
   token: string;
@@ -446,16 +445,16 @@ export default function CommunityScreen({
 
   return (
     <>
-      <FlatList
+      <ThemedFlatList
         style={{ backgroundColor: c.background }}
         contentContainerStyle={{ paddingBottom: 140 }}
         data={posts}
         keyExtractor={(item, idx) => `community-post-${(item as any).id || idx}`}
         renderItem={({ item }) => <View style={{ marginBottom: 8 }}>{renderPostCard(item)}</View>}
         ListHeaderComponent={header}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} colors={[c.primary]} />
-        }
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        refreshTintColor={c.textPrimary}
         ListEmptyComponent={
           postsLoading ? (
             <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 30 }} />

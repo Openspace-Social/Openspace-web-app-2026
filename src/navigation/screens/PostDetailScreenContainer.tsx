@@ -63,6 +63,14 @@ export default function PostDetailScreenContainer() {
   const focusComment = !!route.params?.focusComment;
   const autoPlayMedia = useAutoPlayMedia();
   const initialMediaTimeSec = route.params?.resumeTimeSec ?? null;
+  const initialViewIntent = route.params?.initialView ?? null;
+  // Tracked locally so we can clear them on first apply (one-shot focus).
+  const [focusCommentId, setFocusCommentId] = React.useState<number | null>(
+    route.params?.focusCommentId ?? null,
+  );
+  const [focusParentCommentId, setFocusParentCommentId] = React.useState<number | null>(
+    route.params?.focusParentCommentId ?? null,
+  );
 
   const {
     post, loading,
@@ -281,6 +289,13 @@ export default function PostDetailScreenContainer() {
       getPostCommentsCount={getPostCommentsCount}
       initialMediaTimeSec={initialMediaTimeSec}
       onConsumeInitialMediaTime={() => {}}
+      initialFocusCommentId={focusCommentId}
+      initialFocusParentCommentId={focusParentCommentId}
+      onConsumeInitialFocusComment={() => {
+        setFocusCommentId(null);
+        setFocusParentCommentId(null);
+      }}
+      initialView={initialViewIntent}
       onClose={handleClose}
       onLoadReactionList={loadReactionList}
       onEnsureReactionGroups={ensureReactionGroups}

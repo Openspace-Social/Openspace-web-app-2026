@@ -4,7 +4,7 @@ export type AppRoute =
   | { screen: 'landing' }
   | { screen: 'feed'; feed: FeedType }
   | { screen: 'search'; query: string }
-  | { screen: 'post'; postUuid: string; feed?: FeedType }
+  | { screen: 'post'; postUuid: string; feed?: FeedType; focusCommentId?: number; focusParentCommentId?: number }
   | { screen: 'profile'; username: string }
   | { screen: 'community'; name: string }
   | { screen: 'hashtag'; name: string }
