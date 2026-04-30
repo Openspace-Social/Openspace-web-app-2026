@@ -1,6 +1,6 @@
 {
   "tagline": "Jouw ruimte om te verbinden, delen en verkennen.",
-  "federationBadge": "Gefedereerd met het open sociale web",
+  "federationBadge": "Gefedereerd met het open sociale web — binnenkort",
   "auth": {
     "signIn": "Inloggen",
     "signOut": "Uitloggen",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Doorgaan met Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "of ga hieronder verder met gebruikersnaam",
+    "socialOrDivider": "of ga hieronder verder met sociale aanmelding",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

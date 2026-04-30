@@ -1,6 +1,6 @@
 {
   "tagline": "Ditt utrymme att ansluta, dela och utforska.",
-  "federationBadge": "Federerad med det öppna sociala webben",
+  "federationBadge": "Federerad med det öppna sociala webben — kommer snart",
   "auth": {
     "signIn": "Logga in",
     "signOut": "Logga ut",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Fortsätt med Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "eller fortsätt med användarnamn nedan",
+    "socialOrDivider": "eller fortsätt med social inloggning nedan",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

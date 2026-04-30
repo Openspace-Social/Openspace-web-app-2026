@@ -1,6 +1,6 @@
 {
   "tagline": "Seu espaço para conectar, compartilhar e explorar.",
-  "federationBadge": "Federado com a web social aberta",
+  "federationBadge": "Federado com a web social aberta — em breve",
   "auth": {
     "signIn": "Entrar",
     "signOut": "Sair",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Continuar com Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "ou continue com nome de usuário abaixo",
+    "socialOrDivider": "ou continue com login social abaixo",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

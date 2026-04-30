@@ -1,6 +1,6 @@
 {
   "tagline": "Ditt rom for å koble til, dele og utforske.",
-  "federationBadge": "Føderert med det åpne sosiale nettet",
+  "federationBadge": "Føderert med det åpne sosiale nettet — kommer snart",
   "auth": {
     "signIn": "Logg inn",
     "signOut": "Logg ut",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Fortsett med Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "eller fortsett med brukernavn nedenfor",
+    "socialOrDivider": "eller fortsett med sosial pålogging nedenfor",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

@@ -1,6 +1,6 @@
 {
   "tagline": "Bağlanmak, paylaşmak ve keşfetmek için alanınız.",
-  "federationBadge": "Açık sosyal web ile federatif bağlantılı",
+  "federationBadge": "Açık sosyal web ile federatif bağlantılı — yakında",
   "auth": {
     "signIn": "Giriş yap",
     "signOut": "Çıkış yap",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Apple ile devam et",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "veya aşağıda kullanıcı adıyla devam et",
+    "socialOrDivider": "veya aşağıda sosyal girişle devam et",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

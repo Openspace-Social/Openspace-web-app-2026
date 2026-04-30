@@ -1,6 +1,6 @@
 {
   "tagline": "Dit rum til at forbinde, dele og udforske.",
-  "federationBadge": "Forbundet med det åbne sociale web",
+  "federationBadge": "Forbundet med det åbne sociale web — kommer snart",
   "auth": {
     "signIn": "Log ind",
     "signOut": "Log ud",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Fortsæt med Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "eller fortsæt med brugernavn nedenfor",
+    "socialOrDivider": "eller fortsæt med social login nedenfor",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

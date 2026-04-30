@@ -1,6 +1,6 @@
 {
   "tagline": "A te tered kapcsolódásra, megosztásra és felfedezésre.",
-  "federationBadge": "Federálva a nyílt közösségi webhez",
+  "federationBadge": "Federálva a nyílt közösségi webhez — hamarosan",
   "auth": {
     "signIn": "Bejelentkezés",
     "signOut": "Kijelentkezés",
@@ -74,7 +74,7 @@
     "socialContinueApple": "Folytatás Apple-lel",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "vagy folytasd lent a felhasználónévvel",
+    "socialOrDivider": "vagy folytasd lent a közösségi bejelentkezéssel",
     "socialConfigMissing": "Social login is not configured yet.",
     "socialWebOnly": "Social login is available on web in this build.",
     "socialPopupBlocked": "Popup was blocked. Please allow popups and try again.",

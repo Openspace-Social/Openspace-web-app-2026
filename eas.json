@@ -28,7 +28,15 @@
     "production": {
       "distribution": "store",
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://staging.openspace.social",
+        "EXPO_PUBLIC_GIPHY_KEY": "ySpehlbqPIWtFFkeEk7TdKiMuaj6cONU",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "767950302419-reisjv6d4veo5sh5t57i69jrr101fr8u.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "767950302419-sujekkd6pcq8lhnc5sqd5leohjt8hav8.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "767950302419-r4l1balbmusajnp6cape3anmt8bu2oie.apps.googleusercontent.com",
+        "EXPO_PUBLIC_APPLE_CLIENT_ID": "openspace.web-authentication"
+      }
     }
   },
   "submit": {

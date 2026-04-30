@@ -1,6 +1,6 @@
 {
   "tagline": "Your space to connect, share, and explore.",
-  "federationBadge": "Federated with the open social web",
+  "federationBadge": "Federated with the open social web — coming soon",
   "auth": {
     "signIn": "Sign in",
     "signOut": "Sign out",
@@ -75,7 +75,7 @@
     "socialContinueApple": "Continue with Apple",
     "socialLoadingGoogle": "Connecting to Google...",
     "socialLoadingApple": "Connecting to Apple...",
-    "socialOrDivider": "or continue with username below",
+    "socialOrDivider": "or continue with social sign on below",
     "socialOrDividerLogin": "or continue with social sign on below",
     "useResetCode": "Use a code",
     "resetPasswordCodeDescription": "Enter the 6-digit code from your reset email.",
