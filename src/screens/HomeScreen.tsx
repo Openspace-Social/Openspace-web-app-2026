@@ -730,6 +730,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // independent operation and shouldn't block / be blocked by post
   // reactions in flight.
   const [commentReactionActionLoading, setCommentReactionActionLoading] = useState(false);
+  // Mirror of `commentReactionActionLoading` in a ref so the in-flight
+  // guard in `reactToComment` always reads the latest value, regardless
+  // of stale closures captured by the picker's onPress handlers. Without
+  // this, rapid tap-deselect-then-tap-select sequences saw the previous
+  // call's `true` even after FINALLY had set the state to false.
+  const commentReactionLoadingRef = React.useRef(false);
   const [reactionListOpen, setReactionListOpen] = useState(false);
   const [reactionListPost, setReactionListPost] = useState<FeedPost | null>(null);
   const [reactionListLoading, setReactionListLoading] = useState(false);
@@ -3491,7 +3497,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   async function reactToComment(postId: number, commentId: number, emojiId?: number) {
     const sourcePost = getSourcePost(postId);
-    if (!sourcePost?.uuid || !emojiId || commentReactionActionLoading) return;
+    // Use the live ref instead of the closure-captured boolean — fixes
+    // the stale-closure block where rapid taps after a deselect would
+    // see the old `true` even after FINALLY had set it to false.
+    if (!sourcePost?.uuid || !emojiId || commentReactionLoadingRef.current) return;
 
     const currentComment = (localComments[postId] || []).find((c) => c.id === commentId);
     const isAlreadyMyReaction = currentComment?.reaction?.emoji?.id === emojiId;
@@ -3524,6 +3533,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }),
     }));
 
+    commentReactionLoadingRef.current = true;
     setCommentReactionActionLoading(true);
     try {
       if (isAlreadyMyReaction) {
@@ -3550,6 +3560,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }
       setError(e?.message || t('home.reactionLoadFailed'));
     } finally {
+      commentReactionLoadingRef.current = false;
       setCommentReactionActionLoading(false);
     }
   }
