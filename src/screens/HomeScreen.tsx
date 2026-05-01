@@ -3491,18 +3491,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   async function reactToComment(postId: number, commentId: number, emojiId?: number) {
     const sourcePost = getSourcePost(postId);
-    // TEMP DIAGNOSTIC — remove after confirming the early-return culprit
-    // for the modal-context comment-reaction failure.
-    console.log('[reactToComment]', {
-      postId,
-      commentId,
-      emojiId,
-      sourcePostFound: !!sourcePost,
-      sourcePostUuid: sourcePost?.uuid,
-      commentReactionActionLoading,
-      activePostId: (activePost as any)?.id,
-      activePostUuid: (activePost as any)?.uuid,
-    });
     if (!sourcePost?.uuid || !emojiId || commentReactionActionLoading) return;
 
     const currentComment = (localComments[postId] || []).find((c) => c.id === commentId);

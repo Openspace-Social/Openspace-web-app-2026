@@ -1112,38 +1112,23 @@ export default function PostDetailModal({
 
   React.useEffect(() => {
     if (commentReactionPickerForId === null) return;
-    if (typeof document === 'undefined') return;
-
-    function handleDocumentPointerDown(event: MouseEvent) {
-      const currentId = commentReactionPickerForId;
-      if (currentId === null) return;
-      const host = commentReactionHostRefs.current[currentId];
-      const target = event.target as Node | null;
-      if (host && target && host.contains?.(target)) return;
-      setCommentReactionPickerForId(null);
-    }
-
-    document.addEventListener('mousedown', handleDocumentPointerDown);
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentPointerDown);
-    };
+    // Click-outside-to-close listeners for the legacy inline reaction
+    // popovers were removed: this component now opens the drawer
+    // (`ReactionPickerDrawer`) for both post and comment reactions, and
+    // the drawer is rendered in a Modal portal at the document body —
+    // far away from `commentReactionHostRefs` / `postReactionHostRef`.
+    // The old document `mousedown` handlers fired BEFORE the emoji
+    // button's click, treated the drawer tap as "outside the host", and
+    // reset picker state, leaving onPick to read null state and do
+    // nothing. The drawer has its own backdrop-tap-to-close, so no
+    // document-level listener is needed here.
+    return;
   }, [commentReactionPickerForId]);
 
   React.useEffect(() => {
-    if (!postReactionPickerOpen) return;
-    if (typeof document === 'undefined') return;
-
-    function handleDocumentPointerDown(event: MouseEvent) {
-      const host = postReactionHostRef.current;
-      const target = event.target as Node | null;
-      if (host && target && host.contains?.(target)) return;
-      setPostReactionPickerOpen(false);
-    }
-
-    document.addEventListener('mousedown', handleDocumentPointerDown);
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentPointerDown);
-    };
+    // See comment above — same legacy listener removed for the same
+    // reason. The drawer's backdrop handles dismissal natively.
+    return;
   }, [postReactionPickerOpen]);
 
   React.useEffect(() => {
