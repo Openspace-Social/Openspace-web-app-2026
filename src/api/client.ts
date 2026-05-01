@@ -1416,10 +1416,17 @@ export const api = {
     }).then((posts) => posts.map((post) => normalizePostPayload(post)));
   },
 
-  getUserPosts: (token: string, username: string, count = 10) =>
-    request<FeedPost[]>(`/api/posts/?username=${encodeURIComponent(username)}&count=${count}`, {
+  getUserPosts: (token: string, username: string, count = 10, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('username', username);
+    params.set('count', String(count));
+    if (typeof maxId === 'number' && Number.isFinite(maxId)) {
+      params.set('max_id', String(maxId));
+    }
+    return request<FeedPost[]>(`/api/posts/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
-    }).then((posts) => posts.map((post) => normalizePostPayload(post))),
+    }).then((posts) => posts.map((post) => normalizePostPayload(post)));
+  },
 
   getUserComments: (token: string, username: string, count = 10, maxId?: number) => {
     const params = new URLSearchParams();

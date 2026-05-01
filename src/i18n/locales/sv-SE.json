@@ -175,7 +175,7 @@
     "postTypeShort": "Kort inlagg",
     "postTypeLong": "Langt inlagg",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Rapportera inlagg",
+    "reportPostAction": "Rapportera",
     "reportPostTitle": "Rapportera inlagg",
     "reportPostPrompt": "Varfor rapporterar du detta inlagg?",
     "reportPostSuccess": "Inlagg rapporterat, tack!",

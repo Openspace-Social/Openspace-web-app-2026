@@ -21,12 +21,14 @@ import {
   Alert,
   Image,
   Modal,
+  NativeSyntheticEvent,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -100,10 +102,12 @@ type FollowingUser = {
   profile?: { avatar?: string | null; name?: string } | null;
 };
 
-type ActivityFilter = 'community' | 'public' | 'comments';
+type ActivityFilter = 'all' | 'community' | 'public' | 'comments';
 
 const COMMUNITIES_PAGE_SIZE = 9;
 const FOLLOWINGS_PAGE_SIZE = 9;
+const PROFILE_COMMENTS_PAGE_SIZE = 20;
+const PROFILE_BOTTOM_LOAD_THRESHOLD = 240;
 
 function resolveImageUri(value?: string | { url?: string } | null): string | undefined {
   if (!value) return undefined;
@@ -155,7 +159,9 @@ export default function PublicProfileScreenContainer() {
   const [followingsLoading, setFollowingsLoading] = useState(false);
   const [profileComments, setProfileComments] = useState<PostComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('community');
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
+  const [commentsHasMore, setCommentsHasMore] = useState(true);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
 
   const refreshUser = useCallback(async () => {
     if (!token || !username) return;
@@ -464,10 +470,17 @@ export default function PublicProfileScreenContainer() {
     setCommentsLoading(true);
     (async () => {
       try {
-        const list = await api.getUserComments(token, username, 20);
-        if (active) setProfileComments(Array.isArray(list) ? list : []);
+        const list = await api.getUserComments(token, username, PROFILE_COMMENTS_PAGE_SIZE);
+        if (active) {
+          const safeList = Array.isArray(list) ? list : [];
+          setProfileComments(safeList);
+          setCommentsHasMore(safeList.length === PROFILE_COMMENTS_PAGE_SIZE);
+        }
       } catch {
-        if (active) setProfileComments([]);
+        if (active) {
+          setProfileComments([]);
+          setCommentsHasMore(false);
+        }
       } finally {
         if (active) setCommentsLoading(false);
       }
@@ -493,10 +506,39 @@ export default function PublicProfileScreenContainer() {
   }, [token]);
 
   const {
-    posts, loading, refreshing, error, refresh,
+    posts, loading, refreshing, loadingMore, hasMore, error, refresh, loadMore,
     reactionGroups, reactionGroupsLoading, reactionActionLoading,
     ensureReactionGroups, reactToPost,
   } = useUserPostsData(token, username);
+
+  const loadMoreProfileComments = useCallback(async () => {
+    if (!token || !username || commentsLoading || commentsLoadingMore || !commentsHasMore) return;
+    const lastId = profileComments.length > 0 ? profileComments[profileComments.length - 1]?.id : undefined;
+    if (typeof lastId !== 'number' || !Number.isFinite(lastId)) {
+      setCommentsHasMore(false);
+      return;
+    }
+    setCommentsLoadingMore(true);
+    try {
+      const more = await api.getUserComments(token, username, PROFILE_COMMENTS_PAGE_SIZE, lastId);
+      const safeMore = Array.isArray(more) ? more : [];
+      setProfileComments((prev) => {
+        const seen = new Set(prev.map((comment: any) => comment?.id).filter((id): id is number => typeof id === 'number'));
+        const uniqueMore = safeMore.filter((comment: any) => {
+          const id = comment?.id;
+          if (typeof id !== 'number' || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        return [...prev, ...uniqueMore];
+      });
+      setCommentsHasMore(safeMore.length === PROFILE_COMMENTS_PAGE_SIZE);
+    } catch {
+      // preserve current comments; another bottom reach can retry
+    } finally {
+      setCommentsLoadingMore(false);
+    }
+  }, [token, username, commentsLoading, commentsLoadingMore, commentsHasMore, profileComments]);
 
   const allPosts = useMemo(() => [...pinnedPosts, ...posts], [pinnedPosts, posts]);
   const comments = useCommentsData(token, allPosts);
@@ -538,6 +580,20 @@ export default function PublicProfileScreenContainer() {
     () => posts.filter((p: any) => !p?.community),
     [posts],
   );
+  const activePostFeed = useMemo(() => {
+    if (activityFilter === 'all') return posts;
+    if (activityFilter === 'community') return communityPosts;
+    if (activityFilter === 'public') return publicPosts;
+    return [];
+  }, [activityFilter, posts, communityPosts, publicPosts]);
+
+  useEffect(() => {
+    if (activityFilter === 'comments') return;
+    if (activityFilter === 'all') return;
+    if (activePostFeed.length > 0) return;
+    if (loading || loadingMore || !hasMore) return;
+    void loadMore();
+  }, [activityFilter, activePostFeed.length, loading, loadingMore, hasMore, loadMore]);
 
   // ── Followers / Following counts ──────────────────────────────────
   // Followers: web shows the chip only when the API returns a real number.
@@ -581,6 +637,20 @@ export default function PublicProfileScreenContainer() {
       </View>
     ),
     [c, t, currentUsername, token],
+  );
+
+  const handleProfileScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+      if (distanceFromBottom > PROFILE_BOTTOM_LOAD_THRESHOLD) return;
+      if (activityFilter === 'comments') {
+        void loadMoreProfileComments();
+      } else {
+        void loadMore();
+      }
+    },
+    [activityFilter, loadMore, loadMoreProfileComments],
   );
 
   // Horizontal sliders show the first batch in a single row; tapping
@@ -645,6 +715,8 @@ export default function PublicProfileScreenContainer() {
         refreshing={refreshing}
         onRefresh={() => { void refresh(); }}
         refreshTintColor={c.textPrimary}
+        onScroll={handleProfileScroll}
+        scrollEventThrottle={16}
       >
         {/* Cover */}
         <View style={[styles.cover, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
@@ -958,13 +1030,19 @@ export default function PublicProfileScreenContainer() {
           )}
         </SectionCard>
 
-        {/* Posts (Community / Public / Comments) */}
+        {/* Posts (All / Community / Public / Comments) */}
         <SectionCard
           c={c}
           icon="post-outline"
           title={t('home.profilePostsTitle', { defaultValue: 'Posts' })}
         >
           <View style={styles.filterRow}>
+            <FilterChip
+              c={c}
+              active={activityFilter === 'all'}
+              label={t('home.profileTabAll', { defaultValue: 'All' })}
+              onPress={() => setActivityFilter('all')}
+            />
             <FilterChip
               c={c}
               active={activityFilter === 'community'}
@@ -1011,23 +1089,35 @@ export default function PublicProfileScreenContainer() {
                     </Text>
                   </View>
                 ))}
+                {commentsLoadingMore ? (
+                  <View style={styles.loadMoreIndicator}>
+                    <ActivityIndicator color={c.primary} size="small" />
+                  </View>
+                ) : null}
               </View>
             )
           ) : loading && posts.length === 0 ? (
             <ActivityIndicator color={c.primary} size="small" />
           ) : error && posts.length === 0 ? (
             <Text style={[styles.emptyRow, { color: c.errorText }]}>{error}</Text>
-          ) : (activityFilter === 'community' ? communityPosts : publicPosts).length === 0 ? (
+          ) : activePostFeed.length === 0 ? (
             <Text style={[styles.emptyRow, { color: c.textMuted }]}>
               {activityFilter === 'community'
                 ? t('home.profileActivityNoCommunityPosts', { defaultValue: 'No recent community posts yet.' })
-                : t('home.profileActivityNoPublicPosts', { defaultValue: 'No recent public posts yet.' })}
+                : activityFilter === 'public'
+                  ? t('home.profileActivityNoPublicPosts', { defaultValue: 'No recent public posts yet.' })
+                  : t('home.profileNoPostsYet', { defaultValue: 'No recent posts yet.' })}
             </Text>
           ) : (
             <View>
-              {(activityFilter === 'community' ? communityPosts : publicPosts).map((p) =>
+              {activePostFeed.map((p) =>
                 renderPost(p, `${activityFilter}-${(p as any).id}`),
               )}
+              {loadingMore ? (
+                <View style={styles.loadMoreIndicator}>
+                  <ActivityIndicator color={c.primary} size="small" />
+                </View>
+              ) : null}
             </View>
           )}
         </SectionCard>
@@ -1467,6 +1557,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 6,
+  },
+  loadMoreIndicator: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   commentText: { fontSize: 14, lineHeight: 20 },
   commentMeta: { fontSize: 11, fontWeight: '500' },

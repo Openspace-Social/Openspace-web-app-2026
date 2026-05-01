@@ -46,7 +46,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "social.openspace.app",
-      "versionCode": 48,
+      "versionCode": 49,
       "intentFilters": [
         {
           "action": "VIEW",

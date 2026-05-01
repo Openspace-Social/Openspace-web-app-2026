@@ -1,13 +1,9 @@
 /**
  * PostDetailScreenContainer — full-screen post detail.
  *
- * Wraps the existing <PostDetailModal /> so the native detail view matches
- * mobile-web pixel-for-pixel (media gallery at top, React/Repost/Share/
- * Report action row, Comments/Reactions tabs, sticky reply input).
- *
- * PostDetailModal is rendered inside a Modal internally, so we turn the
- * stack header off for this screen and wire its onClose to
- * navigation.goBack() to pop back to the feed.
+ * Renders the shared post-detail UI as a dedicated native screen so the
+ * mobile experience keeps the same media/comments layout without layering
+ * an extra RN Modal on top of the navigation route.
  *
  * Stubs remain for features that haven't migrated (repost, report, reaction
  * list, comment reactions, image/GIF drafts) — same policy as the feed.
@@ -201,7 +197,7 @@ export default function PostDetailScreenContainer() {
     async (target: FeedPost) => {
       const uuid = (target as any)?.uuid;
       if (!uuid) return;
-      const url = `https://openspacelive.com/posts/${uuid}`;
+      const url = `https://openspace.social/posts/${uuid}`;
       try {
         const { Share } = await import('react-native');
         await Share.share({ url, message: url });
@@ -249,13 +245,19 @@ export default function PostDetailScreenContainer() {
   );
 
   const c = theme.colors;
+  const showLoadingState = loading && !post;
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.background, alignItems: 'center', justifyContent: 'center' }}>
+    <View
+      style={[
+        { flex: 1, backgroundColor: c.background },
+        showLoadingState ? { alignItems: 'center', justifyContent: 'center' } : null,
+      ]}
+    >
       {/* Behind-modal spinner — visible during the stack push transition
        *  and the modal's fade-in, so users don't see a black void while
        *  waiting for content to load. */}
-      {loading && !post ? <ActivityIndicator color={c.primary} size="large" /> : null}
+      {showLoadingState ? <ActivityIndicator color={c.primary} size="large" /> : null}
       <PostDetailModal
       styles={postCardStyles}
       c={c}
@@ -302,7 +304,7 @@ export default function PostDetailScreenContainer() {
       onReactToPostWithEmoji={async (p, emojiId) => {
         if (emojiId != null) await reactToPost(p, emojiId);
       }}
-      onReactToComment={() => stub('Comment reactions')}
+      onReactToComment={comments.reactToComment}
       onToggleCommentReplies={comments.toggleCommentReplies}
       onSharePost={handleSharePost}
       onRepostPost={(p) => {
@@ -333,6 +335,7 @@ export default function PostDetailScreenContainer() {
       reactionListEmoji={reactionListEmoji}
       reactionListUsers={reactionListUsers}
       onCloseReactionList={closeReactionList}
+      presentationMode="screen"
       autoFocusComposer={focusComment}
       autoPlayMedia={autoPlayMedia}
       />

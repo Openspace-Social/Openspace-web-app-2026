@@ -72,16 +72,23 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 
   const goTo = useCallback(
     (routeName: string) => {
+      // React Navigation dispatches `tabPress` events keyed by `route.key`
+      // (the navigator-generated unique key), NOT by `route.name`. Passing
+      // the route name here means downstream listeners — including
+      // `useScrollToTop` registered inside the focused tab's screens —
+      // never see the event, so re-tapping the active tab does nothing.
+      // Resolve the route key from `state.routes` before emitting.
+      const targetRoute = state.routes.find((r) => r.name === routeName);
       const event = navigation.emit({
         type: 'tabPress',
-        target: routeName,
+        target: targetRoute?.key ?? routeName,
         canPreventDefault: true,
       });
       if (!event.defaultPrevented) {
         navigation.navigate(routeName as never);
       }
     },
-    [navigation],
+    [navigation, state.routes],
   );
 
   // The Profile tab no longer switches tabs — instead it opens the

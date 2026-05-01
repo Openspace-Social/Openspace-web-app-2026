@@ -175,7 +175,7 @@
     "postTypeShort": "Kort opslag",
     "postTypeLong": "Langt opslag",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Rapporter opslag",
+    "reportPostAction": "Rapporter",
     "reportPostTitle": "Rapporter opslag",
     "reportPostPrompt": "Hvorfor rapporterer du dette opslag?",
     "reportPostSuccess": "Opslag rapporteret, tak!",

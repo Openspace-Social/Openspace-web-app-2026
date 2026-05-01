@@ -80,26 +80,32 @@ export type RootTabParamList = {
   ProfileTab: undefined;
 };
 
+// Shared params for the post-detail screen — duplicated across HomeStack,
+// CommunitiesStack, and ProfileStack so any tap on a PostCard (in any tab's
+// own stack) can navigate locally without bubbling up across tabs and
+// hitting "no navigator handles 'Post'". Define once, reference everywhere.
+export type PostScreenParams = {
+  postUuid: string;
+  /** Auto-focuses the post-level composer (used by "tap comment icon" entry). */
+  focusComment?: boolean;
+  /** Resume video playback from this offset on the post detail. */
+  resumeTimeSec?: number;
+  /** Scroll to (and highlight) the comment with this id on mount. Used by notification-tile taps. */
+  focusCommentId?: number;
+  /** When focusCommentId is a reply, this is the parent comment id —
+   *  PostDetailModal needs it to expand the parent thread first. */
+  focusParentCommentId?: number;
+  /** Drives the post-detail's initial view mode based on what the
+   *  user tapped to get here:
+   *  - 'media'    → mediaFull (player fills viewport)
+   *  - 'comments' → commentsFull (comments fill viewport)
+   *  Omit to use the existing post-type default. */
+  initialView?: 'media' | 'comments';
+};
+
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' } | undefined;
-  Post: {
-    postUuid: string;
-    /** Auto-focuses the post-level composer (used by "tap comment icon" entry). */
-    focusComment?: boolean;
-    /** Resume video playback from this offset on the post detail. */
-    resumeTimeSec?: number;
-    /** Scroll to (and highlight) the comment with this id on mount. Used by notification-tile taps. */
-    focusCommentId?: number;
-    /** When focusCommentId is a reply, this is the parent comment id —
-     *  PostDetailModal needs it to expand the parent thread first. */
-    focusParentCommentId?: number;
-    /** Drives the post-detail's initial view mode based on what the
-     *  user tapped to get here:
-     *  - 'media'    → mediaFull (player fills viewport)
-     *  - 'comments' → commentsFull (comments fill viewport)
-     *  Omit to use the existing post-type default. */
-    initialView?: 'media' | 'comments';
-  };
+  Post: PostScreenParams;
   Profile: { username: string };
   Community: { name: string };
   Hashtag: { name: string };
@@ -114,6 +120,7 @@ export type CommunitiesStackParamList = {
   CommunitiesList: undefined;
   Community: { name: string };
   CommunityMembers: { name: string };
+  Post: PostScreenParams;
 };
 
 export type ProfileStackParamList = {
@@ -133,6 +140,7 @@ export type ProfileStackParamList = {
   ModerationTasks: undefined;
   UserCommunities: { username: string };
   UserFollowings: { username: string };
+  Post: PostScreenParams;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -278,6 +286,15 @@ function CommunitiesTabStack() {
         component={CommunityMembersScreenContainer}
         options={{ title: 'Members' }}
       />
+      {/* Post detail registered locally so taps on PostCards rendered
+          inside a Community page (which lives in this stack) can push the
+          detail screen without bubbling up across tabs. Same pattern as
+          `Profile` / `Community` being mirrored across stacks. */}
+      <CommunitiesStack.Screen
+        name="Post"
+        component={PostDetailScreenContainer}
+        options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
     </CommunitiesStack.Navigator>
   );
 }
@@ -367,6 +384,15 @@ function ProfileTabStack() {
         name="UserFollowings"
         component={UserFollowingsScreenContainer}
         options={{ title: 'Following' }}
+      />
+      {/* Post detail registered locally so taps on PostCards rendered
+          inside a Profile page (which lives in this stack) can push the
+          detail screen without bubbling up across tabs. Same pattern as
+          the duplicates above (Profile, Community, etc.). */}
+      <ProfileStack.Screen
+        name="Post"
+        component={PostDetailScreenContainer}
+        options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
       />
     </ProfileStack.Navigator>
   );

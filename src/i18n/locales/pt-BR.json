@@ -175,7 +175,7 @@
     "postTypeShort": "Post curto",
     "postTypeLong": "Post longo",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Denunciar post",
+    "reportPostAction": "Denunciar",
     "reportPostTitle": "Denunciar post",
     "reportPostPrompt": "Por que voce esta denunciando este post?",
     "reportPostSuccess": "Post denunciado, obrigado!",

@@ -175,7 +175,7 @@
     "postTypeShort": "Kisa gonderi",
     "postTypeLong": "Uzun gonderi",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Gonderiyi bildir",
+    "reportPostAction": "Bildir",
     "reportPostTitle": "Gonderiyi bildir",
     "reportPostPrompt": "Bu gonderiyi neden bildiriyorsun?",
     "reportPostSuccess": "Gonderi bildirildi, tesekkurler!",

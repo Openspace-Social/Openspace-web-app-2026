@@ -1311,7 +1311,7 @@ function PostCard({
 
   const menuCardBg = '#ffffff';
   const menuTileBg = '#f3f6fb';
-  function openPostDetailWithPause() {
+  function openPostDetailWithPause(initialView?: 'media') {
     let resumeTimeSec: number | undefined;
     if (Platform.OS === 'web') {
       const video = inlineVideoRef.current as HTMLVideoElement | null;
@@ -1328,9 +1328,11 @@ function PostCard({
       }
     }
     setInlineManualPlaybackStarted(false);
-    // Tap on the inline media → land on the media-full layout in the
-    // post detail so the player fills the viewport.
-    onOpenPostDetail(post, { resumeTimeSec, initialView: 'media' });
+    onOpenPostDetail(post, { resumeTimeSec, initialView });
+  }
+
+  function openPostDetailDefault() {
+    onOpenPostDetail(post);
   }
 
   function replayInlineVideo() {
@@ -1375,7 +1377,11 @@ function PostCard({
       startInlineVideoPlayback();
       return;
     }
-    openPostDetailWithPause();
+    if (single?.isVideo) {
+      openPostDetailWithPause('media');
+      return;
+    }
+    openPostDetailDefault();
   }
   type PostMenuAction = {
     key: string;
@@ -1392,6 +1398,7 @@ function PostCard({
   const communityAdminAllowed =
     typeof canManageCommunity !== 'function'
     || canManageCommunity(post.community?.name);
+  const hasVideoPreviewItems = galleryPreviewItems.some((item) => item.isVideo);
   const canFilterByPosterInCommunity =
     typeof onFilterCommunityPostsByUser === 'function' &&
     typeof creatorUsername === 'string' &&
@@ -1706,6 +1713,178 @@ function PostCard({
       </View>
 
       {postType === 'LP' && longPostBlocks.length > 0 ? (
+        Platform.OS !== 'web' ? (
+          <TouchableOpacity activeOpacity={0.92} onPress={openPostDetailDefault} style={styles.feedTextWrap}>
+            <View style={styles.longPostBlockList}>
+              {visibleLongPostBlocks.map((block, idx) => {
+                if (block.type === 'heading') {
+                  return (
+                    <Text
+                      key={`${post.id}-lp-heading-${idx}`}
+                      style={[
+                        styles.longPostHeading,
+                        block.level === 1
+                          ? styles.longPostHeadingH1
+                          : block.level === 3
+                            ? styles.longPostHeadingH3
+                            : styles.longPostHeadingH2,
+                        { color: c.textPrimary },
+                      ]}
+                    >
+                      {block.text}
+                    </Text>
+                  );
+                }
+                if (block.type === 'quote') {
+                  return (
+                    <View
+                      key={`${post.id}-lp-quote-${idx}`}
+                      style={[styles.longPostQuoteWrap, { borderLeftColor: c.primary, backgroundColor: c.surface }]}
+                    >
+                      <Text style={[styles.longPostQuoteText, { color: c.textSecondary }]}>{`"${block.text || ''}"`}</Text>
+                    </View>
+                  );
+                }
+                if (block.type === 'image' && block.url) {
+                  const imageFit = block.imageFit === 'cover' ? 'cover' : 'contain';
+                  const imageScale = typeof block.imageScale === 'number' && Number.isFinite(block.imageScale)
+                    ? Math.max(0.8, Math.min(1.6, block.imageScale))
+                    : 1;
+                  const focal = getFocalOffset(block.objectPosition);
+                  const align = block.align === 'center' || block.align === 'right' ? block.align : 'left';
+                  const widthPx = typeof block.width === 'number' && Number.isFinite(block.width)
+                    ? Math.max(120, Math.min(1200, block.width))
+                    : undefined;
+                  return (
+                    <View
+                      key={`${post.id}-lp-image-${idx}`}
+                      style={[
+                        styles.longPostImageWrap,
+                        {
+                          alignSelf: align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start'),
+                          width: widthPx ? Math.min(widthPx, 640) : undefined,
+                          maxWidth: '100%',
+                        },
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: block.url }}
+                        style={[
+                          styles.longPostImage,
+                          {
+                            transform: [
+                              { scale: imageScale },
+                              { translateX: imageFit === 'cover' ? focal.x * 18 : 0 },
+                              { translateY: imageFit === 'cover' ? focal.y * 18 : 0 },
+                            ],
+                          },
+                          Platform.OS === 'web' && block.objectPosition
+                            ? ({ objectFit: imageFit, objectPosition: block.objectPosition } as any)
+                            : null,
+                        ]}
+                        resizeMode={imageFit}
+                      />
+                    </View>
+                  );
+                }
+                if (block.type === 'embed' && block.url) {
+                  const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+                  if (Platform.OS !== 'web' && embedUrl && NativeWebView) {
+                    return (
+                      <View
+                        key={`${post.id}-lp-embed-${idx}`}
+                        style={{ width: '100%', marginVertical: 8 } as any}
+                      >
+                        <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                          <NativeWebView
+                            source={{ html: buildEmbedHtml(embedUrl), baseUrl: getEmbedBaseUrl(embedUrl) }}
+                            originWhitelist={['*']}
+                            allowsFullscreenVideo
+                            allowsInlineMediaPlayback
+                            mediaPlaybackRequiresUserAction={false}
+                            javaScriptEnabled
+                            domStorageEnabled
+                            style={{ flex: 1, backgroundColor: '#000' }}
+                          />
+                        </View>
+                      </View>
+                    );
+                  }
+                  const preview = longEmbedPreviewByUrl[(block.url || '').trim()];
+                  if (preview) {
+                    return (
+                      <TouchableOpacity
+                        key={`${post.id}-lp-embed-${idx}`}
+                        style={[styles.shortPostLinkPreviewCard, { borderColor: c.border, backgroundColor: c.surface }]}
+                        activeOpacity={0.88}
+                        onPress={() => onOpenLink(preview.url)}
+                      >
+                        {preview.imageUrl ? (
+                          <Image source={{ uri: preview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+                        ) : null}
+                        <View style={styles.shortPostLinkPreviewMeta}>
+                          {preview.siteName ? (
+                            <Text numberOfLines={1} style={[styles.shortPostLinkPreviewSite, { color: c.textMuted }]}>
+                              {preview.siteName}
+                            </Text>
+                          ) : null}
+                          <Text numberOfLines={2} style={[styles.shortPostLinkPreviewTitle, { color: c.textPrimary }]}>
+                            {preview.title}
+                          </Text>
+                          {preview.description ? (
+                            <Text numberOfLines={2} style={[styles.shortPostLinkPreviewDescription, { color: c.textSecondary }]}>
+                              {preview.description}
+                            </Text>
+                          ) : null}
+                          <Text numberOfLines={1} style={[styles.shortPostLinkPreviewUrl, { color: c.textLink }]}>
+                            {preview.url}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={`${post.id}-lp-embed-${idx}`}
+                      activeOpacity={0.85}
+                      onPress={() => onOpenLink(block.url)}
+                      style={[styles.longPostEmbedChip, { borderColor: c.border, backgroundColor: c.surface }]}
+                    >
+                      <MaterialCommunityIcons name="open-in-new" size={14} color={c.textLink} />
+                      <Text numberOfLines={1} style={[styles.longPostEmbedText, { color: c.textLink }]}>
+                        {block.url}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+
+                return (
+                  <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
+                    {extractTextSegmentsWithLinks(block.text || '').map((seg, segIdx) => {
+                      if (seg.isLink) return (
+                        <Text key={segIdx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>
+                      );
+                      if (seg.isMention) return (
+                        <Text key={segIdx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>
+                      );
+                      if (seg.isHashtag) return (
+                        <Text key={segIdx} onPress={onNavigateHashtag ? () => onNavigateHashtag!(seg.tag) : undefined} style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '700' } : undefined}>{seg.text}</Text>
+                      );
+                      return <Text key={segIdx}>{seg.text}</Text>;
+                    })}
+                  </Text>
+                );
+              })}
+            </View>
+            {allowExpandControl && hasHiddenLongBlocks ? (
+              <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
+                <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                  {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </TouchableOpacity>
+        ) : (
         <View style={styles.feedTextWrap}>
           <View style={styles.longPostBlockList}>
             {visibleLongPostBlocks.map((block, idx) => {
@@ -1938,7 +2117,65 @@ function PostCard({
             </TouchableOpacity>
           ) : null}
         </View>
+        )
       ) : postText ? (
+        Platform.OS !== 'web' ? (
+        <TouchableOpacity activeOpacity={0.92} onPress={openPostDetailDefault} style={styles.feedTextWrap}>
+          <Text style={[styles.feedText, { color: c.textSecondary }]}> 
+            {extractTextSegmentsWithLinks(
+              expandedPostIds[post.id]
+                ? postText
+                : `${postText.slice(0, 240)}${postText.length > 240 ? '...' : ''}`
+            ).map((segment, idx) => {
+              if (segment.isLink) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={() => onOpenLink(segment.url)}
+                    style={{ color: c.textLink, textDecorationLine: 'underline' } as any}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              if (segment.isMention) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={() => onNavigateProfile(segment.username)}
+                    style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              if (segment.isHashtag) {
+                return (
+                  <Text
+                    key={`${variant}-${post.id}-text-segment-${idx}`}
+                    onPress={onNavigateHashtag ? () => onNavigateHashtag!(segment.tag) : undefined}
+                    style={onNavigateHashtag ? { color: c.primary ?? c.textLink, fontWeight: '700' } : undefined}
+                  >
+                    {segment.text}
+                  </Text>
+                );
+              }
+              return (
+                <Text key={`${variant}-${post.id}-text-segment-${idx}`}>
+                  {segment.text}
+                </Text>
+              );
+            })}
+          </Text>
+          {allowExpandControl && postText.length > 240 ? (
+            <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
+              <Text style={[styles.seeMoreText, { color: c.textLink }]}>
+                {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </TouchableOpacity>
+        ) : (
         <View style={styles.feedTextWrap}>
           <Text style={[styles.feedText, { color: c.textSecondary }]}> 
             {extractTextSegmentsWithLinks(
@@ -1994,6 +2231,7 @@ function PostCard({
             </TouchableOpacity>
           ) : null}
         </View>
+        )
       ) : null}
 
       {/* Translation — shown when post language differs from the user's translation language */}
@@ -2110,7 +2348,10 @@ function PostCard({
         Platform.OS === 'web' ? (
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={openPostDetailWithPause}
+            onPress={() => {
+              if (hasVideoPreviewItems) openPostDetailWithPause('media');
+              else openPostDetailDefault();
+            }}
             accessibilityLabel={t('home.openPostDetailAction')}
             style={styles.feedMediaGrid}
           >
@@ -2154,7 +2395,10 @@ function PostCard({
         ) : (
           <NativeMediaPager
             items={galleryPreviewItems}
-            onPress={openPostDetailWithPause}
+            onPress={() => {
+              if (hasVideoPreviewItems) openPostDetailWithPause('media');
+              else openPostDetailDefault();
+            }}
             c={c}
           />
         )
@@ -2217,6 +2461,10 @@ function PostCard({
                     autoPlay={autoPlayMedia || inlineManualPlaybackStarted}
                     nativeControls={false}
                     contentFit="contain"
+                    // Feed autoplay: muted (matches the comment above).
+                    // Tapping the cell opens the post detail with full
+                    // audio enabled — that's where users get sound.
+                    muted
                     onEnded={() => {
                       setInlineVideoEnded(true);
                       if (!autoPlayMedia) {
@@ -2238,7 +2486,7 @@ function PostCard({
                   activeOpacity={0.9}
                   onPress={(event: any) => {
                     event?.stopPropagation?.();
-                    openPostDetailWithPause();
+                    openPostDetailWithPause('media');
                   }}
                   style={{
                     backgroundColor: 'rgba(0,0,0,0.68)',
@@ -2467,9 +2715,8 @@ function PostCard({
           onPress={() => {
             if (Platform.OS !== 'web') {
               // Comment icon → land on commentsFull so the comments list
-              // fills the viewport. Composer auto-focus is preserved so
-              // the keyboard pops up immediately.
-              onOpenPostDetail(post, { focusComposer: true, initialView: 'comments' });
+              // fills the viewport, but don't force the keyboard open.
+              onOpenPostDetail(post, { initialView: 'comments' });
               return;
             }
             if (effectiveHasInlineMedia) {
@@ -2515,15 +2762,6 @@ function PostCard({
           accessibilityLabel={t('home.shareAction')}
         >
           <MaterialCommunityIcons name="share-variant-outline" size={22} color={c.textSecondary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.feedActionButton, { borderColor: c.border, backgroundColor: c.inputBackground, paddingHorizontal: 10 }]}
-          onPress={() => onOpenPostDetail(post)}
-          activeOpacity={0.85}
-          accessibilityLabel={t('home.expandPostAction', { defaultValue: 'Expand post' })}
-        >
-          <MaterialCommunityIcons name="arrow-expand" size={22} color={c.textMuted} />
         </TouchableOpacity>
       </View>
 

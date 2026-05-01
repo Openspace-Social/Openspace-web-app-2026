@@ -175,7 +175,7 @@
     "postTypeShort": "Kort innlegg",
     "postTypeLong": "Langt innlegg",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Rapporter innlegg",
+    "reportPostAction": "Rapporter",
     "reportPostTitle": "Rapporter innlegg",
     "reportPostPrompt": "Hvorfor rapporterer du dette innlegget?",
     "reportPostSuccess": "Innlegg rapportert, takk!",

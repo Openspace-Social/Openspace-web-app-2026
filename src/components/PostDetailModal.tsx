@@ -67,6 +67,16 @@ function NativePostDetailVideo({
         // useEffect below waits for status === 'readyToPlay' and plays
         // then, which actually starts playback.
         p.loop = false;
+        // Audio: explicit defaults so the post-detail player ALWAYS opens
+        // with sound on. expo-video on Android requires audio focus to
+        // produce sound — with `audioMixingMode: 'auto'` the focus
+        // request fires `AUDIOFOCUS_GAIN` (see expo-video's
+        // AudioFocusManager.kt). Without these explicit values, a stale
+        // `muted=true` carried over from HMR / a prior view could leave
+        // the player silent even though the speaker icon shows unmuted.
+        p.volume = 1.0;
+        p.muted = false;
+        p.audioMixingMode = 'auto';
       })
     : null;
 
@@ -519,9 +529,12 @@ type Props = {
   reactionListEmoji: ReactionEmoji | null;
   reactionListUsers: PostReaction[];
   onCloseReactionList: () => void;
+  /** Shared detail UI can render either inside an RN Modal (legacy/web)
+   *  or inline inside a dedicated navigation screen (native Post route). */
+  presentationMode?: 'modal' | 'screen';
   /** When true, focuses the post-level comment composer on mount so the
-   *  keyboard pops up immediately. Used when the user navigates here by
-   *  tapping the comment icon on a feed post. */
+   *  keyboard pops up immediately. Reserved for explicit write/reply
+   *  intents rather than general "open comments" navigation. */
   autoFocusComposer?: boolean;
   /** Reflects the user's "Auto-play media" setting. Used by the native
    *  video player to start playback automatically when the post detail
@@ -600,6 +613,7 @@ export default function PostDetailModal({
   reactionListEmoji,
   reactionListUsers,
   onCloseReactionList,
+  presentationMode = 'modal',
   autoFocusComposer,
   autoPlayMedia = false,
 }: Props) {
@@ -619,7 +633,14 @@ export default function PostDetailModal({
   // change at once — that's what made the drag handle appear to "fall from
   // the top" during mediaFull → split.
   const HEIGHT_MEDIA_FULL = 64;
-  const usableHeight = Math.max(viewportHeight - insets.top - insets.bottom, 320);
+  // Narrow/mobile media-detail layout is already responsible for its own
+  // top spacing (iOS gets an explicit 44pt pad; Android runs edge-to-edge),
+  // so subtracting safe-area insets here makes the comments sheet too short
+  // and exposes the dark modal backdrop below it.
+  const reservedViewportHeight = isNarrow
+    ? (Platform.OS === 'ios' ? 44 : 0)
+    : insets.top + insets.bottom;
+  const usableHeight = Math.max(viewportHeight - reservedViewportHeight, 320);
   const heightForMode = React.useCallback(
     (mode: DetailViewMode) => {
       if (mode === 'mediaFull') return HEIGHT_MEDIA_FULL;
@@ -2174,17 +2195,8 @@ export default function PostDetailModal({
 
   if (!activePost && !postRouteLoading) return null;
 
-  return (
-    <Modal
-      visible={visible}
-      // On native we make the Modal transparent + skip the fade so the
-      // underlying Stack screen (which already paints #0B0E13 + spinner) is
-      // immediately visible during navigation. Web keeps the original
-      // opaque fade-in to match the desktop/mobile-web UX.
-      transparent={Platform.OS !== 'web'}
-      animationType={Platform.OS === 'web' ? 'fade' : 'none'}
-      onRequestClose={onClose}
-    >
+  const detailContent = (
+    <>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -2218,7 +2230,16 @@ export default function PostDetailModal({
               {...(isNarrow ? mediaSwipeResponderProps : {})}
             >
               <TouchableOpacity
-                style={[styles.postDetailClose, { backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }]}
+                style={[
+                  styles.postDetailClose,
+                  // Push the button below the status bar / notch so it's
+                  // both visible and tappable. Without this, on Android
+                  // (edge-to-edge enabled in app.json) and on iOS notched
+                  // devices the button rides up into the system bar where
+                  // the OS swallows touch events.
+                  { top: styles.postDetailClose.top + insets.top },
+                  { backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+                ]}
                 onPress={onClose}
                 activeOpacity={0.85}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -2351,10 +2372,14 @@ export default function PostDetailModal({
                 isNarrow && {
                   width: '100%',
                   maxWidth: '100%',
-                  // Drop flex; we drive the height directly via the
-                  // Animated.Value so iOS interpolates from a known frame.
-                  flex: undefined,
-                  height: commentsHeightAnim,
+                  // Split/mediaFull use an explicit animated height so the
+                  // sheet drag feels controlled. commentsFull should snap to
+                  // true full-height flex on Android; relying on
+                  // useWindowDimensions there can come up short when the
+                  // translucent nav-bar area is excluded from the measured
+                  // height, which exposes the dark modal backdrop below.
+                  flex: viewMode === 'commentsFull' ? 1 : undefined,
+                  height: viewMode === 'commentsFull' ? undefined : commentsHeightAnim,
                   borderLeftWidth: 0,
                   borderTopWidth: 1,
                   borderTopColor: c.border,
@@ -2476,7 +2501,10 @@ export default function PostDetailModal({
                   // focus) so pulling back to split restores it as-is.
                   isNarrow && viewMode === 'mediaFull' && { display: 'none' as const },
                 ]}
-                contentContainerStyle={styles.postDetailBodyContent}
+                contentContainerStyle={[
+                  styles.postDetailBodyContent,
+                  detailPanel === 'reactions' && { paddingBottom: insets.bottom + 14 },
+                ]}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
                 automaticallyAdjustKeyboardInsets
@@ -2508,14 +2536,14 @@ export default function PostDetailModal({
                   <View style={[styles.commentsBox, { borderTopColor: c.border }]}>
                     {renderCommentThread(activePost.id)}
                     {activePost.is_closed ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, opacity: 0.6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, paddingBottom: insets.bottom + 12, opacity: 0.6 }}>
                         <MaterialCommunityIcons name="lock" size={14} color={c.textMuted} />
                         <Text style={{ fontSize: 13, color: c.textMuted }}>
                           {t('home.postLockedCommentNotice', { defaultValue: 'This post is locked. No new comments can be added.' })}
                         </Text>
                       </View>
                     ) : (
-                      <View style={styles.commentComposer}>
+                      <View style={[styles.commentComposer, { paddingBottom: insets.bottom + 12 }]}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
                             <TouchableOpacity
@@ -2591,8 +2619,19 @@ export default function PostDetailModal({
               { backgroundColor: c.surface, borderColor: c.border },
               // Drop max-width, rounded corners, and fixed height on
               // narrow so the card becomes a full-screen sheet instead of
-              // a floating desktop-style modal.
-              isNarrow && { maxWidth: undefined, height: '100%', borderRadius: 0, borderWidth: 0 },
+              // a floating desktop-style modal. We MUST explicitly null
+              // out `height` here — the base style sets `height: '92%'`
+              // for the desktop floating-card look, and Yoga keeps the
+              // explicit height even when `flex: 1` is also present,
+              // which would otherwise leave an 8% dead zone at the
+              // bottom showing the dark modal background.
+              isNarrow && {
+                maxWidth: undefined,
+                height: undefined,
+                flex: 1,
+                borderRadius: 0,
+                borderWidth: 0,
+              },
             ]}>
               <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}> 
                 <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
@@ -2614,7 +2653,15 @@ export default function PostDetailModal({
               <ScrollView
                 ref={detailScrollRef}
                 style={styles.postDetailBody}
-                contentContainerStyle={styles.postDetailBodyContent}
+                contentContainerStyle={[
+                  styles.postDetailBodyContent,
+                  // When the reactions tab is active there's no composer
+                  // beneath the ScrollView to absorb the bottom inset,
+                  // so push the last item above the system gesture bar
+                  // ourselves. On comments tab the composer already
+                  // applies `paddingBottom: insets.bottom + 12`.
+                  detailPanel === 'reactions' && { paddingBottom: insets.bottom + 14 },
+                ]}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
                 automaticallyAdjustKeyboardInsets
@@ -2775,6 +2822,33 @@ export default function PostDetailModal({
        *  #hashtag suggestion overlay inside this iOS Modal so the absolute
        *  popup paints on top of the post detail content. */}
       <MentionPopupOverlay />
+    </>
+  );
+
+  if (presentationMode === 'screen') {
+    return detailContent;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      // On native we make the Modal transparent + skip the fade so the
+      // underlying Stack screen (which already paints #0B0E13 + spinner) is
+      // immediately visible during navigation. Web keeps the original
+      // opaque fade-in to match the desktop/mobile-web UX.
+      transparent={Platform.OS !== 'web'}
+      animationType={Platform.OS === 'web' ? 'fade' : 'none'}
+      onRequestClose={onClose}
+      // Android: by default RN <Modal> creates a Dialog window that does
+      // NOT honor the activity's edge-to-edge flag — it leaves space for
+      // the system status + nav bars, which on dark mode shows up as
+      // black gutters above and below the card. Forcing both translucent
+      // props makes the Modal cover the full screen, and the inset-aware
+      // padding inside the card keeps content out from under the bars.
+      statusBarTranslucent={Platform.OS === 'android'}
+      navigationBarTranslucent={Platform.OS === 'android'}
+    >
+      {detailContent}
     </Modal>
   );
 }

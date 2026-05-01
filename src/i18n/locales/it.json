@@ -175,7 +175,7 @@
     "postTypeShort": "Post breve",
     "postTypeLong": "Post lungo",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Segnala post",
+    "reportPostAction": "Segnala",
     "reportPostTitle": "Segnala post",
     "reportPostPrompt": "Perche stai segnalando questo post?",
     "reportPostSuccess": "Post segnalato, grazie!",

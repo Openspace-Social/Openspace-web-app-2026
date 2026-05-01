@@ -8,9 +8,9 @@
  * Virtualized via FlatList.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -43,6 +43,18 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
   const autoPlayMedia = useAutoPlayMedia();
   const route = useRoute<RouteProp<HomeStackParamList, 'Feed'>>();
   const feedType: FeedType = feedTypeProp || (route.params?.feed as FeedType) || 'home';
+
+  // Scroll-to-top wiring. `useScrollToTop` from React Navigation:
+  //   • Listens for `tabPress` on every parent tab/drawer navigator
+  //     (top-tabs above us → bottom-tabs at the root) and calls
+  //     `scrollToOffset({offset:0, animated:true})` on the FlatList ref
+  //     when the screen is currently focused.
+  //   • Sets `scrollsToTop` on the underlying scrollable so iOS's native
+  //     status-bar tap also scrolls this feed to the top — no extra work
+  //     needed there. (Android has no equivalent OS gesture; the
+  //     bottom-tab home button is the cross-platform path.)
+  const flatListRef = useRef<FlatList<FeedPost>>(null);
+  useScrollToTop(flatListRef);
 
   const {
     posts, loading, loadingMore, refreshing, hasMore, error, refresh, loadMore,
@@ -314,6 +326,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onSave={() => void submitMovePostCommunities()}
       />
       <ThemedFlatList
+        ref={flatListRef}
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.listContent}
         data={posts}

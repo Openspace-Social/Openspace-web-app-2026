@@ -73,6 +73,13 @@ export type UseCommentsDataResult = {
     isReply: boolean,
     parentCommentId?: number,
   ) => Promise<void>;
+  /** Toggle a reaction on a comment OR a reply. Caller doesn't need to
+   *  pre-classify which kind it is — the hook locates the target by id
+   *  across both `localComments` and `commentRepliesById`. If the user's
+   *  current reaction matches `emojiId` the reaction is removed,
+   *  otherwise the new emoji is set. Optimistic UI with rollback on
+   *  failure. */
+  reactToComment: (postId: number, commentId: number, emojiId?: number) => Promise<void>;
   pickDraftCommentImage: (postId: number) => Promise<void>;
   pickDraftReplyImage: (commentId: number) => Promise<void>;
   setDraftCommentGif: (postId: number) => void;
@@ -380,6 +387,133 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     setDraftReplyMediaByCommentId((prev) => ({ ...prev, [commentId]: null }));
   }, []);
 
+  // ── reactToComment ────────────────────────────────────────────────────
+  // Single handler that works for both top-level comments AND replies.
+  // The caller (PostInteractionsValue.onReactToComment) only knows the
+  // comment id, so we have to discover whether it lives in localComments
+  // (top-level) or in commentRepliesById (a reply nested under a parent).
+  // Once located, the optimistic update mutates whichever state slice
+  // owns the comment, the API call uses `api.reactToPostComment` /
+  // `removeReactionFromPostComment` (both work for any comment id —
+  // backend treats top-level and replies as the same model), and on
+  // failure we restore the original comment object.
+  const reactToComment = useCallback(
+    async (postId: number, commentId: number, emojiId?: number): Promise<void> => {
+      if (!token || !emojiId) return;
+      const postUuid = resolveUuid(postId);
+      if (!postUuid) return;
+
+      // Find the comment — could be a top-level comment OR a reply under
+      // any parent. Capture the original so we can roll back on failure.
+      let kind: 'top' | 'reply' | null = null;
+      let parentId: number | null = null;
+      let original: PostComment | null = null;
+
+      const topLevelHit = (localComments[postId] || []).find((c) => c.id === commentId);
+      if (topLevelHit) {
+        kind = 'top';
+        original = topLevelHit;
+      } else {
+        for (const [pid, replies] of Object.entries(commentRepliesById)) {
+          const replyHit = (replies || []).find((r) => r.id === commentId);
+          if (replyHit) {
+            kind = 'reply';
+            parentId = Number(pid);
+            original = replyHit;
+            break;
+          }
+        }
+      }
+
+      if (!kind || !original) return;
+
+      const isAlreadyMyReaction = original.reaction?.emoji?.id === emojiId;
+
+      // Build the optimistic next-state for ONE comment object. Same
+      // shape regardless of whether it's a top-level or reply, because
+      // PostComment is a single model on the backend.
+      const optimisticPatch = (c: PostComment): PostComment => {
+        if (c.id !== commentId) return c;
+        if (isAlreadyMyReaction) {
+          return {
+            ...c,
+            reaction: undefined,
+            reactions_emoji_counts: (c.reactions_emoji_counts || [])
+              .map((e) => (e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e))
+              .filter((e) => (e.count || 0) > 0),
+          };
+        }
+        const prevEmojiId = c.reaction?.emoji?.id;
+        const emojiMeta = (c.reactions_emoji_counts || []).find((e) => e.emoji?.id === emojiId)?.emoji;
+        const counts = c.reactions_emoji_counts || [];
+        const hasEmoji = counts.some((e) => e.emoji?.id === emojiId);
+        const nextCounts = hasEmoji
+          ? counts.map((e) => {
+              if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
+              if (prevEmojiId && e.emoji?.id === prevEmojiId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
+              return e;
+            })
+          : [...counts.map((e) => (prevEmojiId && e.emoji?.id === prevEmojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e)), { count: 1, emoji: emojiMeta }];
+        return {
+          ...c,
+          reaction: emojiMeta ? ({ emoji: emojiMeta } as any) : c.reaction,
+          reactions_emoji_counts: nextCounts.filter((e) => (e.count || 0) > 0),
+        };
+      };
+
+      if (kind === 'top') {
+        setLocalComments((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map(optimisticPatch),
+        }));
+      } else if (kind === 'reply' && parentId != null) {
+        setCommentRepliesById((prev) => ({
+          ...prev,
+          [parentId]: (prev[parentId] || []).map(optimisticPatch),
+        }));
+      }
+
+      try {
+        if (isAlreadyMyReaction) {
+          await api.removeReactionFromPostComment(token, postUuid, commentId);
+        } else {
+          // Reconcile with the server's canonical reaction object + count
+          // so the emoji metadata (image, keyword) is always correct.
+          const reaction = await api.reactToPostComment(token, postUuid, commentId, emojiId);
+          const counts = await api.getPostCommentReactionCounts(token, postUuid, commentId);
+          const reconcilePatch = (c: PostComment): PostComment =>
+            c.id === commentId ? { ...c, reaction: reaction as any, reactions_emoji_counts: counts as any } : c;
+          if (kind === 'top') {
+            setLocalComments((prev) => ({
+              ...prev,
+              [postId]: (prev[postId] || []).map(reconcilePatch),
+            }));
+          } else if (kind === 'reply' && parentId != null) {
+            setCommentRepliesById((prev) => ({
+              ...prev,
+              [parentId]: (prev[parentId] || []).map(reconcilePatch),
+            }));
+          }
+        }
+      } catch {
+        // Roll back to the captured original on any API failure.
+        const rollbackPatch = (c: PostComment): PostComment => (c.id === commentId && original ? original : c);
+        if (kind === 'top') {
+          setLocalComments((prev) => ({
+            ...prev,
+            [postId]: (prev[postId] || []).map(rollbackPatch),
+          }));
+        } else if (kind === 'reply' && parentId != null) {
+          setCommentRepliesById((prev) => ({
+            ...prev,
+            [parentId]: (prev[parentId] || []).map(rollbackPatch),
+          }));
+        }
+      }
+    },
+    [token, resolveUuid, localComments, commentRepliesById],
+  );
+
   return {
     localComments,
     commentBoxPostIds,
@@ -399,6 +533,7 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     cancelEditingComment,
     saveEditedComment,
     deleteComment,
+    reactToComment,
     draftCommentMediaByPostId,
     draftReplyMediaByCommentId,
     pickDraftCommentImage,

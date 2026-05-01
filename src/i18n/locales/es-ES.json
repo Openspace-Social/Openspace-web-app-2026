@@ -175,7 +175,7 @@
     "postTypeShort": "Publicacion corta",
     "postTypeLong": "Publicacion larga",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Reportar publicacion",
+    "reportPostAction": "Reportar",
     "reportPostTitle": "Reportar publicacion",
     "reportPostPrompt": "Por que reportas esta publicacion?",
     "reportPostSuccess": "Publicacion reportada, gracias.",

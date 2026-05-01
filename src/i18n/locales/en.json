@@ -185,7 +185,7 @@
     "postTypeShort": "Short post",
     "postTypeLong": "Long post",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Report post",
+    "reportPostAction": "Report",
     "reportPostTitle": "Report post",
     "reportPostPrompt": "Why are you reporting this post?",
     "reportPostSuccess": "Post reported, thanks!",

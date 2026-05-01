@@ -175,7 +175,7 @@
     "postTypeShort": "Publication courte",
     "postTypeLong": "Publication longue",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Signaler la publication",
+    "reportPostAction": "Signaler",
     "reportPostTitle": "Signaler la publication",
     "reportPostPrompt": "Pourquoi signalez-vous cette publication ?",
     "reportPostSuccess": "Publication signalee, merci !",

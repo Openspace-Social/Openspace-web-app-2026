@@ -25,6 +25,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  StatusBar,
   Text,
   TouchableOpacity,
   View,
@@ -83,7 +84,10 @@ export default function ProfileMenuDrawer({
   const insets = useSafeAreaInsets();
 
   const c = theme.colors;
-  const drawerWidth = Math.min(viewportWidth, 360);
+  const drawerWidth =
+    Platform.OS === 'android'
+      ? Math.max(300, viewportWidth * 0.8)
+      : Math.min(viewportWidth, 360);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -101,6 +105,14 @@ export default function ProfileMenuDrawer({
       ]).start();
     }
   }, [visible, drawerWidth, translateX, backdropOpacity]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    StatusBar.setHidden(visible, 'fade');
+    return () => {
+      StatusBar.setHidden(false, 'fade');
+    };
+  }, [visible]);
 
   const goTo = (tab: string, screen?: string, params?: Record<string, unknown>) => {
     onClose();
@@ -221,11 +233,19 @@ export default function ProfileMenuDrawer({
   ];
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      navigationBarTranslucent={Platform.OS === 'android'}
+    >
+      {Platform.OS === 'android' ? (
+        <StatusBar hidden={visible} animated />
+      ) : null}
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
         <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
-
       <Animated.View
         style={[
           styles.panel,
@@ -237,11 +257,12 @@ export default function ProfileMenuDrawer({
             // computed height and prevents the inner ScrollView from
             // scrolling. Pinning to viewportHeight is the reliable shape
             // on every platform.
-            height: viewportHeight,
+            height: Platform.OS === 'android' ? viewportHeight + insets.bottom + 72 : viewportHeight,
             backgroundColor: c.surface,
             borderColor: c.border,
-            paddingTop: Platform.OS === 'ios' ? insets.top + 8 : insets.top + 8,
-            paddingBottom: insets.bottom + 12,
+            paddingTop: insets.top + 8,
+            paddingBottom: Platform.OS === 'android' ? 0 : insets.bottom + 12,
+            bottom: Platform.OS === 'android' ? -72 : undefined,
             transform: [{ translateX }],
           },
         ]}
@@ -360,7 +381,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 14,
-    paddingBottom: 8,
+    paddingBottom: Platform.OS === 'android' ? 0 : 8,
   },
   header: {
     flexDirection: 'row',
@@ -424,6 +445,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     marginTop: 10,
+    marginBottom: Platform.OS === 'android' ? 0 : 8,
     justifyContent: 'center',
   },
   logoutText: { fontSize: 15, fontWeight: '700' },

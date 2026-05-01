@@ -1,26 +1,27 @@
 /**
- * ThemedFlatList / ThemedScrollView — drop-in replacements that use a
- * fully JS-controlled pull-to-refresh indicator, sidestepping React
- * Native's Fabric bug where iOS RefreshControl drops the `tintColor`
- * prop and always renders the system default charcoal grey.
+ * ThemedFlatList / ThemedScrollView — drop-in replacements that swap
+ * pull-to-refresh implementations per platform:
  *
- * Behavior:
- *   - User pulls past `PULL_THRESHOLD` (80pt) and releases → onRefresh fires.
- *   - While refreshing, an <ActivityIndicator> stays pinned at the top.
- *   - While pulling (not yet refreshing), the indicator fades in linearly
- *     with the pull distance so the gesture feels responsive before commit.
- *   - The wrapped scroll surface still bounces natively (iOS default), so
- *     the gesture itself feels exactly like the system pull-to-refresh.
+ *   - iOS: a fully JS-controlled <ActivityIndicator> overlay driven by
+ *     onScroll/onScrollEndDrag. This sidesteps RN's Fabric bug where
+ *     iOS RefreshControl drops the `tintColor` prop and always renders
+ *     the system default charcoal grey (no contrast on dark mode).
+ *
+ *   - Android: the platform-native <RefreshControl>. It honors
+ *     `tintColor` + `colors` correctly and Android scroll views don't
+ *     even support iOS-style bounce overscroll, so the JS-overlay
+ *     pull-detection (which relies on contentOffset.y going negative)
+ *     wouldn't fire on Android anyway.
  *
  * Caller contract is the same as the underlying scroll component plus
  * three new props:
  *   - `refreshing` (controlled — your data hook owns it)
  *   - `onRefresh` (your refetch callback)
- *   - `refreshTintColor` (any color string; this component honors it)
+ *   - `refreshTintColor` (any color string; both platforms honor it)
  *
- * Existing `onScroll` and `onScrollEndDrag` callbacks are forwarded after
- * our own pull tracking, so screens that listen for scroll events keep
- * working unchanged.
+ * Existing `onScroll` and `onScrollEndDrag` callbacks are forwarded
+ * after our own pull tracking on iOS, so screens that listen for scroll
+ * events keep working unchanged on both platforms.
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -30,6 +31,8 @@ import {
   type FlatListProps,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
+  RefreshControl,
   ScrollView,
   type ScrollViewProps,
   StyleSheet,
@@ -113,7 +116,10 @@ function Indicator({ opacity, color }: { opacity: number; color: string }) {
 
 type ThemedFlatListProps<T> = FlatListProps<T> & RefreshProps;
 
-function ThemedFlatListInner<T>(props: ThemedFlatListProps<T>) {
+function ThemedFlatListInner<T>(
+  props: ThemedFlatListProps<T>,
+  ref: React.Ref<FlatList<T>>,
+) {
   const {
     refreshing = false,
     onRefresh,
@@ -123,6 +129,31 @@ function ThemedFlatListInner<T>(props: ThemedFlatListProps<T>) {
     ...rest
   } = props;
 
+  // Android: RefreshControl works correctly (tintColor honored, gestures
+  // map naturally to the OS overscroll behavior). Use it directly — no
+  // JS overlay needed.
+  if (Platform.OS === 'android') {
+    return (
+      <FlatList
+        ref={ref}
+        {...(rest as FlatListProps<T>)}
+        onScroll={onScroll}
+        onScrollEndDrag={onScrollEndDrag}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { void onRefresh(); }}
+              tintColor={refreshTintColor}
+              colors={[refreshTintColor]}
+            />
+          ) : undefined
+        }
+      />
+    );
+  }
+
+  // iOS: custom JS overlay (Fabric RefreshControl tintColor bug).
   const { handleScroll, handleEndDrag, indicatorOpacity } = usePullToRefresh(
     refreshing,
     onRefresh,
@@ -134,6 +165,7 @@ function ThemedFlatListInner<T>(props: ThemedFlatListProps<T>) {
     <View style={styles.root}>
       <Indicator opacity={indicatorOpacity} color={refreshTintColor} />
       <FlatList
+        ref={ref}
         {...(rest as FlatListProps<T>)}
         onScroll={handleScroll}
         onScrollEndDrag={handleEndDrag}
@@ -143,10 +175,13 @@ function ThemedFlatListInner<T>(props: ThemedFlatListProps<T>) {
   );
 }
 
-// Generic wrapper + memo don't compose cleanly in TS; cast at the boundary
-// so the public type remains generic-aware.
-const ThemedFlatList = ThemedFlatListInner as <T>(
-  props: ThemedFlatListProps<T>,
+// Generic forwardRef + memo don't compose cleanly in TS; cast at the
+// boundary so the public type remains generic-aware AND ref-forwarding.
+// Consumers can pass a ref<FlatList<T>> and call e.g.
+// `ref.current?.scrollToOffset({ offset: 0 })` — and React Navigation's
+// `useScrollToTop` hook works against this same ref.
+const ThemedFlatList = React.forwardRef(ThemedFlatListInner) as <T>(
+  props: ThemedFlatListProps<T> & { ref?: React.Ref<FlatList<T>> },
 ) => React.ReactElement;
 
 export default ThemedFlatList;
@@ -166,6 +201,30 @@ export function ThemedScrollView(props: ThemedScrollViewProps) {
     ...rest
   } = props;
 
+  // Android: native RefreshControl. Same reasoning as ThemedFlatList.
+  if (Platform.OS === 'android') {
+    return (
+      <ScrollView
+        {...rest}
+        onScroll={onScroll}
+        onScrollEndDrag={onScrollEndDrag}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { void onRefresh(); }}
+              tintColor={refreshTintColor}
+              colors={[refreshTintColor]}
+            />
+          ) : undefined
+        }
+      >
+        {children}
+      </ScrollView>
+    );
+  }
+
+  // iOS: custom JS overlay.
   const { handleScroll, handleEndDrag, indicatorOpacity } = usePullToRefresh(
     refreshing,
     onRefresh,

@@ -44,6 +44,10 @@ export type NativeInlineVideoProps = {
   nativeControls?: boolean;
   contentFit?: 'contain' | 'cover' | 'fill';
   style?: StyleProp<ViewStyle>;
+  /** When true, the player starts muted and stays muted. Default false.
+   *  The feed cell passes `muted` so scroll-driven autoplay doesn't blast
+   *  audio; the post-detail surface omits it so audio plays normally. */
+  muted?: boolean;
 };
 
 const NativeInlineVideoImpl = forwardRef<NativeInlineVideoHandle, NativeInlineVideoProps>(
@@ -57,6 +61,7 @@ const NativeInlineVideoImpl = forwardRef<NativeInlineVideoHandle, NativeInlineVi
       nativeControls = true,
       contentFit = 'contain',
       style,
+      muted = false,
     },
     ref,
   ) {
@@ -66,8 +71,28 @@ const NativeInlineVideoImpl = forwardRef<NativeInlineVideoHandle, NativeInlineVi
     const player = useVideoPlayer
       ? useVideoPlayer(uri, (p: any) => {
           p.loop = false;
+          // Audio defaults — explicit so feed autoplay can mute via the
+          // `muted` prop AND the post-detail surface starts at full
+          // volume. expo-video on Android needs `audioMixingMode: 'auto'`
+          // for the AudioFocusManager to request `AUDIOFOCUS_GAIN`;
+          // without focus the player can be silent even when not muted.
+          p.volume = 1.0;
+          p.muted = muted;
+          p.audioMixingMode = 'auto';
         })
       : null;
+
+    // Keep `player.muted` in sync if the prop flips after mount (e.g.
+    // user enables sound on a feed cell). The setup callback above only
+    // runs once per source.
+    useEffect(() => {
+      if (!player) return;
+      try {
+        player.muted = muted;
+      } catch {
+        // ignore — player can be in a transient state
+      }
+    }, [player, muted]);
 
     useImperativeHandle(
       ref,

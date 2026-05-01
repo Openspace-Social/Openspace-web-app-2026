@@ -175,7 +175,7 @@
     "postTypeShort": "Kurzer Beitrag",
     "postTypeLong": "Langer Beitrag",
     "communityRouteLabel": "Community page for c/{{community}} coming soon.",
-    "reportPostAction": "Beitrag melden",
+    "reportPostAction": "Melden",
     "reportPostTitle": "Beitrag melden",
     "reportPostPrompt": "Warum meldest du diesen Beitrag?",
     "reportPostSuccess": "Beitrag gemeldet, danke!",

@@ -258,7 +258,7 @@ export function useNativePostInteractions({
       onToggleFollow: handleToggleFollow,
       onSharePost: async (post) => {
         const uuid = (post as any)?.uuid;
-        const url = uuid ? `https://openspacelive.com/posts/${uuid}` : '';
+        const url = uuid ? `https://openspace.social/posts/${uuid}` : '';
         if (!url) {
           stub('Share');
           return;
