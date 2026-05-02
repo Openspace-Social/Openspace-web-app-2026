@@ -45,6 +45,7 @@ import {
   UpdateAuthenticatedUserPayload,
 } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
+import { feedViewport } from '../utils/feedViewport';
 import { AppRoute } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
@@ -795,6 +796,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [composerSelectedCommunityNames, setComposerSelectedCommunityNames] = useState<string[]>([]);
   const [composerCircles, setComposerCircles] = useState<CircleResult[]>([]);
   const [composerJoinedCommunities, setComposerJoinedCommunities] = useState<SearchCommunityResult[]>([]);
+  const [composerPinnedCommunities, setComposerPinnedCommunities] = useState<SearchCommunityResult[]>([]);
+  // Tab in the composer destination picker. Mirrors the native
+  // AudienceSheet so the two surfaces feel the same. Defaults to
+  // 'communities' since that's where the new pin feature lives.
+  const [composerAudienceTab, setComposerAudienceTab] = useState<'communities' | 'circles'>('communities');
   const [composerCommunitySearch, setComposerCommunitySearch] = useState('');
   const [composerDestinationsLoading, setComposerDestinationsLoading] = useState(false);
   const [sidebarCommunities, setSidebarCommunities] = useState<SearchCommunityResult[]>([]);
@@ -4476,6 +4482,37 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     onNavigate({ screen: 'me' });
   }
 
+  // Pin / unpin a community from the composer's destination picker.
+  // Optimistic local update with API rollback on failure. Cap of 3
+  // matches the backend's UserPinnedCommunity.MAX_PINNED_COMMUNITIES.
+  const COMPOSER_PIN_LIMIT = 3;
+  async function toggleComposerPinCommunity(community: SearchCommunityResult) {
+    if (!token) return;
+    const name = (community.name || '').trim();
+    if (!name) return;
+    const isPinned = composerPinnedCommunities.some((p) => (p.name || '').trim() === name);
+    if (!isPinned && composerPinnedCommunities.length >= COMPOSER_PIN_LIMIT) {
+      setError(t('home.postComposerPinLimitReached', {
+        max: COMPOSER_PIN_LIMIT,
+        defaultValue: `You can pin up to ${COMPOSER_PIN_LIMIT} communities. Unpin one first.`,
+      }));
+      return;
+    }
+    const previous = composerPinnedCommunities;
+    setComposerPinnedCommunities(isPinned
+      ? previous.filter((p) => (p.name || '').trim() !== name)
+      : [...previous, community]);
+    try {
+      if (isPinned) await api.unpinCommunity(token, name);
+      else await api.pinCommunity(token, name);
+    } catch (e: any) {
+      setComposerPinnedCommunities(previous);
+      setError(e?.message || t('home.postComposerPinFailed', {
+        defaultValue: 'Could not update pinned communities.',
+      }));
+    }
+  }
+
   function clearComposerMedia() {
     if (typeof URL !== 'undefined') {
       for (const image of composerImages) {
@@ -5194,10 +5231,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   async function loadComposerDestinations() {
     setComposerDestinationsLoading(true);
     try {
-      const [circles, joinedCommunitiesFirstPage] = await Promise.all([
+      const [circles, joinedCommunitiesFirstPage, pinnedCommunities] = await Promise.all([
         api.getCircles(token),
         api.getJoinedCommunities(token, 20, 0),
+        api.getPinnedCommunities(token).catch(() => [] as SearchCommunityResult[]),
       ]);
+      setComposerPinnedCommunities(Array.isArray(pinnedCommunities) ? pinnedCommunities : []);
 
       const joinedCommunitiesAll: SearchCommunityResult[] = Array.isArray(joinedCommunitiesFirstPage)
         ? [...joinedCommunitiesFirstPage]
@@ -5589,13 +5628,28 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
   const hasActivePostMedia = postHasMedia(activePost);
   const composerCommunitySearchTrimmed = composerCommunitySearch.trim().toLowerCase();
+  const composerPinnedNames = new Set(
+    composerPinnedCommunities.map((c) => (c.name || '').trim()).filter((n): n is string => !!n)
+  );
+  // Hide pinned communities from the joined list so each community
+  // only renders once (under "Pinned" or under "Joined", not both).
+  const composerJoinedMinusPinned = composerJoinedCommunities.filter(
+    (community) => !composerPinnedNames.has((community.name || '').trim())
+  );
   const filteredComposerJoinedCommunities = composerCommunitySearchTrimmed
-    ? composerJoinedCommunities.filter((community) => {
+    ? composerJoinedMinusPinned.filter((community) => {
         const name = (community.name || '').toLowerCase();
         const title = (community.title || '').toLowerCase();
         return name.includes(composerCommunitySearchTrimmed) || title.includes(composerCommunitySearchTrimmed);
       })
-    : composerJoinedCommunities;
+    : composerJoinedMinusPinned;
+  const filteredComposerPinnedCommunities = composerCommunitySearchTrimmed
+    ? composerPinnedCommunities.filter((community) => {
+        const name = (community.name || '').toLowerCase();
+        const title = (community.title || '').toLowerCase();
+        return name.includes(composerCommunitySearchTrimmed) || title.includes(composerCommunitySearchTrimmed);
+      })
+    : composerPinnedCommunities;
 
   const moveCommunitiesSearchTrimmed = moveCommunitiesSearch.trim().toLowerCase();
   const filteredMoveCommunitiesJoined = moveCommunitiesSearchTrimmed
@@ -7250,9 +7304,85 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     </View>
                   ) : (
                     <>
-                      <Text style={[styles.postComposerDestinationSectionTitle, { color: c.textPrimary }]}>
-                        {t('home.postComposerCircleOption', { defaultValue: 'Circle' })}
-                      </Text>
+                      {/* Tabs — matches the native AudienceSheet so the
+                       *  composer feels consistent across platforms. */}
+                      <View style={styles.postComposerDestinationTypeTabs}>
+                        <TouchableOpacity
+                          style={[
+                            styles.postComposerDestinationTypeTab,
+                            {
+                              borderColor: composerAudienceTab === 'communities' ? c.primary : c.border,
+                              backgroundColor: composerAudienceTab === 'communities' ? `${c.primary}14` : c.surface,
+                              flex: 1,
+                              justifyContent: 'center',
+                              gap: 6,
+                            },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setComposerAudienceTab('communities')}
+                        >
+                          <MaterialCommunityIcons
+                            name="account-group-outline"
+                            size={16}
+                            color={composerAudienceTab === 'communities' ? c.primary : c.textMuted}
+                          />
+                          <Text
+                            style={[
+                              styles.postComposerDestinationTypeTabText,
+                              { color: composerAudienceTab === 'communities' ? c.primary : c.textPrimary },
+                            ]}
+                          >
+                            {t('home.postComposerTabCommunities', { defaultValue: 'Communities' })}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.postComposerDestinationCounterText,
+                              { color: composerAudienceTab === 'communities' ? c.primary : c.textMuted, marginLeft: 4 },
+                            ]}
+                          >
+                            {`${composerSelectedCommunityNames.length}/3`}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.postComposerDestinationTypeTab,
+                            {
+                              borderColor: composerAudienceTab === 'circles' ? c.primary : c.border,
+                              backgroundColor: composerAudienceTab === 'circles' ? `${c.primary}14` : c.surface,
+                              flex: 1,
+                              justifyContent: 'center',
+                              gap: 6,
+                            },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setComposerAudienceTab('circles')}
+                        >
+                          <MaterialCommunityIcons
+                            name="circle-outline"
+                            size={16}
+                            color={composerAudienceTab === 'circles' ? c.primary : c.textMuted}
+                          />
+                          <Text
+                            style={[
+                              styles.postComposerDestinationTypeTabText,
+                              { color: composerAudienceTab === 'circles' ? c.primary : c.textPrimary },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {(() => {
+                              const baseLabel = t('home.postComposerTabCircles', { defaultValue: 'Circles' });
+                              const selectedName = composerSelectedCircleId == null
+                                ? t('home.postComposerPublicShort', { defaultValue: 'Public' })
+                                : (composerCircles.find((cc) => cc.id === composerSelectedCircleId)?.name
+                                  || t('home.postComposerCircleOption', { defaultValue: 'Circle' }));
+                              return `${baseLabel} (${selectedName})`;
+                            })()}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {composerAudienceTab === 'circles' ? (
+                      <>
                       <ScrollView
                         style={[styles.postComposerDestinationList, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                         contentContainerStyle={styles.postComposerDestinationListContent}
@@ -7334,18 +7464,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                           </Text>
                         ) : null}
                       </ScrollView>
-
-                      <Text style={[styles.postComposerDestinationSectionTitle, { color: c.textPrimary }]}>
-                        {t('home.postComposerCommunityOption', { defaultValue: 'Community' })}
-                      </Text>
+                      </>
+                      ) : (
+                      <>
                       <View style={styles.postComposerDestinationCounterRow}>
                         <Text style={[styles.postComposerDestinationBody, { color: c.textMuted }]}>
                           {t('home.postComposerCommunitySelectHint', {
                             defaultValue: 'Select up to 3 communities.',
                           })}
-                        </Text>
-                        <Text style={[styles.postComposerDestinationCounterText, { color: c.textMuted }]}>
-                          {`${composerSelectedCommunityNames.length}/3`}
                         </Text>
                       </View>
 
@@ -7367,77 +7493,125 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                         style={[styles.postComposerDestinationList, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                         contentContainerStyle={styles.postComposerDestinationListContent}
                       >
-                        {filteredComposerJoinedCommunities.map((community) => {
-                          const selected = !!community.name && composerSelectedCommunityNames.includes(community.name);
-                          const communityInitial = (community.title || community.name || 'C').slice(0, 1).toUpperCase();
-                          return (
-                            <TouchableOpacity
-                              key={`composer-community-${community.id}`}
-                              style={[
-                                styles.postComposerDestinationItem,
-                                {
-                                  borderColor: selected ? c.primary : c.border,
-                                  backgroundColor: selected ? `${c.primary}14` : c.surface,
-                                },
-                              ]}
-                              activeOpacity={0.85}
-                              onPress={() => {
-                                const targetName = community.name || '';
-                                if (!targetName) return;
-                                setComposerSelectedCommunityNames((prev) => {
-                                  if (prev.includes(targetName)) {
-                                    return prev.filter((name) => name !== targetName);
-                                  }
-                                  if (prev.length >= 3) {
-                                    setError(
-                                      t('home.postComposerCommunityLimitReached', {
-                                        defaultValue: 'You can select up to 3 communities.',
-                                      })
-                                    );
-                                    return prev;
-                                  }
-                                  return [...prev, targetName];
-                                });
-                              }}
-                            >
-                              <MaterialCommunityIcons
-                                name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                                size={18}
-                                color={selected ? c.primary : c.textMuted}
-                              />
-                              <View style={[styles.postComposerCommunityAvatar, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-                                {community.avatar ? (
-                                  <Image
-                                    source={{ uri: community.avatar }}
-                                    style={styles.postComposerCommunityAvatarImage}
-                                    resizeMode="cover"
-                                  />
-                                ) : (
-                                  <Text style={[styles.postComposerCommunityAvatarLetter, { color: c.textSecondary }]}>
-                                    {communityInitial}
+                        {(() => {
+                          const renderCommunityRow = (community: SearchCommunityResult) => {
+                            const targetName = community.name || '';
+                            const selected = !!targetName && composerSelectedCommunityNames.includes(targetName);
+                            const pinned = !!targetName && composerPinnedNames.has(targetName);
+                            const communityInitial = (community.title || community.name || 'C').slice(0, 1).toUpperCase();
+                            return (
+                              <TouchableOpacity
+                                key={`composer-community-${community.id}`}
+                                style={[
+                                  styles.postComposerDestinationItem,
+                                  {
+                                    borderColor: selected ? c.primary : c.border,
+                                    backgroundColor: selected ? `${c.primary}14` : c.surface,
+                                  },
+                                ]}
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  if (!targetName) return;
+                                  setComposerSelectedCommunityNames((prev) => {
+                                    if (prev.includes(targetName)) {
+                                      return prev.filter((name) => name !== targetName);
+                                    }
+                                    if (prev.length >= 3) {
+                                      setError(
+                                        t('home.postComposerCommunityLimitReached', {
+                                          defaultValue: 'You can select up to 3 communities.',
+                                        })
+                                      );
+                                      return prev;
+                                    }
+                                    return [...prev, targetName];
+                                  });
+                                }}
+                              >
+                                <MaterialCommunityIcons
+                                  name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                                  size={18}
+                                  color={selected ? c.primary : c.textMuted}
+                                />
+                                <View style={[styles.postComposerCommunityAvatar, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                                  {community.avatar ? (
+                                    <Image
+                                      source={{ uri: community.avatar }}
+                                      style={styles.postComposerCommunityAvatarImage}
+                                      resizeMode="cover"
+                                    />
+                                  ) : (
+                                    <Text style={[styles.postComposerCommunityAvatarLetter, { color: c.textSecondary }]}>
+                                      {communityInitial}
+                                    </Text>
+                                  )}
+                                </View>
+                                <View style={styles.postComposerDestinationItemMeta}>
+                                  <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
+                                    {community.title || (community.name ? `c/${community.name}` : t('home.postComposerCommunityOption', { defaultValue: 'Community' }))}
                                   </Text>
-                                )}
-                              </View>
-                              <View style={styles.postComposerDestinationItemMeta}>
-                                <Text style={[styles.postComposerDestinationItemTitle, { color: c.textPrimary }]}>
-                                  {community.title || (community.name ? `c/${community.name}` : t('home.postComposerCommunityOption', { defaultValue: 'Community' }))}
-                                </Text>
-                                <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
-                                  {community.name ? `c/${community.name}` : ''}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })}
+                                  <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted }]}>
+                                    {community.name ? `c/${community.name}` : ''}
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  onPress={(e: any) => {
+                                    e?.stopPropagation?.();
+                                    void toggleComposerPinCommunity(community);
+                                  }}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+                                  accessibilityLabel={pinned
+                                    ? t('home.postComposerUnpinCommunity', { defaultValue: 'Unpin community' })
+                                    : t('home.postComposerPinCommunity', { defaultValue: 'Pin community' })}
+                                >
+                                  <MaterialCommunityIcons
+                                    name={pinned ? 'pin' : 'pin-outline'}
+                                    size={18}
+                                    color={pinned ? c.primary : c.textMuted}
+                                  />
+                                </TouchableOpacity>
+                              </TouchableOpacity>
+                            );
+                          };
 
-                        {filteredComposerJoinedCommunities.length === 0 ? (
-                          <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
-                            {composerCommunitySearchTrimmed
-                              ? t('home.postComposerNoMatchingCommunities', { defaultValue: 'No matching communities found.' })
-                              : t('home.postComposerNoJoinedCommunities', { defaultValue: 'No joined communities found.' })}
-                          </Text>
-                        ) : null}
+                          const hasPinned = filteredComposerPinnedCommunities.length > 0;
+                          const hasJoined = filteredComposerJoinedCommunities.length > 0;
+
+                          if (!hasPinned && !hasJoined) {
+                            return (
+                              <Text style={[styles.postComposerDestinationEmptyText, { color: c.textMuted }]}>
+                                {composerCommunitySearchTrimmed
+                                  ? t('home.postComposerNoMatchingCommunities', { defaultValue: 'No matching communities found.' })
+                                  : t('home.postComposerNoJoinedCommunities', { defaultValue: 'No joined communities found.' })}
+                              </Text>
+                            );
+                          }
+
+                          return (
+                            <>
+                              {hasPinned ? (
+                                <>
+                                  <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted, paddingHorizontal: 4, paddingVertical: 6, fontWeight: '700', textTransform: 'uppercase' }]}>
+                                    {t('home.postComposerPinnedCommunitiesHeader', { defaultValue: 'Pinned' })}
+                                  </Text>
+                                  {filteredComposerPinnedCommunities.map(renderCommunityRow)}
+                                </>
+                              ) : null}
+                              {hasJoined ? (
+                                <>
+                                  <Text style={[styles.postComposerDestinationItemSubtitle, { color: c.textMuted, paddingHorizontal: 4, paddingVertical: 6, fontWeight: '700', textTransform: 'uppercase', marginTop: hasPinned ? 6 : 0 }]}>
+                                    {t('home.postComposerJoinedCommunitiesHeader', { defaultValue: 'Joined' })}
+                                  </Text>
+                                  {filteredComposerJoinedCommunities.map(renderCommunityRow)}
+                                </>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                       </ScrollView>
+                      </>
+                      )}
                     </>
                   )}
                 </View>
@@ -8641,10 +8815,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               colors={[c.textPrimary]}
             />
           }
+        onLayout={({ nativeEvent }) => {
+          // Feed viewport height drives per-card visibility checks for
+          // video autoplay (see useIsInViewport).
+          feedViewport.setViewportHeight(nativeEvent.layout.height);
+        }}
         onScroll={({ nativeEvent }) => {
           // Native (iOS/Android) scroll handling — web uses the DOM listener above
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
           handleTopBarOnScroll(contentOffset.y);
+          feedViewport.setScrollY(contentOffset.y);
           const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
           if (nearBottom && feedHasMore && !feedLoadingMore && !feedLoading) {
             void loadMoreFeed();
@@ -9940,7 +10120,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     minHeight: 140,
-    maxHeight: 260,
+    maxHeight: 460,
   },
   postComposerDestinationListContent: {
     padding: 10,

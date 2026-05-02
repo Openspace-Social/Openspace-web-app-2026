@@ -1011,12 +1011,15 @@ function resolveNotification(
       };
     }
     case 'PUM': {
-      const u = obj?.post_user_mention?.user;
       const post = obj?.post_user_mention?.post;
-      const name = u?.profile?.name || u?.username || someone;
+      // Actor is the post's creator (the person who wrote the post that
+      // mentioned the recipient), NOT `post_user_mention.user` — that's
+      // the recipient themselves.
+      const actor = post?.creator;
+      const name = actor?.profile?.name || actor?.username || someone;
       return {
         icon: 'at', iconColor: '#D97706',
-        actor: u?.username, actorAvatar: u?.profile?.avatar,
+        actor: actor?.username, actorAvatar: actor?.profile?.avatar,
         body: t('home.notificationTypePostMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(post?.text, 120) || null,
@@ -1024,13 +1027,16 @@ function resolveNotification(
       };
     }
     case 'PCUM': {
-      const u = obj?.post_comment_user_mention?.user;
       const cmt = obj?.post_comment_user_mention?.post_comment;
       const post = cmt?.post;
-      const name = u?.profile?.name || u?.username || someone;
+      // Actor is the comment's commenter (the person who wrote the
+      // comment that mentioned the recipient), NOT
+      // `post_comment_user_mention.user` — that's the recipient.
+      const actor = cmt?.commenter;
+      const name = actor?.profile?.name || actor?.username || someone;
       return {
         icon: 'at', iconColor: '#D97706',
-        actor: u?.username, actorAvatar: u?.profile?.avatar,
+        actor: actor?.username, actorAvatar: actor?.profile?.avatar,
         body: t('home.notificationTypeCommentMention', { name }),
         postThumbnail: post?.media_thumbnail || null,
         postPreviewText: truncate(cmt?.text, 120) || null,

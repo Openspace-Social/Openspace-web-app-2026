@@ -192,8 +192,7 @@ const NativeInlineVideoImpl = forwardRef<NativeInlineVideoHandle, NativeInlineVi
       <VideoView
         style={[{ width: '100%', height: '100%', backgroundColor: '#000' }, style]}
         player={player}
-        allowsFullscreen
-        allowsPictureInPicture
+        fullscreenOptions={{ enable: true }}
         contentFit={contentFit}
         nativeControls={nativeControls}
       />

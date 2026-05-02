@@ -1,10 +1,12 @@
 import React from 'react';
-import { ActivityIndicator, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment, UserProfile } from '../api/client';
 import UserHoverCard from './UserHoverCard';
 import MentionHashtagInput from './MentionHashtagInput';
 import NativeInlineVideo, { type NativeInlineVideoHandle } from './NativeInlineVideo';
+import { useFeedMutePreference } from '../hooks/useFeedMutePreference';
+import { useIsInViewport } from '../hooks/useIsInViewport';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 
@@ -716,6 +718,7 @@ function PostCard({
   const [isTranslating, setIsTranslating] = React.useState(false);
   const [translationError, setTranslationError] = React.useState(false);
   const [postMenuOpen, setPostMenuOpen] = React.useState(false);
+  const [nativePostMenuPosition, setNativePostMenuPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [postDeleteConfirmOpen, setPostDeleteConfirmOpen] = React.useState(false);
   const [postEditing, setPostEditing] = React.useState(false);
   const [postEditDraft, setPostEditDraft] = React.useState(getPostText(post));
@@ -739,6 +742,29 @@ function PostCard({
   // handle from NativeInlineVideo so we can pause/getCurrentTime when
   // expanding to the post-detail screen.
   const inlineNativeVideoRef = React.useRef<NativeInlineVideoHandle | null>(null);
+  // Gates feed-video autoplay on viewport visibility so cards below the
+  // fold don't spin up players the user can't see. 0.7 = video plays
+  // only while at least 70% of it is on screen; the moment more than
+  // ~30% scrolls off, playback pauses. Matches the social-feed
+  // convention of dropping playback as soon as the user's attention is
+  // clearly leaving the post.
+  const inlineVideoViewportRef = React.useRef<View | null>(null);
+  const { isInViewport: inlineVideoInViewport, onLayout: inlineVideoViewportOnLayout } = useIsInViewport(inlineVideoViewportRef, 0.7);
+  const [feedMuted, setFeedMuted] = useFeedMutePreference();
+  // Runtime play/pause as the video card scrolls in and out of view.
+  // The `autoPlay` prop on NativeInlineVideo only triggers on the first
+  // readyToPlay status, so for cards that mount off-screen and later
+  // scroll into view we drive playback imperatively.
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const handle = inlineNativeVideoRef.current;
+    if (!handle) return;
+    if (inlineVideoInViewport && autoPlayMedia) {
+      handle.play();
+    } else if (!inlineVideoInViewport) {
+      handle.pause();
+    }
+  }, [inlineVideoInViewport, autoPlayMedia]);
   const creatorAvatar = post.creator?.avatar || post.creator?.profile?.avatar;
   const hasReacted = !!post.reaction?.id || !!post.reaction?.emoji?.id;
   const mediaPreviewItems = React.useMemo(() => {
@@ -1309,8 +1335,9 @@ function PostCard({
     return value;
   }
 
-  const menuCardBg = '#ffffff';
-  const menuTileBg = '#f3f6fb';
+  const menuCardBg = c.surface;
+  const menuTileBg = c.inputBackground;
+  const isNativePostMenu = Platform.OS !== 'web';
   function openPostDetailWithPause(initialView?: 'media') {
     let resumeTimeSec: number | undefined;
     if (Platform.OS === 'web') {
@@ -1510,6 +1537,77 @@ function PostCard({
     variant === 'feed' ? '#eef2f7' : '#f7f9fc'
   );
 
+  function renderPostMenuCard(inOverlay = false) {
+    return (
+      <View
+        style={[
+          styles.postActionMenuCard,
+          inOverlay
+            ? {
+                position: 'relative',
+                top: 0,
+                right: 'auto',
+              }
+            : null,
+          {
+            borderColor: c.border,
+            backgroundColor: menuCardBg,
+            opacity: 1,
+            minWidth: 248,
+            maxWidth: 300,
+          },
+        ]}
+      >
+        <View style={styles.postActionMenuTiles}>
+          {postMenuActions.map((action) => (
+            <TouchableOpacity
+              key={`post-menu-action-${action.key}`}
+              style={[
+                styles.postActionMenuItem,
+                { borderColor: c.border, backgroundColor: menuTileBg, opacity: action.disabled ? 0.45 : 1 },
+              ]}
+              activeOpacity={0.9}
+              onPress={action.onPress}
+              disabled={action.disabled}
+            >
+              <MaterialCommunityIcons name={action.icon} size={18} color={c.textSecondary} />
+              <Text style={[styles.postActionMenuItemText, { color: c.textSecondary }]}>
+                {action.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  function togglePostMenu() {
+    if (postMenuOpen) {
+      setPostMenuOpen(false);
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      setPostMenuOpen(true);
+      return;
+    }
+
+    const host = postActionMenuHostRef.current;
+    if (host?.measureInWindow) {
+      host.measureInWindow((x: number, y: number, width: number, height: number) => {
+        const screenWidth = Dimensions.get('window').width;
+        const menuWidth = 248;
+        const left = Math.max(12, Math.min(x + width - menuWidth, screenWidth - menuWidth - 12));
+        setNativePostMenuPosition({ top: y + height + 8, left });
+        setPostMenuOpen(true);
+      });
+      return;
+    }
+
+    setNativePostMenuPosition({ top: 56, left: 16 });
+    setPostMenuOpen(true);
+  }
+
   return (
     <View
       style={[
@@ -1647,38 +1745,42 @@ function PostCard({
             <TouchableOpacity
               style={[styles.reportButton, { borderColor: c.border, backgroundColor: c.surface }]}
               activeOpacity={0.85}
-              onPress={() => setPostMenuOpen((prev) => !prev)}
+              onPress={togglePostMenu}
               accessibilityLabel={t('home.postMenuAction')}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <MaterialCommunityIcons name="dots-horizontal" size={16} color={c.textSecondary} />
             </TouchableOpacity>
-            {postMenuOpen ? (
-              <View style={[styles.postActionMenuCard, { borderColor: c.border, backgroundColor: menuCardBg, opacity: 1 }]}>
-                <View style={styles.postActionMenuTiles}>
-                  {postMenuActions.map((action) => (
-                    <TouchableOpacity
-                      key={`post-menu-action-${action.key}`}
-                      style={[
-                        styles.postActionMenuItem,
-                        { borderColor: c.border, backgroundColor: menuTileBg, opacity: action.disabled ? 0.45 : 1 },
-                      ]}
-                      activeOpacity={0.9}
-                      onPress={action.onPress}
-                      disabled={action.disabled}
-                    >
-                      <MaterialCommunityIcons name={action.icon} size={18} color={c.textSecondary} />
-                      <Text style={[styles.postActionMenuItemText, { color: c.textSecondary }]}>
-                        {action.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : null}
+            {postMenuOpen && !isNativePostMenu ? renderPostMenuCard() : null}
           </View>
         </View>
       </View>
+
+      {postMenuOpen && isNativePostMenu && nativePostMenuPosition ? (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setPostMenuOpen(false)}
+        >
+          <View style={{ flex: 1 }}>
+            <Pressable
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+              onPress={() => setPostMenuOpen(false)}
+            />
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                top: nativePostMenuPosition.top,
+                left: nativePostMenuPosition.left,
+              }}
+            >
+              {renderPostMenuCard(true)}
+            </View>
+          </View>
+        </Modal>
+      ) : null}
 
       <View style={styles.postMetaRow}>
         <View style={[styles.postLengthBadge, { borderColor: c.border, backgroundColor: c.surface }]}> 
@@ -2451,20 +2553,25 @@ function PostCard({
                 // to the post-detail screen (with resumeTimeSec), where the
                 // full controls live. Mute on autoplay so a scrolling feed
                 // doesn't blast audio.
-                <View style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}>
+                <View
+                  ref={inlineVideoViewportRef}
+                  onLayout={inlineVideoViewportOnLayout}
+                  style={[styles.feedMedia, { backgroundColor: '#000', overflow: 'hidden' }]}
+                >
                   <NativeInlineVideo
                     key={`${post.id}-video-preview-native`}
                     ref={(handle) => {
                       inlineNativeVideoRef.current = handle;
                     }}
                     uri={galleryPreviewItems[0].videoUri as string}
-                    autoPlay={autoPlayMedia || inlineManualPlaybackStarted}
+                    autoPlay={(autoPlayMedia && inlineVideoInViewport) || inlineManualPlaybackStarted}
                     nativeControls={false}
                     contentFit="contain"
-                    // Feed autoplay: muted (matches the comment above).
-                    // Tapping the cell opens the post detail with full
-                    // audio enabled — that's where users get sound.
-                    muted
+                    // Feed autoplay defaults to muted; user can flip via
+                    // the speaker chip overlay below, and the choice is
+                    // shared session-wide so subsequent cells autoplay
+                    // with the same preference.
+                    muted={feedMuted}
                     onEnded={() => {
                       setInlineVideoEnded(true);
                       if (!autoPlayMedia) {
@@ -2502,6 +2609,38 @@ function PostCard({
                   <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
                     {t('home.openAction', { defaultValue: 'Open' })}
                   </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {Platform.OS !== 'web' &&
+            galleryPreviewItems[0].isVideo &&
+            galleryPreviewItems[0].videoUri &&
+            (autoPlayMedia || inlineManualPlaybackStarted) ? (
+              <View style={{ position: 'absolute', bottom: 20, right: 10 }}>
+                <TouchableOpacity
+                  accessibilityLabel={feedMuted ? t('home.unmuteAction', { defaultValue: 'Unmute' }) : t('home.muteAction', { defaultValue: 'Mute' })}
+                  activeOpacity={0.85}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={(event: any) => {
+                    event?.stopPropagation?.();
+                    setFeedMuted(!feedMuted);
+                  }}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 999,
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.25)',
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={feedMuted ? 'volume-off' : 'volume-high'}
+                    size={18}
+                    color="#fff"
+                  />
                 </TouchableOpacity>
               </View>
             ) : null}

@@ -2383,6 +2383,23 @@ export const api = {
     });
   },
 
+  getPinnedCommunities: (token: string) =>
+    request<SearchCommunityResult[]>('/api/communities/pinned/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  pinCommunity: (token: string, communityName: string) =>
+    request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/pin/`, {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  unpinCommunity: (token: string, communityName: string) =>
+    request<SearchCommunityResult>(`/api/communities/${encodeURIComponent(communityName)}/pin/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
   getFavoriteCommunities: (token: string, count = 20, offset = 0) => {
     const params = new URLSearchParams();
     params.set('count', String(Math.min(Math.max(count, 1), 20)));

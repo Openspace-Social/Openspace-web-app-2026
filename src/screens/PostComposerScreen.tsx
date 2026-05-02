@@ -197,6 +197,14 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     }
   }, [token, onError, t]);
   const [imageUris, setImageUris] = useState<string[]>([]);
+  // Mutually exclusive with imageUris by business rule: either ≤5 photos
+  // or 1 video, never both. Picking a video clears any selected images,
+  // and picking images clears any selected video.
+  const [composerVideo, setComposerVideo] = useState<{
+    uri: string;
+    name: string;
+    mimeType: string;
+  } | null>(null);
   // Inline error banner — global toasts are hidden behind native Modals
   // (the toast layer renders below the Modal's native window), so we
   // surface errors inside the composer too.
@@ -218,6 +226,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   const [submitting, setSubmitting] = useState(false);
 
   const [communities, setCommunities] = useState<SearchCommunityResult[]>([]);
+  const [pinnedCommunities, setPinnedCommunities] = useState<SearchCommunityResult[]>([]);
   const [circles, setCircles] = useState<CircleResult[]>([]);
   const [selectedCommunities, setSelectedCommunities] = useState<Set<string>>(new Set());
   // Circle selection is single-choice — `null` represents the Public option
@@ -260,20 +269,24 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     return () => clearTimeout(handle);
   }, [text, dismissedPreviewUrl, linkPreview]);
 
-  // Pre-load joined communities + circles so the audience sheet has
-  // something to show as soon as the user taps it.
+  // Pre-load joined + pinned communities + circles so the audience
+  // sheet has something to show as soon as the user taps it.
   useEffect(() => {
     if (!token) return;
     let active = true;
     (async () => {
       try {
-        const [communitiesRes, circlesRes] = await Promise.allSettled([
+        const [communitiesRes, pinnedRes, circlesRes] = await Promise.allSettled([
           api.getJoinedCommunities(token, 20, 0),
+          api.getPinnedCommunities(token),
           api.getCircles(token),
         ]);
         if (!active) return;
         if (communitiesRes.status === 'fulfilled') {
           setCommunities(Array.isArray(communitiesRes.value) ? communitiesRes.value : []);
+        }
+        if (pinnedRes.status === 'fulfilled') {
+          setPinnedCommunities(Array.isArray(pinnedRes.value) ? pinnedRes.value : []);
         }
         if (circlesRes.status === 'fulfilled') {
           setCircles(Array.isArray(circlesRes.value) ? circlesRes.value : []);
@@ -304,7 +317,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       ? true
       : mode === 'long'
         ? longPlain.length > 0
-        : (text.trim().length > 0 || imageUris.length > 0)
+        : (text.trim().length > 0 || imageUris.length > 0 || composerVideo != null)
   );
   const remaining = maxLength - text.length;
   const overLimit = mode === 'long' ? false : remaining < 0;
@@ -414,8 +427,16 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     };
   }, [mode, longHtml, longPlain, saveLongDraft]);
 
-  const pickImage = useCallback(async () => {
+  const pickMedia = useCallback(async () => {
     if (submitting) return;
+    // If a video is already attached, the user has to remove it first
+    // before adding more media (business rule: video is exclusive).
+    if (composerVideo) {
+      onError(t('home.composerVideoExclusive', {
+        defaultValue: 'Remove the video first to add photos.',
+      }));
+      return;
+    }
     if (remainingImageSlots <= 0) {
       onError(t('home.composerMaxImagesReached', {
         count: MAX_IMAGES,
@@ -426,18 +447,42 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        onError(t('home.profileImagePickerPermissionDenied', { defaultValue: 'Photo access is needed to attach an image.' }));
+        onError(t('home.profileImagePickerPermissionDenied', { defaultValue: 'Photo access is needed to attach media.' }));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images', 'videos'],
         allowsMultipleSelection: true,
         selectionLimit: remainingImageSlots,
         allowsEditing: false,
         quality: 0.9,
       });
       if (result.canceled) return;
-      const newUris = (result.assets || [])
+      const assets = result.assets || [];
+      // If the user picked a video — even mixed with images — take the
+      // first video and discard everything else. Matches IG/Twitter where
+      // video selection is single and replaces any photo selection.
+      const videoAsset = assets.find((a) => a?.type === 'video');
+      if (videoAsset?.uri) {
+        const fallbackName = (() => {
+          const segments = videoAsset.uri.split('/');
+          return segments[segments.length - 1] || 'post-video.mp4';
+        })();
+        const name = videoAsset.fileName || fallbackName;
+        const mimeType = videoAsset.mimeType || 'video/mp4';
+        setComposerVideo({ uri: videoAsset.uri, name, mimeType });
+        setImageUris([]);
+        setRotations({});
+        if (assets.some((a) => a?.type === 'image')) {
+          // Tell the user we dropped their photos so they're not surprised.
+          onNotice(t('home.composerVideoReplacedImages', {
+            defaultValue: 'Video selected — photos were removed.',
+          }));
+        }
+        return;
+      }
+      const newUris = assets
+        .filter((a) => a?.type !== 'video')
         .map((a) => a?.uri)
         .filter((uri): uri is string => typeof uri === 'string' && !!uri);
       if (newUris.length === 0) return;
@@ -449,7 +494,11 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     } catch {
       onError(t('home.profileImagePickerFailed', { defaultValue: 'Could not open the photo library.' }));
     }
-  }, [submitting, remainingImageSlots, onError, t]);
+  }, [submitting, composerVideo, remainingImageSlots, onError, onNotice, t]);
+
+  const removeVideo = useCallback(() => {
+    setComposerVideo(null);
+  }, []);
 
   const removeImage = useCallback((uri: string) => {
     setImageUris((prev) => prev.filter((u) => u !== uri));
@@ -551,6 +600,17 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             text: previewText,
           });
         }
+      } else if (composerVideo) {
+        // Video upload — single-call createPost with the `video` payload
+        // field. Backend normalizes the filename extension (e.g. .mpg4 →
+        // .mp4) on its side, so we just forward the picker's metadata.
+        basePayload.text = trimmed;
+        basePayload.video = {
+          uri: composerVideo.uri,
+          type: composerVideo.mimeType,
+          name: composerVideo.name,
+        } as any;
+        finalized = await api.createPost(token, basePayload);
       } else if (imageUris.length <= 1) {
         // Fast path — single (or no) image: createPost handles it directly.
         const single = imageUris[0];
@@ -585,7 +645,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     } finally {
       setSubmitting(false);
     }
-  }, [canPost, overLimit, text, mode, imageUris, rotations, selectedCircleId, selectedCommunities, longHtml, longPlain, longBlocks, longTitle, longDraftUuid, sharedPost, token, onPosted, onNotice, onError, t]);
+  }, [canPost, overLimit, text, mode, imageUris, composerVideo, rotations, selectedCircleId, selectedCommunities, longHtml, longPlain, longBlocks, longTitle, longDraftUuid, sharedPost, token, onPosted, onNotice, onError, t]);
 
   const toggleCommunity = useCallback((name: string) => {
     setSelectedCommunities((prev) => {
@@ -603,6 +663,37 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   const selectCircle = useCallback((id: number | null) => {
     setSelectedCircleId(id);
   }, []);
+
+  // Pin / unpin from the audience picker. Optimistic — flip local state
+  // immediately, roll back if the API rejects (e.g. cap exceeded server-
+  // side, even though we also gate it client-side).
+  const MAX_PINNED_COMMUNITIES = 3;
+  const togglePinCommunity = useCallback(async (community: SearchCommunityResult) => {
+    if (!token) return;
+    const name = (community.name || '').trim();
+    if (!name) return;
+    const isPinned = pinnedCommunities.some((p) => (p.name || '').trim() === name);
+    if (!isPinned && pinnedCommunities.length >= MAX_PINNED_COMMUNITIES) {
+      onNotice(t('home.composerPinLimitReached', {
+        max: MAX_PINNED_COMMUNITIES,
+        defaultValue: `You can pin up to ${MAX_PINNED_COMMUNITIES} communities. Unpin one first.`,
+      }));
+      return;
+    }
+    const previous = pinnedCommunities;
+    setPinnedCommunities(isPinned
+      ? previous.filter((p) => (p.name || '').trim() !== name)
+      : [...previous, community]);
+    try {
+      if (isPinned) await api.unpinCommunity(token, name);
+      else await api.pinCommunity(token, name);
+    } catch (e: any) {
+      setPinnedCommunities(previous);
+      onError(e?.message || t('home.composerPinFailed', {
+        defaultValue: 'Could not update pinned communities.',
+      }));
+    }
+  }, [token, pinnedCommunities, onError, onNotice, t]);
 
   const selectedCircleName = useMemo(() => {
     if (selectedCircleId == null) return null;
@@ -989,6 +1080,38 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           </View>
         ) : null}
 
+        {composerVideo ? (
+          <View style={s.imageStrip}>
+            <View
+              style={[
+                s.imageThumbWrap,
+                { borderColor: c.border, backgroundColor: '#000' },
+              ]}
+            >
+              <View
+                style={[
+                  s.imageThumb,
+                  { alignItems: 'center', justifyContent: 'center' },
+                ]}
+              >
+                <MaterialCommunityIcons name="play-circle" size={36} color="rgba(255,255,255,0.85)" />
+                <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 4 }} numberOfLines={1}>
+                  {t('home.composerVideoSelected', { defaultValue: 'Video selected' })}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[s.imageRemove, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
+                activeOpacity={0.85}
+                onPress={removeVideo}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={t('home.composerRemoveVideo', { defaultValue: 'Remove video' })}
+              >
+                <MaterialCommunityIcons name="close" size={14} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {imageUris.length > 0 ? (
           <ScrollView
             horizontal
@@ -1058,21 +1181,23 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           <TouchableOpacity
             style={[s.toolbarBtn, { backgroundColor: c.inputBackground }]}
             activeOpacity={0.85}
-            onPress={() => void pickImage()}
+            onPress={() => void pickMedia()}
             disabled={submitting}
           >
             <MaterialCommunityIcons name="image-multiple-outline" size={20} color={c.textSecondary} />
             <Text style={[s.toolbarBtnText, { color: c.textPrimary }]}>
-              {imageUris.length === 0
-                ? t('home.composerAddImages', {
-                    count: MAX_IMAGES,
-                    defaultValue: `Add images (up to ${MAX_IMAGES})`,
-                  })
-                : t('home.composerImagesCount', {
-                    count: imageUris.length,
-                    max: MAX_IMAGES,
-                    defaultValue: `${imageUris.length}/${MAX_IMAGES} images`,
-                  })}
+              {composerVideo
+                ? t('home.composerVideoCount', { defaultValue: '1 video selected' })
+                : imageUris.length === 0
+                  ? t('home.composerAddMedia', {
+                      count: MAX_IMAGES,
+                      defaultValue: `Add media (up to ${MAX_IMAGES} photos or 1 video)`,
+                    })
+                  : t('home.composerImagesCount', {
+                      count: imageUris.length,
+                      max: MAX_IMAGES,
+                      defaultValue: `${imageUris.length}/${MAX_IMAGES} images`,
+                    })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1201,11 +1326,14 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         c={c}
         t={t}
         communities={communities}
+        pinnedCommunities={pinnedCommunities}
         circles={circles}
         selectedCommunities={selectedCommunities}
         selectedCircleId={selectedCircleId}
         onToggleCommunity={toggleCommunity}
         onSelectCircle={selectCircle}
+        onSearchCommunities={(q) => api.searchCommunities(token, q, 20)}
+        onTogglePinCommunity={togglePinCommunity}
       />
 
       {/* Long-post audience step — shown when the user taps "Next" in long
@@ -1221,11 +1349,14 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           t={t}
           insetsTop={insets.top}
           communities={communities}
+          pinnedCommunities={pinnedCommunities}
           circles={circles}
           selectedCommunities={selectedCommunities}
           selectedCircleId={selectedCircleId}
           onToggleCommunity={toggleCommunity}
           onSelectCircle={selectCircle}
+          onSearchCommunities={(q) => api.searchCommunities(token, q, 20)}
+          onTogglePinCommunity={togglePinCommunity}
           onBack={() => setLongAudienceOpen(false)}
           onPost={async () => {
             await submit();
@@ -1410,11 +1541,17 @@ type AudienceProps = {
   c: any;
   t: (key: string, options?: any) => string;
   communities: SearchCommunityResult[];
+  pinnedCommunities: SearchCommunityResult[];
   circles: CircleResult[];
   selectedCommunities: Set<string>;
   selectedCircleId: number | null;
   onToggleCommunity: (name: string) => void;
   onSelectCircle: (id: number | null) => void;
+  /** Backend search lookup so users can post to communities outside the
+   *  small set of joined ones returned by `getJoinedCommunities`. */
+  onSearchCommunities: (query: string) => Promise<SearchCommunityResult[]>;
+  /** Pin/unpin a community to/from the user's pinned shortlist (max 3). */
+  onTogglePinCommunity: (community: SearchCommunityResult) => void;
 };
 
 type AudienceTab = 'communities' | 'circles';
@@ -1425,11 +1562,14 @@ function AudienceSheet({
   c,
   t,
   communities,
+  pinnedCommunities,
   circles,
   selectedCommunities,
   selectedCircleId,
   onToggleCommunity,
   onSelectCircle,
+  onSearchCommunities,
+  onTogglePinCommunity,
 }: AudienceProps) {
   const [tab, setTab] = useState<AudienceTab>('communities');
 
@@ -1484,49 +1624,18 @@ function AudienceSheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }} keyboardShouldPersistTaps="handled">
             {tab === 'communities' ? (
-              communities.length === 0 ? (
-                <Text style={[sheetStyles.empty, { color: c.textMuted }]}>
-                  {t('home.composerNoCommunities', { defaultValue: "You haven't joined any communities yet." })}
-                </Text>
-              ) : (
-                communities.map((com) => {
-                  const name = (com.name || '').trim();
-                  const selected = name ? selectedCommunities.has(name) : false;
-                  const blocked = !selected && selectedCommunities.size >= MAX_COMMUNITIES;
-                  return (
-                    <TouchableOpacity
-                      key={`com-${com.id}`}
-                      style={[
-                        sheetStyles.row,
-                        { borderColor: c.border, backgroundColor: selected ? `${c.primary}18` : c.inputBackground, opacity: blocked ? 0.55 : 1 },
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={() => { if (name && !blocked) onToggleCommunity(name); }}
-                    >
-                      <View style={[sheetStyles.avatar, { backgroundColor: com.color || c.primary }]}>
-                        {com.avatar ? (
-                          <Image source={{ uri: com.avatar }} style={sheetStyles.avatarImage} resizeMode="cover" />
-                        ) : (
-                          <Text style={sheetStyles.avatarLetter}>{(com.title?.[0] || com.name?.[0] || 'C').toUpperCase()}</Text>
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[sheetStyles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
-                          {com.title || name}
-                        </Text>
-                        <Text style={[sheetStyles.rowSub, { color: c.textMuted }]} numberOfLines={1}>{`c/${name}`}</Text>
-                      </View>
-                      <MaterialCommunityIcons
-                        name={selected ? 'check-circle' : 'circle-outline'}
-                        size={20}
-                        color={selected ? c.primary : c.textMuted}
-                      />
-                    </TouchableOpacity>
-                  );
-                })
-              )
+              <CommunitiesPickerList
+                c={c}
+                t={t}
+                joinedCommunities={communities}
+                pinnedCommunities={pinnedCommunities}
+                selectedCommunities={selectedCommunities}
+                onToggleCommunity={onToggleCommunity}
+                onSearchCommunities={onSearchCommunities}
+                onTogglePinCommunity={onTogglePinCommunity}
+              />
             ) : (
               <>
                 {/* Public — first item, single-select with circles below. */}
@@ -1632,11 +1741,14 @@ type LongAudienceProps = {
   t: (key: string, options?: any) => string;
   insetsTop: number;
   communities: SearchCommunityResult[];
+  pinnedCommunities: SearchCommunityResult[];
   circles: CircleResult[];
   selectedCommunities: Set<string>;
   selectedCircleId: number | null;
   onToggleCommunity: (name: string) => void;
   onSelectCircle: (id: number | null) => void;
+  onSearchCommunities: (query: string) => Promise<SearchCommunityResult[]>;
+  onTogglePinCommunity: (community: SearchCommunityResult) => void;
   onBack: () => void;
   onPost: () => Promise<void> | void;
   submitting: boolean;
@@ -1645,8 +1757,8 @@ type LongAudienceProps = {
 };
 
 function LongAudiencePage({
-  c, t, insetsTop, communities, circles, selectedCommunities, selectedCircleId,
-  onToggleCommunity, onSelectCircle, onBack, onPost, submitting, canPost, audienceSummary,
+  c, t, insetsTop, communities, pinnedCommunities, circles, selectedCommunities, selectedCircleId,
+  onToggleCommunity, onSelectCircle, onSearchCommunities, onTogglePinCommunity, onBack, onPost, submitting, canPost, audienceSummary,
 }: LongAudienceProps) {
   const [tab, setTab] = useState<AudienceTab>('communities');
   const circleSummaryLabel = (() => {
@@ -1694,40 +1806,18 @@ function LongAudiencePage({
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }} keyboardShouldPersistTaps="handled">
         {tab === 'communities' ? (
-          communities.length === 0 ? (
-            <Text style={[sheetStyles.empty, { color: c.textMuted }]}>
-              {t('home.composerNoCommunities', { defaultValue: "You haven't joined any communities yet." })}
-            </Text>
-          ) : (
-            communities.map((com) => {
-              const name = (com.name || '').trim();
-              const selected = name ? selectedCommunities.has(name) : false;
-              const blocked = !selected && selectedCommunities.size >= MAX_COMMUNITIES;
-              return (
-                <TouchableOpacity
-                  key={`com-${com.id}`}
-                  style={[sheetStyles.row, { borderColor: c.border, backgroundColor: selected ? `${c.primary}18` : c.inputBackground, opacity: blocked ? 0.55 : 1 }]}
-                  activeOpacity={0.85}
-                  onPress={() => { if (name && !blocked) onToggleCommunity(name); }}
-                >
-                  <View style={[sheetStyles.avatar, { backgroundColor: com.color || c.primary }]}>
-                    {com.avatar ? (
-                      <Image source={{ uri: com.avatar }} style={sheetStyles.avatarImage} resizeMode="cover" />
-                    ) : (
-                      <Text style={sheetStyles.avatarLetter}>{(com.title?.[0] || com.name?.[0] || 'C').toUpperCase()}</Text>
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[sheetStyles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>{com.title || name}</Text>
-                    <Text style={[sheetStyles.rowSub, { color: c.textMuted }]} numberOfLines={1}>{`c/${name}`}</Text>
-                  </View>
-                  <MaterialCommunityIcons name={selected ? 'check-circle' : 'circle-outline'} size={20} color={selected ? c.primary : c.textMuted} />
-                </TouchableOpacity>
-              );
-            })
-          )
+          <CommunitiesPickerList
+            c={c}
+            t={t}
+            joinedCommunities={communities}
+            pinnedCommunities={pinnedCommunities}
+            selectedCommunities={selectedCommunities}
+            onToggleCommunity={onToggleCommunity}
+            onSearchCommunities={onSearchCommunities}
+            onTogglePinCommunity={onTogglePinCommunity}
+          />
         ) : (
           <>
             <TouchableOpacity
@@ -2058,6 +2148,183 @@ const makeStyles = (c: any) =>
     toolbarBtnText: { fontSize: 13, fontWeight: '700' },
   });
 
+// ── Communities picker (search + select) ─────────────────────────────────
+// Shared list-with-search used by both AudienceSheet (short post) and
+// LongAudiencePage (long post) so the two surfaces stay in sync. Type ≥2
+// chars to query the backend; clearing the input restores the joined
+// shortlist that the parent prefetched.
+type CommunitiesPickerListProps = {
+  c: any;
+  t: (key: string, options?: any) => string;
+  joinedCommunities: SearchCommunityResult[];
+  pinnedCommunities: SearchCommunityResult[];
+  selectedCommunities: Set<string>;
+  onToggleCommunity: (name: string) => void;
+  onSearchCommunities: (query: string) => Promise<SearchCommunityResult[]>;
+  onTogglePinCommunity: (community: SearchCommunityResult) => void;
+};
+
+function CommunitiesPickerList({
+  c, t, joinedCommunities, pinnedCommunities, selectedCommunities,
+  onToggleCommunity, onSearchCommunities, onTogglePinCommunity,
+}: CommunitiesPickerListProps) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchCommunityResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const seqRef = useRef(0);
+  // Parent recomputes `onSearchCommunities` (a fresh arrow each render).
+  // Keep the latest in a ref so the search effect only re-runs on query
+  // changes, not on every parent re-render.
+  const searchFnRef = useRef(onSearchCommunities);
+  searchFnRef.current = onSearchCommunities;
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    const seq = ++seqRef.current;
+    setSearching(true);
+    const handle = setTimeout(() => {
+      searchFnRef.current(trimmed)
+        .then((found) => {
+          if (seq !== seqRef.current) return;
+          setResults(Array.isArray(found) ? found : []);
+        })
+        .catch(() => {
+          if (seq !== seqRef.current) return;
+          setResults([]);
+        })
+        .finally(() => {
+          if (seq === seqRef.current) setSearching(false);
+        });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  const showingSearch = query.trim().length >= 2;
+  const pinnedNames = new Set(pinnedCommunities.map((p) => (p.name || '').trim()));
+
+  const renderRow = (com: SearchCommunityResult) => {
+    const name = (com.name || '').trim();
+    const selected = name ? selectedCommunities.has(name) : false;
+    const blocked = !selected && selectedCommunities.size >= MAX_COMMUNITIES;
+    const pinned = name ? pinnedNames.has(name) : false;
+    return (
+      <TouchableOpacity
+        key={`com-${com.id}-${name}`}
+        style={[
+          sheetStyles.row,
+          { borderColor: c.border, backgroundColor: selected ? `${c.primary}18` : c.inputBackground, opacity: blocked ? 0.55 : 1 },
+        ]}
+        activeOpacity={0.85}
+        onPress={() => { if (name && !blocked) onToggleCommunity(name); }}
+      >
+        <View style={[sheetStyles.avatar, { backgroundColor: com.color || c.primary }]}>
+          {com.avatar ? (
+            <Image source={{ uri: com.avatar }} style={sheetStyles.avatarImage} resizeMode="cover" />
+          ) : (
+            <Text style={sheetStyles.avatarLetter}>{(com.title?.[0] || com.name?.[0] || 'C').toUpperCase()}</Text>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[sheetStyles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+            {com.title || name}
+          </Text>
+          <Text style={[sheetStyles.rowSub, { color: c.textMuted }]} numberOfLines={1}>{`c/${name}`}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation?.(); onTogglePinCommunity(com); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+          accessibilityLabel={pinned
+            ? t('home.composerUnpinCommunity', { defaultValue: 'Unpin community' })
+            : t('home.composerPinCommunity', { defaultValue: 'Pin community' })}
+        >
+          <MaterialCommunityIcons
+            name={pinned ? 'pin' : 'pin-outline'}
+            size={18}
+            color={pinned ? c.primary : c.textMuted}
+          />
+        </TouchableOpacity>
+        <MaterialCommunityIcons
+          name={selected ? 'check-circle' : 'circle-outline'}
+          size={20}
+          color={selected ? c.primary : c.textMuted}
+        />
+      </TouchableOpacity>
+    );
+  };
+
+  // De-dupe the joined list against pinned so a community doesn't appear
+  // in both sections when not searching.
+  const joinedMinusPinned = joinedCommunities.filter((com) => !pinnedNames.has((com.name || '').trim()));
+
+  return (
+    <>
+      <View style={[sheetStyles.searchRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+        <MaterialCommunityIcons name="magnify" size={18} color={c.textMuted} />
+        <TextInput
+          style={[sheetStyles.searchInput, { color: c.textPrimary }]}
+          placeholder={t('home.composerSearchCommunities', { defaultValue: 'Search communities…' })}
+          placeholderTextColor={c.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {query.length > 0 ? (
+          <TouchableOpacity
+            onPress={() => setQuery('')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={t('home.composerSearchClear', { defaultValue: 'Clear search' })}
+          >
+            <MaterialCommunityIcons name="close-circle" size={16} color={c.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {showingSearch ? (
+        searching ? (
+          <ActivityIndicator color={c.primary} size="small" style={{ paddingVertical: 12 }} />
+        ) : results.length === 0 ? (
+          <Text style={[sheetStyles.empty, { color: c.textMuted }]}>
+            {t('home.composerSearchCommunitiesNoResults', { defaultValue: 'No communities found.' })}
+          </Text>
+        ) : (
+          <>{results.map(renderRow)}</>
+        )
+      ) : (
+        <>
+          {pinnedCommunities.length > 0 ? (
+            <>
+              <Text style={[sheetStyles.sectionHeader, { color: c.textMuted }]}>
+                {t('home.composerPinnedCommunitiesHeader', { defaultValue: 'Pinned' })}
+              </Text>
+              {pinnedCommunities.map(renderRow)}
+            </>
+          ) : null}
+          {joinedMinusPinned.length > 0 ? (
+            <>
+              <Text style={[sheetStyles.sectionHeader, { color: c.textMuted, marginTop: pinnedCommunities.length > 0 ? 6 : 0 }]}>
+                {t('home.composerJoinedCommunitiesHeader', { defaultValue: 'Joined' })}
+              </Text>
+              {joinedMinusPinned.map(renderRow)}
+            </>
+          ) : pinnedCommunities.length === 0 ? (
+            <Text style={[sheetStyles.empty, { color: c.textMuted }]}>
+              {t('home.composerNoCommunities', { defaultValue: "You haven't joined any communities yet." })}
+            </Text>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
 const sheetStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheet: {
@@ -2091,6 +2358,18 @@ const sheetStyles = StyleSheet.create({
   tabCounter: { fontSize: 11, fontWeight: '700', maxWidth: 140 },
   sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 },
   empty: { fontSize: 13, paddingVertical: 8 },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 4 },
+  sectionHeader: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6, textTransform: 'uppercase' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
