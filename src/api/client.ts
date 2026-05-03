@@ -184,6 +184,42 @@ export type UserNotificationSettings = {
   user_new_post_notifications: boolean;
 };
 
+export type PushProvider = 'apns' | 'fcm';
+export type DevicePlatform = 'ios' | 'android';
+
+export type DeviceRegistrationPayload = {
+  uuid: string;
+  name?: string;
+  platform: DevicePlatform;
+  push_provider: PushProvider;
+  push_token?: string;
+  push_enabled: boolean;
+  permission_status?: string;
+  app_version?: string;
+  build_number?: string;
+  locale?: string;
+  timezone_name?: string;
+  app_environment?: string;
+};
+
+export type DeviceInstallRecord = {
+  id: number;
+  uuid: string;
+  name?: string | null;
+  platform?: DevicePlatform | null;
+  push_provider?: PushProvider | null;
+  push_enabled?: boolean;
+  permission_status?: string | null;
+  app_version?: string | null;
+  build_number?: string | null;
+  locale?: string | null;
+  timezone_name?: string | null;
+  app_environment?: string | null;
+  is_active?: boolean;
+  last_registered_at?: string | null;
+  last_seen_at?: string | null;
+};
+
 export type UpdateAuthenticatedUserMediaPayload = {
   avatarFile?: Blob | null;
   coverFile?: Blob | null;
@@ -1075,6 +1111,27 @@ export const api = {
       method: 'PATCH',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify(payload),
+    }),
+
+  registerDeviceInstall: (token: string, payload: DeviceRegistrationPayload) =>
+    request<DeviceInstallRecord>('/api/devices/', {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  updateDeviceInstall: (token: string, deviceUuid: string, payload: Partial<DeviceRegistrationPayload> & { is_active?: boolean }) =>
+    request<DeviceInstallRecord>(`/api/devices/${encodeURIComponent(deviceUuid)}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  deactivateDeviceInstall: (token: string, deviceUuid: string) =>
+    request<DeviceInstallRecord>(`/api/devices/${encodeURIComponent(deviceUuid)}/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ push_enabled: false, is_active: false }),
     }),
 
   updateAuthenticatedUserWithMedia: (

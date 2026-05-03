@@ -21,6 +21,7 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, type FeedPost, type PostComment } from '../api/client';
 import { useGifPicker } from '../components/GifPickerProvider';
 
@@ -337,9 +338,11 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
       if (result.canceled) return null;
       const asset = result.assets?.[0];
       if (!asset?.uri) return null;
-      const name = (asset as any).fileName || asset.uri.split('/').pop() || 'comment-image.jpg';
-      const type = (asset as any).mimeType || 'image/jpeg';
-      return { kind: 'image', uri: asset.uri, type, name };
+      // Normalize HEIC/HEIF (iOS Photos default) → JPEG before we hand
+      // the URI to FormData. Backend Pillow can't decode HEIF without
+      // `pillow-heif`, and pre-converting also makes the upload smaller.
+      const normalizedUri = await normalizeImageForUpload(asset.uri);
+      return { kind: 'image', uri: normalizedUri, type: 'image/jpeg', name: 'comment-image.jpg' };
     } catch (e) {
       // Surface the failure rather than silently swallowing it.
       Alert.alert('Photo picker', (e as any)?.message || 'Could not open the photo library.');

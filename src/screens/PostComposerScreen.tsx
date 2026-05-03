@@ -30,6 +30,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { normalizeImageForUpload } from '../utils/normalizeImage';
 import {
   api,
   type CircleResult,
@@ -535,21 +536,13 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         basePayload.shared_post_uuid = sharedPost.uuid;
       }
 
-      // Bake any user-chosen rotation into the actual file before upload —
-      // expo-image-manipulator returns a new file:// URI we can attach.
+      // Bake any user-chosen rotation AND normalize to JPEG. Even when
+      // there's no rotation, we still re-encode so HEIC/HEIF originals
+      // (iOS Photos default since iPhone 7) ship as JPEG the backend
+      // can decode without `pillow-heif`.
       const rotateIfNeeded = async (uri: string): Promise<string> => {
         const deg = rotations[uri] || 0;
-        if (!deg) return uri;
-        try {
-          const out = await ImageManipulator.manipulateAsync(
-            uri,
-            [{ rotate: deg }],
-            { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG },
-          );
-          return out.uri || uri;
-        } catch {
-          return uri;
-        }
+        return normalizeImageForUpload(uri, { rotate: deg as 0 | 90 | 180 | 270 });
       };
 
       let finalized;

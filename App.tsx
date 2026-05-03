@@ -17,6 +17,16 @@ import { GifPickerProvider } from './src/components/GifPickerProvider';
 import { MentionPopupProvider } from './src/components/MentionPopupProvider';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider, type AuthContextValue } from './src/context/AuthContext';
+import { navigationRef, markNavigationReady } from './src/navigation/navigationRef';
+import {
+  attachPushNotificationListeners,
+  configurePushChannels,
+  configurePushNotificationPresentation,
+  consumeInitialNotificationOpen,
+  deactivatePushRegistration,
+  ensurePushRegistration,
+  flushPendingPushRoute,
+} from './src/push/service';
 
 // ── react-navigation migration feature flag ──────────────────────────────────
 // Native (iOS/Android): ON — the new navigator is the testbed here. Native
@@ -78,6 +88,30 @@ function Root() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+    configurePushNotificationPresentation();
+    void configurePushChannels();
+    attachPushNotificationListeners();
+    void consumeInitialNotificationOpen();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !authReady || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensurePushRegistration(token);
+        if (!cancelled) flushPendingPushRoute();
+      } catch (error) {
+        console.warn('[push] registration failed', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, token]);
+
+  useEffect(() => {
     if (USE_NEW_NAVIGATOR) return; // react-navigation handles auth-gated routing
     if (!authReady) return;
     if (!token) {
@@ -106,6 +140,9 @@ function Root() {
   };
 
   const handleLogout = async () => {
+    if (token) {
+      await deactivatePushRegistration(token);
+    }
     setToken(null);
     await AsyncStorage.removeItem('@openspace/auth_token');
     navigate({ screen: 'landing' }, true);
@@ -258,7 +295,11 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
 
   return (
     <NavigationContainer
+      ref={navigationRef}
       theme={navTheme}
+      onReady={() => {
+        markNavigationReady();
+      }}
       // Without a fallback, NavigationContainer's useDocumentTitle hook
       // writes `document.title = options?.title ?? route?.name` which
       // is literally `undefined` on web (the new navigator isn't mounted

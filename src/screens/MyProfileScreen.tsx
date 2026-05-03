@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { normalizeImageForUpload } from '../utils/normalizeImage';
 import {
   CircleResult,
   FeedPost,
@@ -384,13 +385,15 @@ export default function MyProfileScreen({
         quality: 0.9,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
+      const pickedUri = result.assets?.[0]?.uri;
+      if (!pickedUri) return;
       // Close the options sheet now that the picker is done.
       setAvatarOptionsOpen(false);
       if (avatarSaving) return;
       setAvatarSaving(true);
       try {
+        // Normalize HEIC/HEIF (iOS Photos default) → JPEG before upload.
+        const uri = await normalizeImageForUpload(pickedUri);
         const rnFile = { uri, type: 'image/jpeg', name: 'avatar.jpg' } as any;
         await onUpdateProfileMedia({ avatarFile: rnFile });
       } catch {
@@ -461,12 +464,14 @@ export default function MyProfileScreen({
         quality: 0.9,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
+      const pickedUri = result.assets?.[0]?.uri;
+      if (!pickedUri) return;
       setCoverOptionsOpen(false);
       if (coverSaving) return;
       setCoverSaving(true);
       try {
+        // Normalize HEIC/HEIF (iOS Photos default) → JPEG before upload.
+        const uri = await normalizeImageForUpload(pickedUri);
         const rnFile = { uri, type: 'image/jpeg', name: 'cover.jpg' } as any;
         await onUpdateProfileMedia({ coverFile: rnFile });
       } catch {

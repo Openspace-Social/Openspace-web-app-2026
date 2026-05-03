@@ -32,6 +32,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { normalizeImageForUpload } from '../../utils/normalizeImage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -221,12 +222,13 @@ export default function PublicProfileScreenContainer() {
         // type } — fetch(uri).blob() produces an empty blob on iOS for
         // file:// URIs, so we pass the asset descriptor directly and let
         // the platform read the file when uploading.
-        const inferredName = (asset.fileName || (kind === 'avatar' ? 'avatar.jpg' : 'cover.jpg'));
-        const inferredType = asset.mimeType || 'image/jpeg';
+        // Normalize HEIC/HEIF (iOS Photos default) → JPEG so the backend
+        // can decode it without `pillow-heif`.
+        const normalizedUri = await normalizeImageForUpload(asset.uri);
         const fileObj = {
-          uri: asset.uri,
-          name: inferredName,
-          type: inferredType,
+          uri: normalizedUri,
+          name: kind === 'avatar' ? 'avatar.jpg' : 'cover.jpg',
+          type: 'image/jpeg',
         } as any;
         await api.updateAuthenticatedUserWithMedia(
           token,

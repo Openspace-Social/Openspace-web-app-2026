@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, SearchCommunityResult } from '../api/client';
 
 type Props = {
@@ -106,9 +107,11 @@ export default function ManageCommunityScreen({ token, communityName, c, t, onNo
         quality: 0.9,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
-      if (!uri || !community) return;
+      const pickedUri = result.assets?.[0]?.uri;
+      if (!pickedUri || !community) return;
       setBusy(true);
+      // Normalize HEIC/HEIF (iOS Photos default) → JPEG before upload.
+      const uri = await normalizeImageForUpload(pickedUri);
       const rnFile = { uri, type: 'image/jpeg', name: kind === 'avatar' ? 'community-avatar.jpg' : 'community-cover.jpg' } as any;
       const targetName = community.name || communityName;
       const updated = kind === 'avatar'
