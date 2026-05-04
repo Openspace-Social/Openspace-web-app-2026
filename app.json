@@ -2,7 +2,7 @@
   "expo": {
     "name": "Openspace.Social",
     "slug": "openspace-social",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -33,7 +33,7 @@
         ]
       },
       "bundleIdentifier": "com.mem1984.openspacesocial",
-      "buildNumber": "9"
+      "buildNumber": "13"
     },
     "android": {
       "adaptiveIcon": {
@@ -46,7 +46,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "social.openspace.app",
-      "versionCode": 51,
+      "versionCode": 53,
       "intentFilters": [
         {
           "action": "VIEW",

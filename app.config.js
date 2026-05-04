@@ -1,4 +1,6 @@
 const appJson = require('./app.json');
+const fs = require('fs');
+const path = require('path');
 
 function resolvePushEnvironment() {
   const profile = (process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_APP_ENV || '').toLowerCase();
@@ -9,6 +11,8 @@ function resolvePushEnvironment() {
 module.exports = () => {
   const config = JSON.parse(JSON.stringify(appJson.expo));
   const apsEnvironment = resolvePushEnvironment();
+  const googleServicesPath = process.env.EXPO_ANDROID_GOOGLE_SERVICES_FILE || './google-services.json';
+  const resolvedGoogleServicesPath = path.resolve(__dirname, googleServicesPath);
 
   config.plugins = [
     'expo-notifications',
@@ -27,10 +31,10 @@ module.exports = () => {
     },
   };
 
-  if (process.env.EXPO_ANDROID_GOOGLE_SERVICES_FILE) {
+  if (fs.existsSync(resolvedGoogleServicesPath)) {
     config.android = {
       ...(config.android || {}),
-      googleServicesFile: process.env.EXPO_ANDROID_GOOGLE_SERVICES_FILE,
+      googleServicesFile: googleServicesPath,
     };
   }
 
@@ -40,6 +44,10 @@ module.exports = () => {
       apsEnvironment,
     },
   };
+
+  if (typeof config.version === 'string' && config.version.trim()) {
+    config.runtimeVersion = config.version;
+  }
 
   return config;
 };

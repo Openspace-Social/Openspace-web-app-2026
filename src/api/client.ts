@@ -168,20 +168,34 @@ export type UpdateAuthenticatedUserSettingsPayload = {
 };
 
 export type UserNotificationSettings = {
-  post_comment_notifications: boolean;
-  post_comment_reply_notifications: boolean;
-  post_reaction_notifications: boolean;
-  post_comment_reaction_notifications: boolean;
-  post_comment_user_mention_notifications: boolean;
-  post_user_mention_notifications: boolean;
-  follow_notifications: boolean;
-  follow_request_notifications: boolean;
-  follow_request_approved_notifications: boolean;
-  connection_request_notifications: boolean;
-  connection_confirmed_notifications: boolean;
-  community_invite_notifications: boolean;
-  community_new_post_notifications: boolean;
-  user_new_post_notifications: boolean;
+  post_comment_in_app_notifications: boolean;
+  post_comment_push_notifications: boolean;
+  post_comment_reply_in_app_notifications: boolean;
+  post_comment_reply_push_notifications: boolean;
+  post_reaction_in_app_notifications: boolean;
+  post_reaction_push_notifications: boolean;
+  post_comment_reaction_in_app_notifications: boolean;
+  post_comment_reaction_push_notifications: boolean;
+  post_comment_user_mention_in_app_notifications: boolean;
+  post_comment_user_mention_push_notifications: boolean;
+  post_user_mention_in_app_notifications: boolean;
+  post_user_mention_push_notifications: boolean;
+  follow_in_app_notifications: boolean;
+  follow_push_notifications: boolean;
+  follow_request_in_app_notifications: boolean;
+  follow_request_push_notifications: boolean;
+  follow_request_approved_in_app_notifications: boolean;
+  follow_request_approved_push_notifications: boolean;
+  connection_request_in_app_notifications: boolean;
+  connection_request_push_notifications: boolean;
+  connection_confirmed_in_app_notifications: boolean;
+  connection_confirmed_push_notifications: boolean;
+  community_invite_in_app_notifications: boolean;
+  community_invite_push_notifications: boolean;
+  community_new_post_in_app_notifications: boolean;
+  community_new_post_push_notifications: boolean;
+  user_new_post_in_app_notifications: boolean;
+  user_new_post_push_notifications: boolean;
 };
 
 export type PushProvider = 'apns' | 'fcm';

@@ -50,6 +50,15 @@ type PendingEmailChangeState = {
   requestedAt: number;
 };
 
+type NotificationPreferenceRow = {
+  labelKey: string;
+  labelDefault: string;
+  descriptionKey: string;
+  descriptionDefault: string;
+  inAppKey: keyof UserNotificationSettings;
+  pushKey: keyof UserNotificationSettings;
+};
+
 export default function SettingsScreen({
   c,
   t,
@@ -144,6 +153,145 @@ export default function SettingsScreen({
       setNotifSettingsSaving((prev) => ({ ...prev, [key]: false }));
     }
   }
+
+  const notificationSections: Array<{ headerKey: string; headerDefault: string; rows: NotificationPreferenceRow[] }> = [
+    {
+      headerKey: 'settings.notifSectionSocial',
+      headerDefault: 'Social & Relationships',
+      rows: [
+        {
+          labelKey: 'settings.notifFollow',
+          labelDefault: 'New follower',
+          descriptionKey: 'settings.notifFollowDesc',
+          descriptionDefault: 'When someone starts following you.',
+          inAppKey: 'follow_in_app_notifications',
+          pushKey: 'follow_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifFollowRequest',
+          labelDefault: 'Follow request',
+          descriptionKey: 'settings.notifFollowRequestDesc',
+          descriptionDefault: 'When someone requests to follow you.',
+          inAppKey: 'follow_request_in_app_notifications',
+          pushKey: 'follow_request_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifFollowRequestApproved',
+          labelDefault: 'Follow request approved',
+          descriptionKey: 'settings.notifFollowRequestApprovedDesc',
+          descriptionDefault: 'When your follow request is accepted.',
+          inAppKey: 'follow_request_approved_in_app_notifications',
+          pushKey: 'follow_request_approved_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifConnectionRequest',
+          labelDefault: 'Connection request',
+          descriptionKey: 'settings.notifConnectionRequestDesc',
+          descriptionDefault: 'When someone wants to connect with you.',
+          inAppKey: 'connection_request_in_app_notifications',
+          pushKey: 'connection_request_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifConnectionConfirmed',
+          labelDefault: 'Connection confirmed',
+          descriptionKey: 'settings.notifConnectionConfirmedDesc',
+          descriptionDefault: 'When someone confirms your connection request.',
+          inAppKey: 'connection_confirmed_in_app_notifications',
+          pushKey: 'connection_confirmed_push_notifications',
+        },
+      ],
+    },
+    {
+      headerKey: 'settings.notifSectionPosts',
+      headerDefault: 'Posts & Comments',
+      rows: [
+        {
+          labelKey: 'settings.notifPostComment',
+          labelDefault: 'Post comment',
+          descriptionKey: 'settings.notifPostCommentDesc',
+          descriptionDefault: 'When someone comments on your post or a post you\'ve commented on.',
+          inAppKey: 'post_comment_in_app_notifications',
+          pushKey: 'post_comment_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifPostCommentReply',
+          labelDefault: 'Comment reply',
+          descriptionKey: 'settings.notifPostCommentReplyDesc',
+          descriptionDefault: 'When someone replies to your comment.',
+          inAppKey: 'post_comment_reply_in_app_notifications',
+          pushKey: 'post_comment_reply_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifPostCommentMention',
+          labelDefault: 'Comment mention',
+          descriptionKey: 'settings.notifPostCommentMentionDesc',
+          descriptionDefault: 'When someone @mentions you in a comment.',
+          inAppKey: 'post_comment_user_mention_in_app_notifications',
+          pushKey: 'post_comment_user_mention_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifPostMention',
+          labelDefault: 'Post mention',
+          descriptionKey: 'settings.notifPostMentionDesc',
+          descriptionDefault: 'When someone @mentions you in a post.',
+          inAppKey: 'post_user_mention_in_app_notifications',
+          pushKey: 'post_user_mention_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifPostCommentReaction',
+          labelDefault: 'Comment reaction',
+          descriptionKey: 'settings.notifPostCommentReactionDesc',
+          descriptionDefault: 'When someone reacts to your comment.',
+          inAppKey: 'post_comment_reaction_in_app_notifications',
+          pushKey: 'post_comment_reaction_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifPostReaction',
+          labelDefault: 'Post reaction',
+          descriptionKey: 'settings.notifPostReactionDesc',
+          descriptionDefault: 'When someone reacts to your post.',
+          inAppKey: 'post_reaction_in_app_notifications',
+          pushKey: 'post_reaction_push_notifications',
+        },
+      ],
+    },
+    {
+      headerKey: 'settings.notifSectionCommunity',
+      headerDefault: 'Communities',
+      rows: [
+        {
+          labelKey: 'settings.notifCommunityInvite',
+          labelDefault: 'Community invite',
+          descriptionKey: 'settings.notifCommunityInviteDesc',
+          descriptionDefault: 'When someone invites you to join a community.',
+          inAppKey: 'community_invite_in_app_notifications',
+          pushKey: 'community_invite_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifCommunityNewPost',
+          labelDefault: 'Community new post',
+          descriptionKey: 'settings.notifCommunityNewPostDesc',
+          descriptionDefault: 'When a new post is made in a community you follow.',
+          inAppKey: 'community_new_post_in_app_notifications',
+          pushKey: 'community_new_post_push_notifications',
+        },
+      ],
+    },
+    {
+      headerKey: 'settings.notifSectionActivity',
+      headerDefault: 'User Activity',
+      rows: [
+        {
+          labelKey: 'settings.notifUserNewPost',
+          labelDefault: 'User new post',
+          descriptionKey: 'settings.notifUserNewPostDesc',
+          descriptionDefault: 'When a user you subscribe to creates a new post.',
+          inAppKey: 'user_new_post_in_app_notifications',
+          pushKey: 'user_new_post_push_notifications',
+        },
+      ],
+    },
+  ];
 
   const clearPendingEmailChange = useCallback(async () => {
     try {
@@ -742,131 +890,58 @@ export default function SettingsScreen({
           </View>
         ) : (
           <>
-            {/* Master toggle */}
             <NotifRow
               c={c}
               label={t('settings.notifAll', { defaultValue: 'All Notifications' })}
               description={t('settings.notifAllDesc', { defaultValue: 'Master toggle for all notifications.' })}
-              value={Object.values(notifSettings).some(Boolean)}
-              saving={false}
-              onChange={(v) => {
-                const all = Object.fromEntries(
-                  (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>).map((k) => [k, v])
-                ) as UserNotificationSettings;
+              inAppValue={(Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                .filter((key) => key.endsWith('_in_app_notifications'))
+                .some((key) => notifSettings[key])}
+              pushValue={(Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                .filter((key) => key.endsWith('_push_notifications'))
+                .some((key) => notifSettings[key])}
+              inAppSaving={false}
+              pushSaving={false}
+              onInAppChange={(v) => {
+                const patch = Object.fromEntries(
+                  (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                    .filter((key) => key.endsWith('_in_app_notifications'))
+                    .map((key) => [key, v])
+                ) as Partial<UserNotificationSettings>;
+                const all = { ...notifSettings, ...patch };
                 setNotifSettings(all);
-                void onUpdateNotificationSettings(all);
+                void onUpdateNotificationSettings(patch).then(setNotifSettings).catch(() => setNotifSettings(notifSettings));
+              }}
+              onPushChange={(v) => {
+                const patch = Object.fromEntries(
+                  (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                    .filter((key) => key.endsWith('_push_notifications'))
+                    .map((key) => [key, v])
+                ) as Partial<UserNotificationSettings>;
+                const all = { ...notifSettings, ...patch };
+                setNotifSettings(all);
+                void onUpdateNotificationSettings(patch).then(setNotifSettings).catch(() => setNotifSettings(notifSettings));
               }}
             />
-
-            <NotifSectionHeader c={c} label={t('settings.notifSectionSocial', { defaultValue: 'Social & Relationships' })} />
-
-            <NotifRow c={c}
-              label={t('settings.notifFollow', { defaultValue: 'New follower' })}
-              description={t('settings.notifFollowDesc', { defaultValue: 'When someone starts following you.' })}
-              value={notifSettings.follow_notifications}
-              saving={!!notifSettingsSaving.follow_notifications}
-              onChange={(v) => void handleNotifToggle('follow_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifFollowRequest', { defaultValue: 'Follow request' })}
-              description={t('settings.notifFollowRequestDesc', { defaultValue: 'When someone requests to follow you.' })}
-              value={notifSettings.follow_request_notifications}
-              saving={!!notifSettingsSaving.follow_request_notifications}
-              onChange={(v) => void handleNotifToggle('follow_request_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifFollowRequestApproved', { defaultValue: 'Follow request approved' })}
-              description={t('settings.notifFollowRequestApprovedDesc', { defaultValue: 'When your follow request is accepted.' })}
-              value={notifSettings.follow_request_approved_notifications}
-              saving={!!notifSettingsSaving.follow_request_approved_notifications}
-              onChange={(v) => void handleNotifToggle('follow_request_approved_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifConnectionRequest', { defaultValue: 'Connection request' })}
-              description={t('settings.notifConnectionRequestDesc', { defaultValue: 'When someone wants to connect with you.' })}
-              value={notifSettings.connection_request_notifications}
-              saving={!!notifSettingsSaving.connection_request_notifications}
-              onChange={(v) => void handleNotifToggle('connection_request_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifConnectionConfirmed', { defaultValue: 'Connection confirmed' })}
-              description={t('settings.notifConnectionConfirmedDesc', { defaultValue: 'When someone confirms your connection request.' })}
-              value={notifSettings.connection_confirmed_notifications}
-              saving={!!notifSettingsSaving.connection_confirmed_notifications}
-              onChange={(v) => void handleNotifToggle('connection_confirmed_notifications', v)}
-            />
-
-            <NotifSectionHeader c={c} label={t('settings.notifSectionPosts', { defaultValue: 'Posts & Comments' })} />
-
-            <NotifRow c={c}
-              label={t('settings.notifPostComment', { defaultValue: 'Post comment' })}
-              description={t('settings.notifPostCommentDesc', { defaultValue: 'When someone comments on your post or a post you\'ve commented on.' })}
-              value={notifSettings.post_comment_notifications}
-              saving={!!notifSettingsSaving.post_comment_notifications}
-              onChange={(v) => void handleNotifToggle('post_comment_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifPostCommentReply', { defaultValue: 'Comment reply' })}
-              description={t('settings.notifPostCommentReplyDesc', { defaultValue: 'When someone replies to your comment.' })}
-              value={notifSettings.post_comment_reply_notifications}
-              saving={!!notifSettingsSaving.post_comment_reply_notifications}
-              onChange={(v) => void handleNotifToggle('post_comment_reply_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifPostCommentMention', { defaultValue: 'Comment mention' })}
-              description={t('settings.notifPostCommentMentionDesc', { defaultValue: 'When someone @mentions you in a comment.' })}
-              value={notifSettings.post_comment_user_mention_notifications}
-              saving={!!notifSettingsSaving.post_comment_user_mention_notifications}
-              onChange={(v) => void handleNotifToggle('post_comment_user_mention_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifPostMention', { defaultValue: 'Post mention' })}
-              description={t('settings.notifPostMentionDesc', { defaultValue: 'When someone @mentions you in a post.' })}
-              value={notifSettings.post_user_mention_notifications}
-              saving={!!notifSettingsSaving.post_user_mention_notifications}
-              onChange={(v) => void handleNotifToggle('post_user_mention_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifPostCommentReaction', { defaultValue: 'Comment reaction' })}
-              description={t('settings.notifPostCommentReactionDesc', { defaultValue: 'When someone reacts to your comment.' })}
-              value={notifSettings.post_comment_reaction_notifications}
-              saving={!!notifSettingsSaving.post_comment_reaction_notifications}
-              onChange={(v) => void handleNotifToggle('post_comment_reaction_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifPostReaction', { defaultValue: 'Post reaction' })}
-              description={t('settings.notifPostReactionDesc', { defaultValue: 'When someone reacts to your post.' })}
-              value={notifSettings.post_reaction_notifications}
-              saving={!!notifSettingsSaving.post_reaction_notifications}
-              onChange={(v) => void handleNotifToggle('post_reaction_notifications', v)}
-            />
-
-            <NotifSectionHeader c={c} label={t('settings.notifSectionCommunity', { defaultValue: 'Communities' })} />
-
-            <NotifRow c={c}
-              label={t('settings.notifCommunityInvite', { defaultValue: 'Community invite' })}
-              description={t('settings.notifCommunityInviteDesc', { defaultValue: 'When someone invites you to join a community.' })}
-              value={notifSettings.community_invite_notifications}
-              saving={!!notifSettingsSaving.community_invite_notifications}
-              onChange={(v) => void handleNotifToggle('community_invite_notifications', v)}
-            />
-            <NotifRow c={c}
-              label={t('settings.notifCommunityNewPost', { defaultValue: 'Community new post' })}
-              description={t('settings.notifCommunityNewPostDesc', { defaultValue: 'When a new post is made in a community you follow.' })}
-              value={notifSettings.community_new_post_notifications}
-              saving={!!notifSettingsSaving.community_new_post_notifications}
-              onChange={(v) => void handleNotifToggle('community_new_post_notifications', v)}
-            />
-
-            <NotifSectionHeader c={c} label={t('settings.notifSectionActivity', { defaultValue: 'User Activity' })} />
-
-            <NotifRow c={c}
-              label={t('settings.notifUserNewPost', { defaultValue: 'User new post' })}
-              description={t('settings.notifUserNewPostDesc', { defaultValue: 'When a user you subscribe to creates a new post.' })}
-              value={notifSettings.user_new_post_notifications}
-              saving={!!notifSettingsSaving.user_new_post_notifications}
-              onChange={(v) => void handleNotifToggle('user_new_post_notifications', v)}
-            />
+            {notificationSections.map((section) => (
+              <React.Fragment key={section.headerKey}>
+                <NotifSectionHeader c={c} label={t(section.headerKey, { defaultValue: section.headerDefault })} />
+                {section.rows.map((row) => (
+                  <NotifRow
+                    key={row.inAppKey}
+                    c={c}
+                    label={t(row.labelKey, { defaultValue: row.labelDefault })}
+                    description={t(row.descriptionKey, { defaultValue: row.descriptionDefault })}
+                    inAppValue={notifSettings[row.inAppKey]}
+                    pushValue={notifSettings[row.pushKey]}
+                    inAppSaving={!!notifSettingsSaving[row.inAppKey]}
+                    pushSaving={!!notifSettingsSaving[row.pushKey]}
+                    onInAppChange={(v) => void handleNotifToggle(row.inAppKey, v)}
+                    onPushChange={(v) => void handleNotifToggle(row.pushKey, v)}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
           </>
         )}
       </SettingsRightDrawerModal>
@@ -886,16 +961,22 @@ function NotifRow({
   c,
   label,
   description,
-  value,
-  saving,
-  onChange,
+  inAppValue,
+  pushValue,
+  inAppSaving,
+  pushSaving,
+  onInAppChange,
+  onPushChange,
 }: {
   c: any;
   label: string;
   description: string;
-  value: boolean;
-  saving: boolean;
-  onChange: (v: boolean) => void;
+  inAppValue: boolean;
+  pushValue: boolean;
+  inAppSaving: boolean;
+  pushSaving: boolean;
+  onInAppChange: (v: boolean) => void;
+  onPushChange: (v: boolean) => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
@@ -903,6 +984,42 @@ function NotifRow({
         <Text style={{ fontSize: 14, fontWeight: '600', color: c.textPrimary }}>{label}</Text>
         <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2, lineHeight: 16 }}>{description}</Text>
       </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <NotifChannelToggle
+          c={c}
+          label="In app"
+          value={inAppValue}
+          saving={inAppSaving}
+          onChange={onInAppChange}
+        />
+        <NotifChannelToggle
+          c={c}
+          label="Push"
+          value={pushValue}
+          saving={pushSaving}
+          onChange={onPushChange}
+        />
+      </View>
+    </View>
+  );
+}
+
+function NotifChannelToggle({
+  c,
+  label,
+  value,
+  saving,
+  onChange,
+}: {
+  c: any;
+  label: string;
+  value: boolean;
+  saving: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={{ alignItems: 'center', minWidth: 68 }}>
+      <Text style={{ fontSize: 11, color: c.textMuted, marginBottom: 6 }}>{label}</Text>
       {saving ? (
         <ActivityIndicator size="small" color={c.primary} />
       ) : (
@@ -1148,7 +1265,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'flex-end',
-    justifyContent: 'stretch',
+    justifyContent: 'flex-start',
   },
   drawerPanel: {
     position: 'absolute',

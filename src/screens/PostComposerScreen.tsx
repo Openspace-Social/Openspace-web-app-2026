@@ -272,25 +272,60 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
 
   // Pre-load joined + pinned communities + circles so the audience
   // sheet has something to show as soon as the user taps it.
+  // Joined communities are paginated server-side at a max of 20 per
+  // call, so we walk pages until we hit a short page (< 20 items) or
+  // a hard cap. Mirrors the web composer at HomeScreen.tsx:5202.
   useEffect(() => {
     if (!token) return;
     let active = true;
     (async () => {
       try {
-        const [communitiesRes, pinnedRes, circlesRes] = await Promise.allSettled([
+        const [firstJoinedRes, pinnedRes, circlesRes] = await Promise.allSettled([
           api.getJoinedCommunities(token, 20, 0),
           api.getPinnedCommunities(token),
           api.getCircles(token),
         ]);
         if (!active) return;
-        if (communitiesRes.status === 'fulfilled') {
-          setCommunities(Array.isArray(communitiesRes.value) ? communitiesRes.value : []);
-        }
         if (pinnedRes.status === 'fulfilled') {
           setPinnedCommunities(Array.isArray(pinnedRes.value) ? pinnedRes.value : []);
         }
         if (circlesRes.status === 'fulfilled') {
           setCircles(Array.isArray(circlesRes.value) ? circlesRes.value : []);
+        }
+        if (firstJoinedRes.status !== 'fulfilled') return;
+        const all: SearchCommunityResult[] = Array.isArray(firstJoinedRes.value)
+          ? [...firstJoinedRes.value]
+          : [];
+        // Show the first page immediately so the picker isn't empty
+        // while the rest of the pages stream in.
+        setCommunities(all);
+        // Hard cap as a safety net for runaway membership counts. 25
+        // pages × 20 = 500 communities, plenty for any real account.
+        const PAGE_SIZE = 20;
+        const MAX_PAGES = 25;
+        let offset = all.length;
+        let pages = 1;
+        while (
+          active
+          && all.length > 0
+          && all.length % PAGE_SIZE === 0
+          && pages < MAX_PAGES
+        ) {
+          let nextPage: SearchCommunityResult[];
+          try {
+            nextPage = await api.getJoinedCommunities(token, PAGE_SIZE, offset);
+          } catch {
+            break;
+          }
+          if (!active) return;
+          if (!Array.isArray(nextPage) || nextPage.length === 0) break;
+          all.push(...nextPage);
+          offset += nextPage.length;
+          pages += 1;
+          // Push each page into state as it arrives so the user sees
+          // the list grow rather than waiting for everything at once.
+          setCommunities([...all]);
+          if (nextPage.length < PAGE_SIZE) break;
         }
       } catch {
         // non-fatal; audience sheet just shows empty states

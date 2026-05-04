@@ -1,0 +1,31 @@
+# Keep EAS uploads lean and deterministic.
+# Start from the same exclusions we use for git.
+.git
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Local tooling and virtualenvs
+.venv/
+.idea/
+
+# Native local build outputs
+ios/build/
+android/.gradle/
+android/app/build/
+android/build/
+
+# Misc local files
+.DS_Store
+*.pem
+*.swp
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Local env overrides
+.env.local
+.env*.local
