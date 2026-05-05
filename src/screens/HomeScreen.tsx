@@ -56,6 +56,7 @@ import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
+import HashtagFeedSection from '../components/HashtagFeedSection';
 import LongPostDrawer, { LongPostBlock, LongPostEditorMode } from '../components/LongPostDrawer';
 import NotificationDrawer from '../components/NotificationDrawer';
 import BottomTabBar, { BottomTab } from '../components/BottomTabBar';
@@ -8996,11 +8997,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             ) : null}
 
             {viewingHashtagRoute ? (
-              <RouteSummaryCard
-                styles={styles}
+              <HashtagFeedSection
+                token={token}
+                hashtagName={hashtagRouteName}
+                renderPostCard={(post, variant) => renderPostCard(post, variant ?? 'feed', myPinnedPosts)}
                 c={c}
-                title={`#${hashtagRouteName}`}
-                subtitle={t('home.hashtagRouteLabel', { hashtag: hashtagRouteName })}
               />
             ) : null}
 

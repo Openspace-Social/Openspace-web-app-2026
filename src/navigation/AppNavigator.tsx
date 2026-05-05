@@ -50,6 +50,7 @@ import CommunityScreenContainer from './screens/CommunityScreenContainer';
 import CommunityMembersScreenContainer from './screens/CommunityMembersScreenContainer';
 import SearchScreenContainer from './screens/SearchScreenContainer';
 import SearchResultsScreenContainer from './screens/SearchResultsScreenContainer';
+import HashtagScreenContainer from './screens/HashtagScreenContainer';
 import { NotificationsProvider } from '../context/NotificationsContext';
 import PostDetailScreenContainer from './screens/PostDetailScreenContainer';
 import PublicProfileScreenContainer from './screens/PublicProfileScreenContainer';
@@ -224,9 +225,13 @@ function HomeTabStack() {
         component={SearchResultsScreenContainer}
         options={{ title: 'Search results' }}
       />
-      <HomeStack.Screen name="Hashtag" options={{ title: 'Hashtag' }}>
-        {() => <Placeholder title="Hashtag" subtitle="pending migration" />}
-      </HomeStack.Screen>
+      <HomeStack.Screen
+        name="Hashtag"
+        component={HashtagScreenContainer}
+        options={({ route }) => ({
+          title: route.params?.name ? `#${route.params.name}` : 'Hashtag',
+        })}
+      />
       <HomeStack.Screen name="Search" options={{ title: 'Search' }}>
         {() => <Placeholder title="Search" subtitle="pending migration" />}
       </HomeStack.Screen>

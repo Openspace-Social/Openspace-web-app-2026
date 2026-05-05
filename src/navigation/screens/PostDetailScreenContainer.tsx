@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { openExternalLink } from '../../utils/openExternalLink';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -210,11 +210,12 @@ export default function PostDetailScreenContainer() {
 
   const handleOpenLink = useCallback((url?: string) => {
     if (!url) return;
-    // In-app browser (SFSafariViewController / Chrome Custom Tabs) — keeps
-    // users from being kicked out to the system browser when they tap a
-    // link inside a post.
-    void WebBrowser.openBrowserAsync(url).catch(() => {
-      stub('Open link');
+    // In-app browser (SFSafariViewController / Chrome Custom Tabs) with a
+    // system-browser fallback — keeps users from being kicked out to
+    // Safari, but doesn't strand them on a toast if the in-app browser
+    // can't handle the URL.
+    void openExternalLink(url).then((opened) => {
+      if (!opened) stub('Open link');
     });
   }, [stub]);
 

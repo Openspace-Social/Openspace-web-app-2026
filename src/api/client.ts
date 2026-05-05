@@ -950,6 +950,13 @@ export type SearchHashtagResult = {
   };
 };
 
+// Returned by GET /api/hashtags/<name>/ — superset of SearchHashtagResult
+// with brand colours for the chip / header.
+export type HashtagInfo = SearchHashtagResult & {
+  color?: string | null;
+  text_color?: string | null;
+};
+
 function normalizeMaybeWrappedPost(payload: unknown): FeedPost | null {
   if (!payload || typeof payload !== 'object') return null;
   const asObj = payload as Record<string, unknown>;
@@ -2587,6 +2594,21 @@ export const api = {
     return request<SearchHashtagResult[]>(`/api/hashtags/search/?${params.toString()}`, {
       headers: { Authorization: `Token ${token}` },
     });
+  },
+
+  getHashtag: (token: string, name: string) =>
+    request<HashtagInfo>(`/api/hashtags/${encodeURIComponent(name)}/`, {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getHashtagPosts: (token: string, name: string, count = 10, maxId?: number) => {
+    const params = new URLSearchParams();
+    params.set('count', String(count));
+    if (typeof maxId === 'number') params.set('max_id', String(maxId));
+    return request<FeedPost[]>(
+      `/api/hashtags/${encodeURIComponent(name)}/posts/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
   },
 
   // ─── Notifications ──────────────────────────────────────────────────────────

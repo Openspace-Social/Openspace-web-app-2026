@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { openExternalLink } from '../utils/openExternalLink';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -277,11 +277,10 @@ export function useNativePostInteractions({
       },
       onOpenLink: (url) => {
         if (!url) return;
-        // Use the in-app browser (SFSafariViewController on iOS / Custom
-        // Tabs on Android) so users stay in-context instead of jumping out
-        // to the system Safari.
-        void WebBrowser.openBrowserAsync(url).catch(() => {
-          stub('Open link');
+        // Tries the in-app browser first, falls back to the system
+        // browser, and only stubs if neither path can handle the URL.
+        void openExternalLink(url).then((opened) => {
+          if (!opened) stub('Open link');
         });
       },
       onPickDraftCommentImage: comments.pickDraftCommentImage,
