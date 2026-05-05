@@ -11,6 +11,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { syncAppIconBadgeCount } from '../push/badge';
 import { useAuth } from './AuthContext';
 
 const POLL_INTERVAL_MS = 60_000;
@@ -60,6 +61,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       timerRef.current = null;
     };
   }, [token, refresh]);
+
+  useEffect(() => {
+    void syncAppIconBadgeCount(unreadCount);
+  }, [unreadCount]);
 
   return (
     <NotificationsContext.Provider value={{ unreadCount, refresh, setUnreadCount }}>

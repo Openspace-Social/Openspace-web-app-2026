@@ -192,10 +192,20 @@ export type UserNotificationSettings = {
   connection_confirmed_push_notifications: boolean;
   community_invite_in_app_notifications: boolean;
   community_invite_push_notifications: boolean;
+  community_join_request_approved_in_app_notifications: boolean;
+  community_join_request_approved_push_notifications: boolean;
+  community_ban_in_app_notifications: boolean;
+  community_ban_push_notifications: boolean;
   community_new_post_in_app_notifications: boolean;
   community_new_post_push_notifications: boolean;
   user_new_post_in_app_notifications: boolean;
   user_new_post_push_notifications: boolean;
+  post_repost_in_app_notifications: boolean;
+  post_repost_push_notifications: boolean;
+  community_post_pin_in_app_notifications: boolean;
+  community_post_pin_push_notifications: boolean;
+  moderation_task_in_app_notifications: boolean;
+  moderation_task_push_notifications: boolean;
 };
 
 export type PushProvider = 'apns' | 'fcm';
@@ -657,7 +667,9 @@ export type NotificationType =
   | 'CNP'  // community new post
   | 'UNP'  // user new post
   | 'CB'   // community ban
+  | 'CJRA' // community join request approved
   | 'PRE'  // post repost
+  | 'CPP'  // community post pin
   | 'MT';  // moderation task
 
 type NotifUser = {
@@ -723,8 +735,19 @@ export type NotificationContentObject =
     }
   // CB
   | { community?: { id?: number; name?: string; avatar?: string; color?: string }; banned_by?: NotifUser }
+  // CJRA
+  | { community?: { id?: number; name?: string; avatar?: string; color?: string } }
   // CNP / UNP
   | { post?: NotifPost }
+  // CPP
+  | {
+      community_pinned_post?: {
+        id?: number;
+        post?: NotifPost;
+        community?: { id?: number; name?: string; avatar?: string; color?: string };
+        pinned_by?: NotifUser;
+      };
+    }
   // MT
   | { object_type?: string; community_name?: string; community_title?: string; category_title?: string };
 

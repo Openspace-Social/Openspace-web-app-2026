@@ -59,6 +59,12 @@ type NotificationPreferenceRow = {
   pushKey: keyof UserNotificationSettings;
 };
 
+type NotificationPreferenceSection = {
+  headerKey: string;
+  headerDefault: string;
+  rows: NotificationPreferenceRow[];
+};
+
 export default function SettingsScreen({
   c,
   t,
@@ -140,24 +146,52 @@ export default function SettingsScreen({
 
   async function handleNotifToggle(key: keyof UserNotificationSettings, value: boolean) {
     if (!notifSettings) return;
-    // Optimistic update
-    setNotifSettings((prev) => prev ? { ...prev, [key]: value } : prev);
+    const patch = { [key]: value } as Partial<UserNotificationSettings>;
+    const previous = notifSettings;
+    setNotifSettings({ ...notifSettings, ...patch });
     setNotifSettingsSaving((prev) => ({ ...prev, [key]: true }));
     try {
-      const updated = await onUpdateNotificationSettings({ [key]: value });
+      const updated = await onUpdateNotificationSettings(patch);
       setNotifSettings(updated);
     } catch {
-      // Revert on failure
-      setNotifSettings((prev) => prev ? { ...prev, [key]: !value } : prev);
+      setNotifSettings(previous);
     } finally {
       setNotifSettingsSaving((prev) => ({ ...prev, [key]: false }));
     }
   }
 
-  const notificationSections: Array<{ headerKey: string; headerDefault: string; rows: NotificationPreferenceRow[] }> = [
+  async function handleBulkNotifToggle(keys: Array<keyof UserNotificationSettings>, value: boolean) {
+    if (!notifSettings || keys.length === 0) return;
+    const patch = Object.fromEntries(keys.map((key) => [key, value])) as Partial<UserNotificationSettings>;
+    const previous = notifSettings;
+    setNotifSettings({ ...notifSettings, ...patch });
+    setNotifSettingsSaving((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = true;
+      });
+      return next;
+    });
+    try {
+      const updated = await onUpdateNotificationSettings(patch);
+      setNotifSettings(updated);
+    } catch {
+      setNotifSettings(previous);
+    } finally {
+      setNotifSettingsSaving((prev) => {
+        const next = { ...prev };
+        keys.forEach((key) => {
+          next[key] = false;
+        });
+        return next;
+      });
+    }
+  }
+
+  const notificationSections: NotificationPreferenceSection[] = [
     {
       headerKey: 'settings.notifSectionSocial',
-      headerDefault: 'Social & Relationships',
+      headerDefault: 'Social',
       rows: [
         {
           labelKey: 'settings.notifFollow',
@@ -253,6 +287,14 @@ export default function SettingsScreen({
           inAppKey: 'post_reaction_in_app_notifications',
           pushKey: 'post_reaction_push_notifications',
         },
+        {
+          labelKey: 'settings.notifPostRepost',
+          labelDefault: 'Repost',
+          descriptionKey: 'settings.notifPostRepostDesc',
+          descriptionDefault: 'When someone reposts your post.',
+          inAppKey: 'post_repost_in_app_notifications',
+          pushKey: 'post_repost_push_notifications',
+        },
       ],
     },
     {
@@ -268,6 +310,14 @@ export default function SettingsScreen({
           pushKey: 'community_invite_push_notifications',
         },
         {
+          labelKey: 'settings.notifCommunityJoinApproved',
+          labelDefault: 'Join request approved',
+          descriptionKey: 'settings.notifCommunityJoinApprovedDesc',
+          descriptionDefault: 'When your request to join a community is approved.',
+          inAppKey: 'community_join_request_approved_in_app_notifications',
+          pushKey: 'community_join_request_approved_push_notifications',
+        },
+        {
           labelKey: 'settings.notifCommunityNewPost',
           labelDefault: 'Community new post',
           descriptionKey: 'settings.notifCommunityNewPostDesc',
@@ -275,11 +325,27 @@ export default function SettingsScreen({
           inAppKey: 'community_new_post_in_app_notifications',
           pushKey: 'community_new_post_push_notifications',
         },
+        {
+          labelKey: 'settings.notifCommunityPostPin',
+          labelDefault: 'Post pinned',
+          descriptionKey: 'settings.notifCommunityPostPinDesc',
+          descriptionDefault: 'When one of your community posts is pinned.',
+          inAppKey: 'community_post_pin_in_app_notifications',
+          pushKey: 'community_post_pin_push_notifications',
+        },
+        {
+          labelKey: 'settings.notifCommunityBan',
+          labelDefault: 'Community ban',
+          descriptionKey: 'settings.notifCommunityBanDesc',
+          descriptionDefault: 'When you are banned from a community.',
+          inAppKey: 'community_ban_in_app_notifications',
+          pushKey: 'community_ban_push_notifications',
+        },
       ],
     },
     {
       headerKey: 'settings.notifSectionActivity',
-      headerDefault: 'User Activity',
+      headerDefault: 'Following',
       rows: [
         {
           labelKey: 'settings.notifUserNewPost',
@@ -288,6 +354,20 @@ export default function SettingsScreen({
           descriptionDefault: 'When a user you subscribe to creates a new post.',
           inAppKey: 'user_new_post_in_app_notifications',
           pushKey: 'user_new_post_push_notifications',
+        },
+      ],
+    },
+    {
+      headerKey: 'settings.notifSectionModeration',
+      headerDefault: 'Safety & Moderation',
+      rows: [
+        {
+          labelKey: 'settings.notifModerationTask',
+          labelDefault: 'Moderation task',
+          descriptionKey: 'settings.notifModerationTaskDesc',
+          descriptionDefault: 'When reported content needs your attention.',
+          inAppKey: 'moderation_task_in_app_notifications',
+          pushKey: 'moderation_task_push_notifications',
         },
       ],
     },
@@ -896,36 +976,36 @@ export default function SettingsScreen({
               description={t('settings.notifAllDesc', { defaultValue: 'Master toggle for all notifications.' })}
               inAppValue={(Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
                 .filter((key) => key.endsWith('_in_app_notifications'))
-                .some((key) => notifSettings[key])}
+                .every((key) => notifSettings[key])}
               pushValue={(Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
                 .filter((key) => key.endsWith('_push_notifications'))
-                .some((key) => notifSettings[key])}
+                .every((key) => notifSettings[key])}
               inAppSaving={false}
               pushSaving={false}
-              onInAppChange={(v) => {
-                const patch = Object.fromEntries(
-                  (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
-                    .filter((key) => key.endsWith('_in_app_notifications'))
-                    .map((key) => [key, v])
-                ) as Partial<UserNotificationSettings>;
-                const all = { ...notifSettings, ...patch };
-                setNotifSettings(all);
-                void onUpdateNotificationSettings(patch).then(setNotifSettings).catch(() => setNotifSettings(notifSettings));
-              }}
-              onPushChange={(v) => {
-                const patch = Object.fromEntries(
-                  (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
-                    .filter((key) => key.endsWith('_push_notifications'))
-                    .map((key) => [key, v])
-                ) as Partial<UserNotificationSettings>;
-                const all = { ...notifSettings, ...patch };
-                setNotifSettings(all);
-                void onUpdateNotificationSettings(patch).then(setNotifSettings).catch(() => setNotifSettings(notifSettings));
-              }}
+              onInAppChange={(v) => void handleBulkNotifToggle(
+                (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                  .filter((key) => key.endsWith('_in_app_notifications')),
+                v,
+              )}
+              onPushChange={(v) => void handleBulkNotifToggle(
+                (Object.keys(notifSettings) as Array<keyof UserNotificationSettings>)
+                  .filter((key) => key.endsWith('_push_notifications')),
+                v,
+              )}
             />
-            {notificationSections.map((section) => (
-              <React.Fragment key={section.headerKey}>
-                <NotifSectionHeader c={c} label={t(section.headerKey, { defaultValue: section.headerDefault })} />
+            {notificationSections.map((section) => {
+              const inAppKeys = section.rows.map((row) => row.inAppKey);
+              const pushKeys = section.rows.map((row) => row.pushKey);
+              return (
+                <React.Fragment key={section.headerKey}>
+                  <NotifSectionHeader
+                    c={c}
+                    label={t(section.headerKey, { defaultValue: section.headerDefault })}
+                    inAppValue={inAppKeys.every((key) => notifSettings[key])}
+                    pushValue={pushKeys.every((key) => notifSettings[key])}
+                    onInAppChange={(value) => void handleBulkNotifToggle(inAppKeys, value)}
+                    onPushChange={(value) => void handleBulkNotifToggle(pushKeys, value)}
+                  />
                 {section.rows.map((row) => (
                   <NotifRow
                     key={row.inAppKey}
@@ -940,8 +1020,9 @@ export default function SettingsScreen({
                     onPushChange={(v) => void handleNotifToggle(row.pushKey, v)}
                   />
                 ))}
-              </React.Fragment>
-            ))}
+                </React.Fragment>
+              );
+            })}
           </>
         )}
       </SettingsRightDrawerModal>
@@ -949,11 +1030,57 @@ export default function SettingsScreen({
   );
 }
 
-function NotifSectionHeader({ c, label }: { c: any; label: string }) {
+function NotifSectionHeader({
+  c,
+  label,
+  inAppValue,
+  pushValue,
+  onInAppChange,
+  onPushChange,
+}: {
+  c: any;
+  label: string;
+  inAppValue: boolean;
+  pushValue: boolean;
+  onInAppChange: (value: boolean) => void;
+  onPushChange: (value: boolean) => void;
+}) {
   return (
-    <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 10, marginBottom: 2, paddingHorizontal: 2 }}>
-      {label}
-    </Text>
+    <View
+      style={{
+        marginTop: 10,
+        marginBottom: 4,
+        gap: 8,
+        paddingHorizontal: 2,
+      }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        {label}
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 14,
+        }}
+      >
+        <NotifChannelToggle
+          c={c}
+          label="In app"
+          value={inAppValue}
+          saving={false}
+          onChange={onInAppChange}
+        />
+        <NotifChannelToggle
+          c={c}
+          label="Push"
+          value={pushValue}
+          saving={false}
+          onChange={onPushChange}
+        />
+      </View>
+    </View>
   );
 }
 

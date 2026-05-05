@@ -390,7 +390,7 @@ export function matchesNotificationFilter(notif: AppNotification, filter: Notifi
   if (filter === 'replies') return type === 'PCR';
   if (filter === 'connections') return type === 'CR' || type === 'CC';
   if (filter === 'follows') return type === 'F' || type === 'FR' || type === 'FRA';
-  if (filter === 'communities') return type === 'CI' || type === 'CNP' || type === 'CB';
+  if (filter === 'communities') return type === 'CI' || type === 'CNP' || type === 'CB' || type === 'CJRA' || type === 'CPP';
   if (filter === 'mentions') return type === 'PUM' || type === 'PCUM';
   if (filter === 'reactions') return type === 'PR' || type === 'PCRA';
   if (filter === 'reposts') return type === 'PRE';
@@ -469,7 +469,7 @@ export function NotificationRow({
     'F', 'FR', 'FRA', 'PR', 'PC', 'PCR', 'PCRA', 'CR', 'CC',
     'PUM', 'PCUM', 'CI', 'UNP', 'PRE',
   ];
-  const communityActorTypes: NotificationType[] = ['CNP', 'CB'];
+  const communityActorTypes: NotificationType[] = ['CNP', 'CB', 'CJRA', 'CPP'];
   const onAvatarPress = !actor
     ? undefined
     : userActorTypes.includes(notif.notification_type)
@@ -1115,6 +1115,19 @@ function resolveNotification(
         onPress: () => community?.name && onNavigateCommunity(community.name),
       };
     }
+    case 'CJRA': {
+      const community = obj?.community;
+      return {
+        icon: 'account-check-outline', iconColor: '#059669',
+        actor: community?.name, actorAvatar: community?.avatar,
+        body: t('home.notificationTypeCommunityJoinApproved', {
+          community: community?.name || '',
+          defaultValue: 'Your request to join c/{{community}} was approved.',
+        }),
+        postThumbnail: null, postPreviewText: null,
+        onPress: () => community?.name && onNavigateCommunity(community.name),
+      };
+    }
     case 'UNP': {
       const post = obj?.post;
       const creator = post?.creator;
@@ -1139,6 +1152,22 @@ function resolveNotification(
         postThumbnail: repost?.media_thumbnail || null,
         postPreviewText: truncate(repost?.text, 120) || null,
         onPress: () => repost?.id && onNavigatePost(repost.id, repost.uuid),
+      };
+    }
+    case 'CPP': {
+      const pinnedPost = obj?.community_pinned_post;
+      const post = pinnedPost?.post;
+      const community = pinnedPost?.community;
+      return {
+        icon: 'pin-outline', iconColor: '#F59E0B',
+        actor: community?.name, actorAvatar: community?.avatar,
+        body: t('home.notificationTypeCommunityPostPin', {
+          community: community?.name || '',
+          defaultValue: 'Your post was pinned in c/{{community}}.',
+        }),
+        postThumbnail: post?.media_thumbnail || null,
+        postPreviewText: truncate(post?.text, 120) || null,
+        onPress: () => post?.id && onNavigatePost(post.id, post.uuid),
       };
     }
     case 'MT': {
