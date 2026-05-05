@@ -9,6 +9,7 @@ import { useFeedMutePreference } from '../hooks/useFeedMutePreference';
 import { useIsInViewport } from '../hooks/useIsInViewport';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
+import { EMBED_BASE_URL, shouldStartLoadWithEmbedRequest } from '../utils/webviewEmbedNavigation';
 
 // Native-only: WebView renders YouTube/Vimeo embed URLs inline so the feed
 // gets the same inline-playable experience web has via <iframe>. Loaded
@@ -20,12 +21,10 @@ const NativeWebView: any =
     : null;
 
 // Wraps an embed URL in a minimal HTML document so iOS WKWebView can host
-// it cleanly. A neutral baseUrl (below) + origin param on the iframe URL
-// is what YouTube's player expects for a third-party embed — without
-// them iOS returns "Video player configuration error (153)" or a
-// playback-blocked state (152).
-const EMBED_BASE_URL = 'https://openspacelive.com';
-
+// it cleanly. A neutral baseUrl (EMBED_BASE_URL, imported above) + origin
+// param on the iframe URL is what YouTube's player expects for a
+// third-party embed — without them iOS returns "Video player
+// configuration error (153)" or a playback-blocked state (152).
 function buildEmbedHtml(embedUrl: string) {
   let finalUrl = embedUrl;
   try {
@@ -1906,6 +1905,7 @@ function PostCard({
                             mediaPlaybackRequiresUserAction={false}
                             javaScriptEnabled
                             domStorageEnabled
+                            onShouldStartLoadWithRequest={shouldStartLoadWithEmbedRequest}
                             style={{ flex: 1, backgroundColor: '#000' }}
                           />
                         </View>
@@ -2103,6 +2103,7 @@ function PostCard({
                           mediaPlaybackRequiresUserAction={false}
                           javaScriptEnabled
                           domStorageEnabled
+                          onShouldStartLoadWithRequest={shouldStartLoadWithEmbedRequest}
                           style={{ flex: 1, backgroundColor: '#000' }}
                         />
                       </View>
@@ -2411,6 +2412,7 @@ function PostCard({
                 mediaPlaybackRequiresUserAction={false}
                 javaScriptEnabled
                 domStorageEnabled
+                onShouldStartLoadWithRequest={shouldStartLoadWithEmbedRequest}
                 style={{ flex: 1, backgroundColor: '#000' }}
               />
             </View>

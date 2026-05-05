@@ -27,6 +27,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
+import { EMBED_BASE_URL, shouldStartLoadWithEmbedRequest } from '../utils/webviewEmbedNavigation';
 import MentionHashtagInput from './MentionHashtagInput';
 import { GifPickerOverlay } from './GifPickerProvider';
 import { MentionPopupOverlay } from './MentionPopupProvider';
@@ -207,8 +208,6 @@ const NativeWebView: any =
     ? // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('react-native-webview').WebView
     : null;
-
-const EMBED_BASE_URL = 'https://openspacelive.com';
 
 function buildEmbedHtml(embedUrl: string) {
   let finalUrl = embedUrl;
@@ -1365,6 +1364,7 @@ export default function PostDetailModal({
                       mediaPlaybackRequiresUserAction={false}
                       javaScriptEnabled
                       domStorageEnabled
+                      onShouldStartLoadWithRequest={shouldStartLoadWithEmbedRequest}
                       style={{ flex: 1, backgroundColor: '#000' }}
                     />
                   </View>
@@ -1468,6 +1468,7 @@ export default function PostDetailModal({
             mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled
             domStorageEnabled
+            onShouldStartLoadWithRequest={shouldStartLoadWithEmbedRequest}
             style={{ flex: 1, backgroundColor: '#000' }}
           />
         </View>
