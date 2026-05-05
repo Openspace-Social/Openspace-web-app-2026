@@ -723,15 +723,37 @@ export default function PostDetailModal({
   // more reliable inside an iOS Modal — PanResponder's `onMoveShould*`
   // callbacks sometimes never fire when the Modal's outer hierarchy
   // hasn't claimed the touch. With `onStartShouldSetResponder` returning
-  // true, the View grabs every touch that lands on it directly, and we
-  // measure pageY at start vs release to determine direction.
+  // true on iOS, the View grabs every touch that lands on it directly,
+  // and we measure pageY at start vs release to determine direction.
+  //
+  // On Android claiming on start (combined with the termination request
+  // returning false) swallows taps on overlay children — the close X,
+  // prev/next media nav buttons, video controls — because the parent
+  // wins the responder before the child Touchable can claim it and then
+  // refuses to give it back. Android's PanResponder lifecycle inside a
+  // Modal works correctly though, so we wait until there's actual
+  // movement before claiming.
   const swipeStartYRef = React.useRef<number | null>(null);
+  const SWIPE_RECOGNITION_THRESHOLD_PX = 8;
   const dragHandleResponderProps = React.useMemo(
     () => ({
-      onStartShouldSetResponder: () => true,
-      onMoveShouldSetResponder: () => true,
-      onResponderGrant: (e: any) => {
+      onStartShouldSetResponder: (e: any) => {
+        // Record start pageY regardless of whether we claim, so the
+        // move-threshold check below can measure distance from here.
         swipeStartYRef.current = e?.nativeEvent?.pageY ?? null;
+        return Platform.OS === 'ios';
+      },
+      onMoveShouldSetResponder: (e: any) => {
+        if (Platform.OS === 'ios') return true;
+        const startY = swipeStartYRef.current;
+        const y = e?.nativeEvent?.pageY;
+        if (startY == null || y == null) return false;
+        return Math.abs(y - startY) > SWIPE_RECOGNITION_THRESHOLD_PX;
+      },
+      onResponderGrant: (e: any) => {
+        if (swipeStartYRef.current == null) {
+          swipeStartYRef.current = e?.nativeEvent?.pageY ?? null;
+        }
       },
       onResponderRelease: (e: any) => {
         const startY = swipeStartYRef.current;

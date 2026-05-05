@@ -23,6 +23,7 @@ import {
   Modal,
   NativeSyntheticEvent,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -136,6 +137,7 @@ export default function PublicProfileScreenContainer() {
   const [editOpen, setEditOpen] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const isOwnProfile = !!currentUsername && !!username && currentUsername === username;
 
   // ── Profile-action state (Follow / Connect / Subscribe / Block) ──────
@@ -360,6 +362,32 @@ export default function PublicProfileScreenContainer() {
       showToast(t('home.profileDisconnected', { defaultValue: 'Disconnected.' }), { type: 'success' });
     } catch (e: any) {
       showToast(e?.message || t('home.profileDisconnectFailed', { defaultValue: 'Could not disconnect.' }), { type: 'error' });
+    } finally {
+      setConnectionLoading(false);
+    }
+  }, [token, username, connectionLoading, refreshUser, showToast, t]);
+
+  // Withdraw a pending outgoing connection request. Backed by the same
+  // /connections/disconnect/ endpoint as a full disconnect — the API
+  // dissolves whatever connection state currently exists between the two
+  // users — but kept as its own handler so we can show cancel-specific
+  // copy and keep the loading state separate from a destructive
+  // disconnect on a confirmed connection.
+  const handleCancelConnectionRequest = useCallback(async () => {
+    if (!token || !username || connectionLoading) return;
+    setConnectionLoading(true);
+    try {
+      await api.disconnectFromUser(token, username);
+      await refreshUser();
+      showToast(
+        t('home.profileConnectionRequestCancelled', { defaultValue: 'Connection request cancelled.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      showToast(
+        e?.message || t('home.profileConnectionRequestCancelFailed', { defaultValue: 'Could not cancel request.' }),
+        { type: 'error' },
+      );
     } finally {
       setConnectionLoading(false);
     }
@@ -711,6 +739,35 @@ export default function PublicProfileScreenContainer() {
           onSave={saveProfileFields}
         />
       ) : null}
+      <Modal
+        visible={avatarPreviewOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setAvatarPreviewOpen(false)}
+      >
+        <Pressable
+          style={styles.avatarPreviewBackdrop}
+          onPress={() => setAvatarPreviewOpen(false)}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.closeNoticeAction', { defaultValue: 'Close' })}
+        >
+          {user?.profile?.avatar ? (
+            <Image source={{ uri: user.profile.avatar }} style={styles.avatarPreviewImage} resizeMode="contain" />
+          ) : (
+            <View style={[styles.avatarPreviewFallback, { backgroundColor: c.primary }]}>
+              <Text style={styles.avatarPreviewFallbackLetter}>{(user?.username?.[0] || 'O').toUpperCase()}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.avatarPreviewClose}
+            onPress={() => setAvatarPreviewOpen(false)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('home.closeNoticeAction', { defaultValue: 'Close' })}
+          >
+            <MaterialCommunityIcons name="close" size={22} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
       <ThemedScrollView
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.scrollContent}
@@ -744,13 +801,19 @@ export default function PublicProfileScreenContainer() {
         {/* Identity row */}
         <View style={styles.headerRow}>
           <View>
-            <View style={[styles.avatar, { backgroundColor: c.primary, borderColor: c.surface }]}>
+            <Pressable
+              style={[styles.avatar, { backgroundColor: c.primary, borderColor: c.surface }]}
+              onPress={() => setAvatarPreviewOpen(true)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.profileAvatarViewAction', { defaultValue: 'View avatar' })}
+            >
               {user?.profile?.avatar ? (
                 <Image source={{ uri: user.profile.avatar }} style={styles.avatarImage} resizeMode="cover" />
               ) : (
                 <Text style={styles.avatarLetter}>{(user?.username?.[0] || 'O').toUpperCase()}</Text>
               )}
-            </View>
+            </Pressable>
             {isOwnProfile ? (
               <TouchableOpacity
                 style={[styles.avatarEditBtn, { backgroundColor: c.primary, borderColor: c.surface }]}
@@ -848,11 +911,36 @@ export default function PublicProfileScreenContainer() {
                 if (connectionLoading) return;
                 if (user.is_pending_connection_confirmation) {
                   void openConnectPicker('confirm');
-                } else if (user.is_connected) {
-                  void openConnectPicker('update');
-                } else {
-                  void openConnectPicker('connect');
+                  return;
                 }
+                if (user.is_fully_connected) {
+                  void openConnectPicker('update');
+                  return;
+                }
+                if (user.is_connected) {
+                  // Outgoing pending request — let the user either tweak
+                  // the circles they want to connect through or withdraw
+                  // the request entirely. Tapping "Pending" with no
+                  // affordance to cancel was the long-standing complaint.
+                  Alert.alert(
+                    t('home.profilePendingActionsTitle', { defaultValue: 'Connection request pending' }),
+                    t('home.profilePendingActionsBody', { defaultValue: 'Edit the circles you’re inviting them into, or cancel the request.' }),
+                    [
+                      {
+                        text: t('home.profileEditCirclesAction', { defaultValue: 'Edit circles' }),
+                        onPress: () => { void openConnectPicker('update'); },
+                      },
+                      {
+                        text: t('home.profileCancelConnectionRequestAction', { defaultValue: 'Cancel request' }),
+                        style: 'destructive',
+                        onPress: () => { void handleCancelConnectionRequest(); },
+                      },
+                      { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+                    ],
+                  );
+                  return;
+                }
+                void openConnectPicker('connect');
               }}
             >
               {connectionLoading ? (
@@ -1181,33 +1269,76 @@ export default function PublicProfileScreenContainer() {
               </TouchableOpacity>
 
               {user?.is_connected ? (
-                <TouchableOpacity
-                  style={[styles.actionPageRow, { borderTopColor: c.border, borderTopWidth: 1 }]}
-                  activeOpacity={0.7}
-                  disabled={connectionLoading}
-                  onPress={() => {
-                    setActionMenuOpen(false);
-                    Alert.alert(
-                      t('home.profileDisconnectConfirmTitle', { defaultValue: 'Disconnect?' }),
-                      t('home.profileDisconnectConfirmBody', { defaultValue: 'You can reconnect later if you change your mind.' }),
-                      [
-                        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
-                        { text: t('home.profileDisconnectAction', { defaultValue: 'Disconnect' }), style: 'destructive', onPress: () => { void handleDisconnect(); } },
-                      ],
-                    );
-                  }}
-                >
-                  <MaterialCommunityIcons name="account-minus-outline" size={20} color={c.textSecondary} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.actionPageRowTitle, { color: c.textPrimary }]}>
-                      {t('home.profileDisconnectAction', { defaultValue: 'Disconnect' })}
-                    </Text>
-                    <Text style={[styles.actionPageRowSub, { color: c.textMuted }]}>
-                      {t('home.profileDisconnectHint', { defaultValue: 'Remove them from your circles.' })}
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
-                </TouchableOpacity>
+                (() => {
+                  // Three sub-cases all surface as `is_connected === true`
+                  // and share the disconnect endpoint, but they need
+                  // distinct copy and confirm flows so the user knows
+                  // what they're undoing.
+                  const isOutgoingPending = !user.is_fully_connected && !user.is_pending_connection_confirmation;
+                  const isIncomingPending = user.is_pending_connection_confirmation === true;
+                  return (
+                    <TouchableOpacity
+                      style={[styles.actionPageRow, { borderTopColor: c.border, borderTopWidth: 1 }]}
+                      activeOpacity={0.7}
+                      disabled={connectionLoading}
+                      onPress={() => {
+                        setActionMenuOpen(false);
+                        if (isOutgoingPending) {
+                          Alert.alert(
+                            t('home.profileCancelConnectionRequestConfirmTitle', { defaultValue: 'Cancel request?' }),
+                            t('home.profileCancelConnectionRequestConfirmBody', { defaultValue: 'They won’t be notified, and you can send a new request later.' }),
+                            [
+                              { text: t('common.keep', { defaultValue: 'Keep' }), style: 'cancel' },
+                              { text: t('home.profileCancelConnectionRequestAction', { defaultValue: 'Cancel request' }), style: 'destructive', onPress: () => { void handleCancelConnectionRequest(); } },
+                            ],
+                          );
+                          return;
+                        }
+                        Alert.alert(
+                          isIncomingPending
+                            ? t('home.profileDeclineConnectionConfirmTitle', { defaultValue: 'Decline request?' })
+                            : t('home.profileDisconnectConfirmTitle', { defaultValue: 'Disconnect?' }),
+                          isIncomingPending
+                            ? t('home.profileDeclineConnectionConfirmBody', { defaultValue: 'They won’t be notified, and they can send a new request later.' })
+                            : t('home.profileDisconnectConfirmBody', { defaultValue: 'You can reconnect later if you change your mind.' }),
+                          [
+                            { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+                            {
+                              text: isIncomingPending
+                                ? t('home.profileDeclineConnectionAction', { defaultValue: 'Decline' })
+                                : t('home.profileDisconnectAction', { defaultValue: 'Disconnect' }),
+                              style: 'destructive',
+                              onPress: () => { void handleDisconnect(); },
+                            },
+                          ],
+                        );
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name={isOutgoingPending ? 'account-cancel-outline' : 'account-minus-outline'}
+                        size={20}
+                        color={c.textSecondary}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.actionPageRowTitle, { color: c.textPrimary }]}>
+                          {isOutgoingPending
+                            ? t('home.profileCancelConnectionRequestAction', { defaultValue: 'Cancel request' })
+                            : isIncomingPending
+                              ? t('home.profileDeclineConnectionAction', { defaultValue: 'Decline request' })
+                              : t('home.profileDisconnectAction', { defaultValue: 'Disconnect' })}
+                        </Text>
+                        <Text style={[styles.actionPageRowSub, { color: c.textMuted }]}>
+                          {isOutgoingPending
+                            ? t('home.profileCancelConnectionRequestHint', { defaultValue: 'Withdraw the connection request you sent.' })
+                            : isIncomingPending
+                              ? t('home.profileDeclineConnectionHint', { defaultValue: 'You can confirm later if you change your mind.' })
+                              : t('home.profileDisconnectHint', { defaultValue: 'Remove them from your circles.' })}
+                        </Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
+                    </TouchableOpacity>
+                  );
+                })()
               ) : null}
             </View>
 
@@ -1459,6 +1590,42 @@ const styles = StyleSheet.create({
     overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
   },
   avatarImage: { width: '100%', height: '100%' },
+  avatarPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  avatarPreviewImage: {
+    width: '100%',
+    height: '100%',
+    maxWidth: 600,
+    maxHeight: 600,
+  },
+  avatarPreviewFallback: {
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPreviewFallbackLetter: {
+    color: '#fff',
+    fontSize: 96,
+    fontWeight: '800',
+  },
+  avatarPreviewClose: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 56 : 24,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
   avatarLetter: { color: '#fff', fontSize: 30, fontWeight: '800' },
   avatarEditBtn: {
     position: 'absolute',
