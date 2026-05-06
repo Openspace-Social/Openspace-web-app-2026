@@ -14,8 +14,13 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { GestureHandlerRootView, PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler';
 
 type DetailViewMode = 'split' | 'commentsFull' | 'mediaFull';
+type ComposerState =
+  | { kind: 'comment' }
+  | { kind: 'reply'; commentId: number; username?: string | null }
+  | null;
 
 // Drag thresholds for the media↔comments swipe gestures. dy is in pixels.
 // Tighter than RN's defaults so the snap feels responsive without an
@@ -28,6 +33,9 @@ import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 import { EMBED_BASE_URL, shouldStartLoadWithEmbedRequest } from '../utils/webviewEmbedNavigation';
+import CommentLinkPreview from './CommentLinkPreview';
+import CommentTranslationToggle from './CommentTranslationToggle';
+import { useCommentTranslations } from '../hooks/useCommentTranslations';
 import MentionHashtagInput from './MentionHashtagInput';
 import { GifPickerOverlay } from './GifPickerProvider';
 import { MentionPopupOverlay } from './MentionPopupProvider';
@@ -459,6 +467,11 @@ type Props = {
   hasActivePostMedia: boolean;
   currentUsername?: string;
   currentUserAvatar?: string;
+  /** ISO code (e.g. "en") of the user's translation language. When set,
+   *  comments/replies whose language doesn't match get a "See translation"
+   *  affordance rendered below the text. Mirrors the gating PostCard uses
+   *  for post-body translation. */
+  translationLanguageCode?: string;
   localComments: Record<number, PostComment[]>;
   commentsHasMoreByPost: Record<number, boolean>;
   commentsLoadingMoreByPost: Record<number, boolean>;
@@ -551,6 +564,7 @@ export default function PostDetailModal({
   hasActivePostMedia,
   currentUsername,
   currentUserAvatar,
+  translationLanguageCode,
   localComments,
   commentsHasMoreByPost,
   commentsLoadingMoreByPost,
@@ -618,6 +632,7 @@ export default function PostDetailModal({
   const insets = useSafeAreaInsets();
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postReactionPickerOpen, setPostReactionPickerOpen] = React.useState(false);
+  const [imageViewerIndex, setImageViewerIndex] = React.useState<number | null>(null);
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
   // Narrow-viewport detection: below this, stack media above comments
   // (instead of side-by-side) so comments aren't squeezed to 42% of width.
@@ -655,6 +670,31 @@ export default function PostDetailModal({
   const [localReplyDrafts, setLocalReplyDrafts] = React.useState<Record<number, string>>({});
   const [localCommentEditDrafts, setLocalCommentEditDrafts] = React.useState<Record<number, string>>({});
   const [localReplyEditDrafts, setLocalReplyEditDrafts] = React.useState<Record<number, string>>({});
+  const [composerState, setComposerState] = React.useState<ComposerState>(null);
+  const imageViewerBaseScale = React.useRef(new Animated.Value(1)).current;
+  const imageViewerPinchScale = React.useRef(new Animated.Value(1)).current;
+  const imageViewerBaseTranslateX = React.useRef(new Animated.Value(0)).current;
+  const imageViewerBaseTranslateY = React.useRef(new Animated.Value(0)).current;
+  const imageViewerPanTranslateX = React.useRef(new Animated.Value(0)).current;
+  const imageViewerPanTranslateY = React.useRef(new Animated.Value(0)).current;
+  const imageViewerScale = React.useMemo(
+    () => Animated.multiply(imageViewerBaseScale, imageViewerPinchScale),
+    [imageViewerBaseScale, imageViewerPinchScale],
+  );
+  const imageViewerTranslateX = React.useMemo(
+    () => Animated.add(imageViewerBaseTranslateX, imageViewerPanTranslateX),
+    [imageViewerBaseTranslateX, imageViewerPanTranslateX],
+  );
+  const imageViewerTranslateY = React.useMemo(
+    () => Animated.add(imageViewerBaseTranslateY, imageViewerPanTranslateY),
+    [imageViewerBaseTranslateY, imageViewerPanTranslateY],
+  );
+  const imageViewerLastScaleRef = React.useRef(1);
+  const imageViewerLastTranslateRef = React.useRef({ x: 0, y: 0 });
+
+  // Per-comment translation state. Same hook handles replies — both share
+  // the PostComment id namespace on the API side.
+  const commentTranslations = useCommentTranslations(token ?? null, activePost?.uuid);
   // Mobile: three-way split between media and comments.
   //   'split'         — equal halves (default for posts with media)
   //   'commentsFull'  — media collapsed, comments fill the screen
@@ -802,6 +842,7 @@ export default function PostDetailModal({
   if (activePost && activePost.id !== prevPostIdRef.current) {
     prevPostIdRef.current = activePost.id;
     if (localCommentDraft !== '') setLocalCommentDraft('');
+    if (composerState !== null) setComposerState(null);
     const targetMode: DetailViewMode = initialFocusCommentId
       ? 'commentsFull'
       : initialView === 'comments'
@@ -813,6 +854,14 @@ export default function PostDetailModal({
             : 'split';
     if (viewMode !== targetMode) setViewMode(targetMode);
   }
+
+  const autoOpenedComposerForPostRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!activePost?.id || !autoFocusComposer) return;
+    if (autoOpenedComposerForPostRef.current === activePost.id) return;
+    autoOpenedComposerForPostRef.current = activePost.id;
+    setComposerState({ kind: 'comment' });
+  }, [activePost?.id, autoFocusComposer]);
   const commentReactionHostRefs = React.useRef<Record<number, any>>({});
   const postReactionHostRef = React.useRef<any>(null);
   const detailVideoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -964,6 +1013,10 @@ export default function PostDetailModal({
     }
     return items;
   }, [activePost]);
+  const imageGalleryItems = React.useMemo(
+    () => mediaGalleryItems.filter((item) => !item.isVideo),
+    [mediaGalleryItems],
+  );
   const longPostBlocks = React.useMemo(() => {
     if (!activePost) return [];
     const parsedBlocks = parseLongPostBlocks(activePost.long_text_blocks);
@@ -1127,6 +1180,534 @@ export default function PostDetailModal({
           </Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  function openCommentComposer() {
+    if (!activePost || activePost.is_closed) return;
+    setComposerState({ kind: 'comment' });
+  }
+
+  function openReplyComposer(commentId: number, username?: string | null) {
+    setComposerState({ kind: 'reply', commentId, username });
+  }
+
+  async function submitComposerDraft() {
+    if (!activePost || !composerState) return;
+    if (composerState.kind === 'comment') {
+      await onSubmitComment(activePost.id, localCommentDraft);
+      setLocalCommentDraft('');
+      setComposerState(null);
+      return;
+    }
+    const replyText = localReplyDrafts[composerState.commentId] || '';
+    await onSubmitReply(activePost.id, composerState.commentId, replyText);
+    setLocalReplyDrafts((prev) => ({ ...prev, [composerState.commentId]: '' }));
+    setComposerState(null);
+  }
+
+  function renderComposerLauncher(label: string, onPress: () => void, compact = false) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onPress}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: compact ? 12 : 14,
+          paddingVertical: compact ? 11 : 12,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: c.border,
+          backgroundColor: c.inputBackground,
+        }}
+      >
+        <MaterialCommunityIcons name="message-text-outline" size={18} color={c.textMuted} />
+        <Text style={{ flex: 1, color: c.textMuted, fontSize: 14 }}>
+          {label}
+        </Text>
+        <MaterialCommunityIcons name="pencil" size={16} color={c.textSecondary} />
+      </TouchableOpacity>
+    );
+  }
+
+  function findCommentById(commentId: number): PostComment | null {
+    const topLevel = activePost ? (localComments[activePost.id] || []).find((comment) => comment.id === commentId) : null;
+    if (topLevel) return topLevel;
+    const directReplies = commentRepliesById[commentId] || [];
+    for (const reply of directReplies) {
+      if (reply.id === commentId) return reply;
+    }
+    for (const replies of Object.values(commentRepliesById)) {
+      const found = (replies || []).find((reply) => reply.id === commentId);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function renderComposerOverlay() {
+    if (!activePost || !composerState) return null;
+    const isWebComposer = Platform.OS === 'web';
+    const isReply = composerState.kind === 'reply';
+    const replyCommentId = isReply ? composerState.commentId : null;
+    const replyTarget = replyCommentId ? findCommentById(replyCommentId) : null;
+    const draftText = isReply ? (localReplyDrafts[replyCommentId!] || '') : localCommentDraft;
+    const draftMedia = isReply
+      ? draftReplyMediaByCommentId[replyCommentId!]
+      : draftCommentMediaByPostId[activePost.id];
+    const title = isReply
+      ? t('home.replyPostAction', { defaultValue: 'Reply' })
+      : t('home.commentPostAction', { defaultValue: 'Comment' });
+    const subtitle = isReply
+      ? t('home.replyingToLabel', {
+          defaultValue: 'Replying to @{{username}}',
+          username: composerState.username || t('home.unknownUser', { defaultValue: 'unknown' }),
+        })
+      : t('home.commentComposerFocusLabel', {
+          defaultValue: 'Write a comment without leaving the conversation.',
+        });
+
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 80,
+          justifyContent: isWebComposer ? 'center' : 'flex-end',
+          alignItems: isWebComposer ? 'center' : undefined,
+        }}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setComposerState(null)}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            backgroundColor: 'rgba(11,14,19,0.7)',
+          }}
+        />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View
+            style={{
+              width: isWebComposer ? 'min(720px, calc(100vw - 48px))' as any : undefined,
+              borderTopLeftRadius: isWebComposer ? 24 : 24,
+              borderTopRightRadius: isWebComposer ? 24 : 24,
+              borderBottomLeftRadius: isWebComposer ? 24 : 0,
+              borderBottomRightRadius: isWebComposer ? 24 : 0,
+              borderWidth: 1,
+              borderBottomWidth: isWebComposer ? 1 : 0,
+              borderColor: c.border,
+              backgroundColor: c.surface,
+              paddingTop: 14,
+              paddingHorizontal: 16,
+              paddingBottom: Math.max(insets.bottom, 12) + 12,
+              minHeight: isWebComposer ? undefined : Math.min(viewportHeight * 0.58, 520),
+              maxHeight: isWebComposer ? Math.min(viewportHeight * 0.78, 560) : Math.min(viewportHeight * 0.88, 760),
+              shadowColor: '#000',
+              shadowOpacity: isWebComposer ? 0.18 : 0.1,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 8 },
+            }}
+          >
+            {!isWebComposer ? (
+              <View style={{ alignItems: 'center', marginBottom: 14 }}>
+                <View style={{ width: 42, height: 5, borderRadius: 999, backgroundColor: c.border }} />
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.textPrimary, fontSize: 20, fontWeight: '800' }}>{title}</Text>
+                <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 4 }}>{subtitle}</Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setComposerState(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: c.inputBackground,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                }}
+              >
+                <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {isReply && replyTarget ? (
+              <View
+                style={{
+                  marginBottom: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  backgroundColor: c.inputBackground,
+                }}
+              >
+                <Text style={{ color: c.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.3, marginBottom: 6 }}>
+                  {t('home.replyingToPreviewLabel', { defaultValue: 'Replying to' })}
+                </Text>
+                <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 4 }}>
+                  @{replyTarget.commenter?.username || composerState.username || t('home.unknownUser')}
+                </Text>
+                {!!replyTarget.text ? (
+                  <Text
+                    numberOfLines={3}
+                    style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}
+                  >
+                    {replyTarget.text}
+                  </Text>
+                ) : null}
+                {!replyTarget.text && Array.isArray(replyTarget.media) && replyTarget.media.length > 0 ? (
+                  <Text style={{ color: c.textMuted, fontSize: 13 }}>
+                    {t('home.mediaOnlyReplyPreviewLabel', { defaultValue: 'Media attachment' })}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                onPress={() => {
+                  if (isReply && replyCommentId) onPickDraftReplyImage(replyCommentId);
+                  else onPickDraftCommentImage(activePost.id);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                  {t('home.photoAction', { defaultValue: 'Photo' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                onPress={() => {
+                  if (isReply && replyCommentId) onSetDraftReplyGif(replyCommentId);
+                  else onSetDraftCommentGif(activePost.id);
+                }}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
+              </TouchableOpacity>
+            </View>
+
+            {renderDraftMediaPreview(
+              draftMedia,
+              () => {
+                if (isReply && replyCommentId) onClearDraftReplyMedia(replyCommentId);
+                else onClearDraftCommentMedia(activePost.id);
+              },
+            )}
+
+            <MentionHashtagInput
+              style={[
+                styles.commentInput,
+                {
+                  minHeight: isWebComposer ? 120 : 160,
+                  maxHeight: isWebComposer ? 220 : undefined,
+                  textAlignVertical: 'top',
+                  borderColor: c.inputBorder,
+                  backgroundColor: c.inputBackground,
+                  color: c.textPrimary,
+                },
+              ]}
+              value={draftText}
+              onChangeText={(value) => {
+                if (isReply && replyCommentId) {
+                  setLocalReplyDrafts((prev) => ({ ...prev, [replyCommentId]: value }));
+                } else {
+                  setLocalCommentDraft(value);
+                }
+              }}
+              placeholder={
+                isReply
+                  ? t('home.replyPlaceholder')
+                  : t('home.commentPlaceholder')
+              }
+              placeholderTextColor={c.placeholder}
+              token={token}
+              c={c}
+              multiline
+              autoFocus
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 14 }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setComposerState(null)}
+                style={[
+                  styles.commentReplySendButton,
+                  {
+                    flex: 1,
+                    justifyContent: 'center',
+                    backgroundColor: c.inputBackground,
+                    borderColor: c.border,
+                    borderWidth: 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                  {t('home.cancelAction')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => { void submitComposerDraft(); }}
+                style={[styles.commentSendButton, { flex: 1, justifyContent: 'center', backgroundColor: c.primary }]}
+              >
+                <Text style={styles.commentSendText}>{title}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    );
+  }
+
+  function resetImageViewerZoom() {
+    imageViewerLastScaleRef.current = 1;
+    imageViewerLastTranslateRef.current = { x: 0, y: 0 };
+    imageViewerBaseScale.setValue(1);
+    imageViewerPinchScale.setValue(1);
+    imageViewerBaseTranslateX.setValue(0);
+    imageViewerBaseTranslateY.setValue(0);
+    imageViewerPanTranslateX.setValue(0);
+    imageViewerPanTranslateY.setValue(0);
+  }
+
+  function openImageViewerForKey(mediaKey?: string) {
+    if (!mediaKey) return;
+    const index = imageGalleryItems.findIndex((item) => item.key === mediaKey);
+    if (index < 0) return;
+    resetImageViewerZoom();
+    setImageViewerIndex(index);
+  }
+
+  function closeImageViewer() {
+    setImageViewerIndex(null);
+    resetImageViewerZoom();
+  }
+
+  function shiftImageViewer(delta: number) {
+    if (imageViewerIndex == null || imageGalleryItems.length === 0) return;
+    const next = (imageViewerIndex + delta + imageGalleryItems.length) % imageGalleryItems.length;
+    resetImageViewerZoom();
+    setImageViewerIndex(next);
+  }
+
+  const onImageViewerPinchEvent = React.useMemo(
+    () =>
+      Animated.event(
+        [{ nativeEvent: { scale: imageViewerPinchScale } }],
+        { useNativeDriver: true },
+      ),
+    [imageViewerPinchScale],
+  );
+
+  const onImageViewerPanEvent = React.useMemo(
+    () =>
+      Animated.event(
+        [{ nativeEvent: { translationX: imageViewerPanTranslateX, translationY: imageViewerPanTranslateY } }],
+        { useNativeDriver: true },
+      ),
+    [imageViewerPanTranslateX, imageViewerPanTranslateY],
+  );
+
+  function handleImageViewerPinchStateChange(event: any) {
+    const { oldState, scale } = event.nativeEvent || {};
+    if (oldState !== State.ACTIVE) return;
+    const nextScale = Math.max(1, Math.min(imageViewerLastScaleRef.current * (scale || 1), 4));
+    imageViewerLastScaleRef.current = nextScale;
+    imageViewerBaseScale.setValue(nextScale);
+    imageViewerPinchScale.setValue(1);
+    if (nextScale <= 1) {
+      imageViewerLastTranslateRef.current = { x: 0, y: 0 };
+      imageViewerBaseTranslateX.setValue(0);
+      imageViewerBaseTranslateY.setValue(0);
+      imageViewerPanTranslateX.setValue(0);
+      imageViewerPanTranslateY.setValue(0);
+    }
+  }
+
+  function handleImageViewerPanStateChange(event: any) {
+    const { oldState, translationX, translationY } = event.nativeEvent || {};
+    if (oldState !== State.ACTIVE) return;
+    if (imageViewerLastScaleRef.current <= 1) {
+      imageViewerBaseTranslateX.setValue(0);
+      imageViewerBaseTranslateY.setValue(0);
+      imageViewerPanTranslateX.setValue(0);
+      imageViewerPanTranslateY.setValue(0);
+      imageViewerLastTranslateRef.current = { x: 0, y: 0 };
+      return;
+    }
+    const nextX = imageViewerLastTranslateRef.current.x + (translationX || 0);
+    const nextY = imageViewerLastTranslateRef.current.y + (translationY || 0);
+    imageViewerLastTranslateRef.current = { x: nextX, y: nextY };
+    imageViewerBaseTranslateX.setValue(nextX);
+    imageViewerBaseTranslateY.setValue(nextY);
+    imageViewerPanTranslateX.setValue(0);
+    imageViewerPanTranslateY.setValue(0);
+  }
+
+  function renderImageViewer() {
+    if (imageViewerIndex == null) return null;
+    const imageItem = imageGalleryItems[imageViewerIndex];
+    if (!imageItem) return null;
+    return (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={closeImageViewer}
+        statusBarTranslucent={Platform.OS === 'android'}
+        navigationBarTranslucent={Platform.OS === 'android'}
+      >
+        <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={closeImageViewer}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: insets.top + 18,
+              right: 18,
+              zIndex: 3,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0,0,0,0.58)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.25)',
+            }}
+            onPress={closeImageViewer}
+            activeOpacity={0.85}
+          >
+            <MaterialCommunityIcons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          {imageGalleryItems.length > 1 ? (
+            <>
+              <TouchableOpacity
+                style={{
+                  position: 'absolute',
+                  left: 18,
+                  top: '50%',
+                  zIndex: 3,
+                  width: 42,
+                  height: 42,
+                  marginTop: -21,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(0,0,0,0.58)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.25)',
+                }}
+                onPress={() => shiftImageViewer(-1)}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  position: 'absolute',
+                  right: 18,
+                  top: '50%',
+                  zIndex: 3,
+                  width: 42,
+                  height: 42,
+                  marginTop: -21,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(0,0,0,0.58)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.25)',
+                }}
+                onPress={() => shiftImageViewer(1)}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons name="chevron-right" size={26} color="#fff" />
+              </TouchableOpacity>
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: Math.max(insets.bottom, 16) + 10,
+                  alignSelf: 'center',
+                  zIndex: 3,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.58)',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                  {imageViewerIndex + 1}/{imageGalleryItems.length}
+                </Text>
+              </View>
+            </>
+          ) : null}
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 24 }}>
+            {Platform.OS === 'web' ? (
+              <Image
+                source={{ uri: imageItem.previewUri }}
+                style={{ width: '100%', height: '100%', maxWidth: '100%' as any, maxHeight: '100%' as any }}
+                resizeMode="contain"
+              />
+            ) : (
+              <PanGestureHandler
+                onGestureEvent={onImageViewerPanEvent}
+                onHandlerStateChange={handleImageViewerPanStateChange}
+                minDist={3}
+                avgTouches
+              >
+                <Animated.View style={{ width: '100%', height: '100%' }}>
+                  <PinchGestureHandler
+                    onGestureEvent={onImageViewerPinchEvent}
+                    onHandlerStateChange={handleImageViewerPinchStateChange}
+                  >
+                    <Animated.View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                      <Animated.Image
+                        source={{ uri: imageItem.previewUri }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          transform: [
+                            { translateX: imageViewerTranslateX },
+                            { translateY: imageViewerTranslateY },
+                            { scale: imageViewerScale },
+                          ],
+                        }}
+                        resizeMode="contain"
+                      />
+                    </Animated.View>
+                  </PinchGestureHandler>
+                </Animated.View>
+              </PanGestureHandler>
+            )}
+          </View>
+        </View>
+        </GestureHandlerRootView>
+      </Modal>
     );
   }
 
@@ -1561,14 +2142,17 @@ export default function PostDetailModal({
         ]}
       >
         <View style={styles.detailCommentRow}>
-          <View style={[styles.detailCommentAvatar, { backgroundColor: c.primary }]}> 
+          <View style={[styles.detailCommentAvatar, { backgroundColor: c.primary }]}>
             {comment.commenter?.profile?.avatar ? (
               <Image source={{ uri: comment.commenter.profile.avatar }} style={styles.detailCommentAvatarImage} resizeMode="cover" />
-            ) : currentUserAvatar ? (
-              <Image source={{ uri: currentUserAvatar }} style={styles.detailCommentAvatarImage} resizeMode="cover" />
             ) : (
+              // Fall straight through to the letter placeholder when the
+              // commenter has no avatar. The previous fallback to
+              // `currentUserAvatar` was the viewer's avatar, which made
+              // every avatarless comment look like it was posted by the
+              // person reading the thread.
               <Text style={styles.detailCommentAvatarLetter}>
-                {(comment.commenter?.username?.[0] || currentUsername?.[0] || 'U').toUpperCase()}
+                {(comment.commenter?.username?.[0] || 'U').toUpperCase()}
               </Text>
             )}
           </View>
@@ -1619,7 +2203,33 @@ export default function PostDetailModal({
               </View>
             ) : (
               <>
-                {renderLinkedText(comment.text || '', `comment-${comment.id}`, [styles.detailCommentText, { color: c.textSecondary }])}
+                {(() => {
+                  const translated = commentTranslations.translatedById[comment.id];
+                  if (typeof translated === 'string') {
+                    return (
+                      <Text
+                        key={`comment-${comment.id}-translated`}
+                        style={[styles.detailCommentText, { color: c.textSecondary, fontStyle: 'italic' }] as any}
+                      >
+                        {translated}
+                      </Text>
+                    );
+                  }
+                  return renderLinkedText(comment.text || '', `comment-${comment.id}`, [styles.detailCommentText, { color: c.textSecondary }]);
+                })()}
+                <CommentTranslationToggle
+                  commentId={comment.id}
+                  commentText={comment.text}
+                  commentLanguageCode={comment.language?.code}
+                  userTranslationLanguageCode={translationLanguageCode}
+                  isTranslated={typeof commentTranslations.translatedById[comment.id] === 'string'}
+                  isLoading={!!commentTranslations.loadingById[comment.id]}
+                  hasError={!!commentTranslations.errorById[comment.id]}
+                  onTranslate={() => { void commentTranslations.translate(comment.id); }}
+                  onShowOriginal={() => commentTranslations.showOriginal(comment.id)}
+                  c={c}
+                />
+                <CommentLinkPreview text={comment.text} c={c} onOpenLink={onOpenLink} />
                 {renderCommentMedia(comment.media)}
               </>
             )}
@@ -1674,7 +2284,7 @@ export default function PostDetailModal({
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity activeOpacity={0.85} onPress={() => onToggleCommentReplies(postId, comment.id)}>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => openReplyComposer(comment.id, comment.commenter?.username)}>
             <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>{t('home.commentReplyAction')}</Text>
           </TouchableOpacity>
           {isOwnComment && !isEditingComment ? (
@@ -1796,7 +2406,33 @@ export default function PostDetailModal({
                       </View>
                     ) : (
                       <>
-                        {renderLinkedText(reply.text || '', `reply-${reply.id}`, [styles.detailCommentText, { color: c.textSecondary }])}
+                        {(() => {
+                          const translated = commentTranslations.translatedById[reply.id];
+                          if (typeof translated === 'string') {
+                            return (
+                              <Text
+                                key={`reply-${reply.id}-translated`}
+                                style={[styles.detailCommentText, { color: c.textSecondary, fontStyle: 'italic' }] as any}
+                              >
+                                {translated}
+                              </Text>
+                            );
+                          }
+                          return renderLinkedText(reply.text || '', `reply-${reply.id}`, [styles.detailCommentText, { color: c.textSecondary }]);
+                        })()}
+                        <CommentTranslationToggle
+                          commentId={reply.id}
+                          commentText={reply.text}
+                          commentLanguageCode={reply.language?.code}
+                          userTranslationLanguageCode={translationLanguageCode}
+                          isTranslated={typeof commentTranslations.translatedById[reply.id] === 'string'}
+                          isLoading={!!commentTranslations.loadingById[reply.id]}
+                          hasError={!!commentTranslations.errorById[reply.id]}
+                          onTranslate={() => { void commentTranslations.translate(reply.id); }}
+                          onShowOriginal={() => commentTranslations.showOriginal(reply.id)}
+                          c={c}
+                        />
+                        <CommentLinkPreview text={reply.text} c={c} onOpenLink={onOpenLink} />
                         {renderCommentMedia(reply.media)}
                       </>
                     )}
@@ -1846,52 +2482,19 @@ export default function PostDetailModal({
               </TouchableOpacity>
             ) : null}
             <View style={styles.commentReplyComposer}>
-              {renderDraftMediaPreview(
-                draftReplyMediaByCommentId[comment.id],
-                () => onClearDraftReplyMedia(comment.id)
-              )}
-              <MentionHashtagInput
-                style={[styles.commentReplyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                value={localReplyDrafts[comment.id] || ''}
-                onChangeText={(value) => setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: value }))}
-                placeholder={t('home.replyPlaceholder')}
-                placeholderTextColor={c.placeholder}
-                token={token}
-                c={c}
-                multiline
-              />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <TouchableOpacity
-                    style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                    onPress={() => onPickDraftReplyImage(comment.id)}
-                    activeOpacity={0.85}
-                  >
-                    <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                    <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                      {t('home.photoAction', { defaultValue: 'Photo' })}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                    onPress={() => onSetDraftReplyGif(comment.id)}
-                    activeOpacity={0.85}
-                  >
-                    <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                    <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
-                  </TouchableOpacity>
+              {draftReplyMediaByCommentId[comment.id]?.uri ? (
+                <View style={{ marginBottom: 10 }}>
+                  {renderDraftMediaPreview(
+                    draftReplyMediaByCommentId[comment.id],
+                    () => onClearDraftReplyMedia(comment.id)
+                  )}
                 </View>
-                <TouchableOpacity
-                  style={[styles.commentReplySendButton, { backgroundColor: c.primary }]}
-                  onPress={() => {
-                    void onSubmitReply(postId, comment.id, localReplyDrafts[comment.id] || '');
-                    setLocalReplyDrafts((prev) => ({ ...prev, [comment.id]: '' }));
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.commentSendText}>{t('home.replyPostAction')}</Text>
-                </TouchableOpacity>
-              </View>
+              ) : null}
+              {renderComposerLauncher(
+                t('home.replyPlaceholder'),
+                () => openReplyComposer(comment.id, comment.commenter?.username),
+                true,
+              )}
             </View>
           </View>
         ) : null}
@@ -2299,7 +2902,14 @@ export default function PostDetailModal({
                     />
                   )
                 ) : activeMediaUri ? (
-                  <Image source={{ uri: activeMediaUri }} style={styles.postDetailMedia} resizeMode="contain" />
+                  <TouchableOpacity
+                    activeOpacity={0.96}
+                    onPress={() => openImageViewerForKey(activeMedia?.key)}
+                    style={{ width: '100%', height: '100%' }}
+                    disabled={!!activeMedia?.isVideo}
+                  >
+                    <Image source={{ uri: activeMediaUri }} style={styles.postDetailMedia} resizeMode="contain" />
+                  </TouchableOpacity>
                 ) : (
                   <View style={styles.postDetailMediaFallback}>
                     <Text style={styles.postDetailMediaFallbackText}>{t('home.postMediaUnavailable')}</Text>
@@ -2551,50 +3161,15 @@ export default function PostDetailModal({
                       </View>
                     ) : (
                       <View style={[styles.commentComposer, { paddingBottom: insets.bottom + 12 }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <View style={{ flexDirection: 'row', gap: 6 }}>
-                            <TouchableOpacity
-                              style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                              onPress={() => onPickDraftCommentImage(activePost.id)}
-                              activeOpacity={0.85}
-                            >
-                              <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                              <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                                {t('home.photoAction', { defaultValue: 'Photo' })}
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                              onPress={() => onSetDraftCommentGif(activePost.id)}
-                              activeOpacity={0.85}
-                            >
-                              <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                              <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
-                            </TouchableOpacity>
+                        {draftCommentMediaByPostId[activePost.id]?.uri ? (
+                          <View style={{ marginBottom: 10 }}>
+                            {renderDraftMediaPreview(
+                              draftCommentMediaByPostId[activePost.id],
+                              () => onClearDraftCommentMedia(activePost.id)
+                            )}
                           </View>
-                          <TouchableOpacity
-                            style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                            onPress={() => { void onSubmitComment(activePost.id, localCommentDraft); setLocalCommentDraft(''); }}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                          </TouchableOpacity>
-                        </View>
-                        {renderDraftMediaPreview(
-                          draftCommentMediaByPostId[activePost.id],
-                          () => onClearDraftCommentMedia(activePost.id)
-                        )}
-                        <MentionHashtagInput
-                          style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                          value={localCommentDraft}
-                          onChangeText={setLocalCommentDraft}
-                          placeholder={t('home.commentPlaceholder')}
-                          placeholderTextColor={c.placeholder}
-                          token={token}
-                          c={c}
-                          multiline
-                          autoFocus={autoFocusComposer}
-                        />
+                        ) : null}
+                        {renderComposerLauncher(t('home.commentPlaceholder'), openCommentComposer)}
                       </View>
                     )}
                   </View>
@@ -2724,50 +3299,15 @@ export default function PostDetailModal({
                     ]}
                   >
                     <View style={styles.commentComposer}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
-                          <TouchableOpacity
-                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                            onPress={() => onPickDraftCommentImage(activePost.id)}
-                            activeOpacity={0.85}
-                          >
-                            <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
-                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
-                              {t('home.photoAction', { defaultValue: 'Photo' })}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
-                            onPress={() => onSetDraftCommentGif(activePost.id)}
-                            activeOpacity={0.85}
-                          >
-                            <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
-                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>GIF</Text>
-                          </TouchableOpacity>
+                      {draftCommentMediaByPostId[activePost.id]?.uri ? (
+                        <View style={{ marginBottom: 10 }}>
+                          {renderDraftMediaPreview(
+                            draftCommentMediaByPostId[activePost.id],
+                            () => onClearDraftCommentMedia(activePost.id)
+                          )}
                         </View>
-                        <TouchableOpacity
-                          style={[styles.commentSendButton, { backgroundColor: c.primary }]}
-                          onPress={() => { void onSubmitComment(activePost.id, localCommentDraft); setLocalCommentDraft(''); }}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.commentSendText}>{t('home.commentPostAction')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                      {renderDraftMediaPreview(
-                        draftCommentMediaByPostId[activePost.id],
-                        () => onClearDraftCommentMedia(activePost.id)
-                      )}
-                      <MentionHashtagInput
-                        style={[styles.commentInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                        value={localCommentDraft}
-                        onChangeText={setLocalCommentDraft}
-                        placeholder={t('home.commentPlaceholder')}
-                        placeholderTextColor={c.placeholder}
-                        token={token}
-                        c={c}
-                        multiline
-                        autoFocus={autoFocusComposer}
-                      />
+                      ) : null}
+                      {renderComposerLauncher(t('home.commentPlaceholder'), openCommentComposer)}
                     </View>
                   </View>
                 )
@@ -2824,6 +3364,8 @@ export default function PostDetailModal({
        *  app-root <GifPickerOverlay /> sits behind this Modal and stays
        *  invisible while it's open; both subscribe to the same provider
        *  state so closing here closes everywhere. */}
+      {renderComposerOverlay()}
+      {renderImageViewer()}
       <GifPickerOverlay />
       {/* Same reasoning as GifPickerOverlay above — mount the @mention /
        *  #hashtag suggestion overlay inside this iOS Modal so the absolute

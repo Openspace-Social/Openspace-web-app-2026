@@ -159,6 +159,7 @@ export default function PostDetailScreenContainer() {
   // Fetch current user for PostCard owner-only gating.
   const [currentUsername, setCurrentUsername] = useState<string | undefined>(undefined);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | undefined>(undefined);
+  const [translationLanguageCode, setTranslationLanguageCode] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -168,6 +169,7 @@ export default function PostDetailScreenContainer() {
         if (!active) return;
         setCurrentUsername(u?.username);
         setCurrentUserAvatar(u?.profile?.avatar);
+        setTranslationLanguageCode(u?.translation_language?.code);
       } catch {
         // non-fatal
       }
@@ -269,6 +271,7 @@ export default function PostDetailScreenContainer() {
       hasActivePostMedia={postHasMedia(post)}
       currentUsername={currentUsername}
       currentUserAvatar={currentUserAvatar}
+      translationLanguageCode={translationLanguageCode}
       localComments={comments.localComments}
       commentsHasMoreByPost={EMPTY_BOOL}
       commentsLoadingMoreByPost={EMPTY_BOOL}

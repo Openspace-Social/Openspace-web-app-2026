@@ -105,7 +105,7 @@ export type PostScreenParams = {
 };
 
 export type HomeStackParamList = {
-  Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' } | undefined;
+  Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' | 'mastodon' } | undefined;
   Post: PostScreenParams;
   Profile: { username: string };
   Community: { name: string };

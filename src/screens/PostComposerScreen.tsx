@@ -36,6 +36,8 @@ import {
   type CircleResult,
   type CreatePostPayload,
   type FeedPost,
+  type FederatedLinkedAccount,
+  type FederatedPublishResult,
   type SearchCommunityResult,
 } from '../api/client';
 import MentionHashtagInput from '../components/MentionHashtagInput';
@@ -234,6 +236,9 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   // (no circle), matching web's `composerSelectedCircleId === null` model.
   const [selectedCircleId, setSelectedCircleId] = useState<number | null>(null);
   const [audienceOpen, setAudienceOpen] = useState(false);
+  const [federatedLinkedAccounts, setFederatedLinkedAccounts] = useState<FederatedLinkedAccount[]>([]);
+  const [publishDestination, setPublishDestination] = useState<'openbook' | 'mastodon' | 'both'>('openbook');
+  const [selectedFederatedAccountId, setSelectedFederatedAccountId] = useState<number | null>(null);
 
   // Watch the body for URLs and fetch a preview after a short debounce.
   // Mirrors HomeScreen's composer logic so YouTube/Vimeo/article previews
@@ -280,10 +285,11 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     let active = true;
     (async () => {
       try {
-        const [firstJoinedRes, pinnedRes, circlesRes] = await Promise.allSettled([
+        const [firstJoinedRes, pinnedRes, circlesRes, federatedAccountsRes] = await Promise.allSettled([
           api.getJoinedCommunities(token, 20, 0),
           api.getPinnedCommunities(token),
           api.getCircles(token),
+          api.getFederatedLinkedAccounts(token),
         ]);
         if (!active) return;
         if (pinnedRes.status === 'fulfilled') {
@@ -291,6 +297,11 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         }
         if (circlesRes.status === 'fulfilled') {
           setCircles(Array.isArray(circlesRes.value) ? circlesRes.value : []);
+        }
+        if (federatedAccountsRes.status === 'fulfilled') {
+          const nextAccounts = Array.isArray(federatedAccountsRes.value) ? federatedAccountsRes.value : [];
+          setFederatedLinkedAccounts(nextAccounts);
+          setSelectedFederatedAccountId((current) => current ?? nextAccounts[0]?.id ?? null);
         }
         if (firstJoinedRes.status !== 'fulfilled') return;
         const all: SearchCommunityResult[] = Array.isArray(firstJoinedRes.value)
@@ -333,6 +344,22 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     })();
     return () => { active = false; };
   }, [token]);
+
+  useEffect(() => {
+    if (federatedLinkedAccounts.length === 0) {
+      setSelectedFederatedAccountId(null);
+      if (publishDestination !== 'openbook') {
+        setPublishDestination('openbook');
+      }
+      return;
+    }
+    if (
+      selectedFederatedAccountId == null
+      || !federatedLinkedAccounts.some((account) => account.id === selectedFederatedAccountId)
+    ) {
+      setSelectedFederatedAccountId(federatedLinkedAccounts[0]?.id ?? null);
+    }
+  }, [federatedLinkedAccounts, selectedFederatedAccountId, publishDestination]);
 
   const maxLength = mode === 'long' ? MAX_LONG_LENGTH : MAX_SHORT_LENGTH;
   const longPlain = useMemo(() => htmlToPlainText(longHtml), [longHtml]);
@@ -556,6 +583,22 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
 
   const submit = useCallback(async () => {
     if (!canPost || overLimit) return;
+    if (publishDestination !== 'mastodon' && circles.length === 0 && communities.length === 0) {
+      const msg = t('home.postComposerDestinationEmpty', {
+        defaultValue: 'You need at least one circle or joined community before publishing.',
+      });
+      setInlineError(msg);
+      onError(msg);
+      return;
+    }
+    if (publishDestination !== 'openbook' && !selectedFederatedAccountId) {
+      const msg = t('home.postComposerMastodonAccountRequired', {
+        defaultValue: 'Choose a linked Mastodon account before publishing there.',
+      });
+      setInlineError(msg);
+      onError(msg);
+      return;
+    }
     setInlineError('');
     setSubmitting(true);
     try {
@@ -580,7 +623,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         return normalizeImageForUpload(uri, { rotate: deg as 0 | 90 | 180 | 270 });
       };
 
-      let finalized;
+      let finalized: FeedPost | FederatedPublishResult | null = null;
       if (mode === 'long') {
         // Lexical produces the body HTML; the title is stored separately
         // (mirroring the web composer) and prepended as an `<h1>` heading
@@ -613,9 +656,14 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
               community_names: Array.from(selectedCommunities).slice(0, MAX_COMMUNITIES),
             });
           }
-          finalized = await api.publishPost(token, longDraftUuid);
+          finalized = publishDestination === 'openbook'
+            ? await api.publishPost(token, longDraftUuid)
+            : await api.publishPostWithFederation(token, longDraftUuid, {
+                publish_destination: publishDestination,
+                federated_linked_account_id: selectedFederatedAccountId || undefined,
+              });
         } else {
-          finalized = await api.createPost(token, {
+          const payload = {
             ...basePayload,
             type: 'LP',
             long_text: plain,
@@ -626,7 +674,12 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             long_text_version: 2,
             // Backend still likes a non-empty `text` preview.
             text: previewText,
-          });
+            publish_destination: publishDestination,
+            federated_linked_account_id: selectedFederatedAccountId || undefined,
+          };
+          finalized = publishDestination === 'openbook'
+            ? await api.createPost(token, payload)
+            : await api.createPostWithFederation(token, payload);
         }
       } else if (composerVideo) {
         // Video upload — single-call createPost with the `video` payload
@@ -638,7 +691,11 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           type: composerVideo.mimeType,
           name: composerVideo.name,
         } as any;
-        finalized = await api.createPost(token, basePayload);
+        basePayload.publish_destination = publishDestination;
+        basePayload.federated_linked_account_id = selectedFederatedAccountId || undefined;
+        finalized = publishDestination === 'openbook'
+          ? await api.createPost(token, basePayload)
+          : await api.createPostWithFederation(token, basePayload);
       } else if (imageUris.length <= 1) {
         // Fast path — single (or no) image: createPost handles it directly.
         const single = imageUris[0];
@@ -647,7 +704,11 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           basePayload.image = { uri: finalUri, type: 'image/jpeg', name: 'post-image.jpg' } as any;
         }
         basePayload.text = trimmed;
-        finalized = await api.createPost(token, basePayload);
+        basePayload.publish_destination = publishDestination;
+        basePayload.federated_linked_account_id = selectedFederatedAccountId || undefined;
+        finalized = publishDestination === 'openbook'
+          ? await api.createPost(token, basePayload)
+          : await api.createPostWithFederation(token, basePayload);
       } else {
         // Multi-image short post — create as draft, attach each image, publish.
         const draft = await api.createPost(token, { ...basePayload, text: trimmed, is_draft: true });
@@ -661,11 +722,30 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             order: i,
           });
         }
-        finalized = await api.publishPost(token, draftUuid);
+        finalized = publishDestination === 'openbook'
+          ? await api.publishPost(token, draftUuid)
+          : await api.publishPostWithFederation(token, draftUuid, {
+              publish_destination: publishDestination,
+              federated_linked_account_id: selectedFederatedAccountId || undefined,
+            });
       }
 
-      onNotice(t('home.composerPostedNotice', { defaultValue: 'Posted!' }));
-      onPosted(finalized);
+      const localPost = finalized && 'publish_destination' in (finalized as any)
+        ? (finalized as FederatedPublishResult).local_post
+        : finalized as FeedPost | null;
+
+      onNotice(
+        publishDestination === 'mastodon'
+          ? t('home.postComposerMastodonSuccess', { defaultValue: 'Posted to Mastodon.' })
+          : publishDestination === 'both'
+            ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to OpenSpace and Mastodon.' })
+            : t('home.composerPostedNotice', { defaultValue: 'Posted!' })
+      );
+      if (localPost) {
+        onPosted(localPost);
+      } else {
+        onClose();
+      }
     } catch (e: any) {
       const msg = e?.message || t('home.composerPostError', { defaultValue: 'Could not publish post.' });
       setInlineError(msg);
@@ -673,7 +753,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
     } finally {
       setSubmitting(false);
     }
-  }, [canPost, overLimit, text, mode, imageUris, composerVideo, rotations, selectedCircleId, selectedCommunities, longHtml, longPlain, longBlocks, longTitle, longDraftUuid, sharedPost, token, onPosted, onNotice, onError, t]);
+  }, [canPost, overLimit, publishDestination, selectedFederatedAccountId, circles.length, communities.length, text, mode, imageUris, composerVideo, rotations, selectedCircleId, selectedCommunities, longHtml, longPlain, longBlocks, longTitle, longDraftUuid, sharedPost, token, onPosted, onNotice, onError, onClose, t]);
 
   const toggleCommunity = useCallback((name: string) => {
     setSelectedCommunities((prev) => {
@@ -1181,6 +1261,85 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             })}
           </ScrollView>
         ) : null}
+
+        <View style={[s.publishCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+          <Text style={[s.publishCardTitle, { color: c.textPrimary }]}>
+            {t('home.postComposerPublishDestinationLabel', { defaultValue: 'Publish destination' })}
+          </Text>
+          <View style={s.publishOptions}>
+            {([
+              { key: 'openbook', icon: 'home-variant-outline', label: t('home.postComposerPublishDestinationOpenSpace', { defaultValue: 'OpenSpace' }) },
+              { key: 'mastodon', icon: 'mastodon', label: t('home.postComposerPublishDestinationMastodon', { defaultValue: 'Mastodon' }) },
+              { key: 'both', icon: 'source-branch', label: t('home.postComposerPublishDestinationBoth', { defaultValue: 'Both' }) },
+            ] as Array<{ key: 'openbook' | 'mastodon' | 'both'; icon: string; label: string }>).map((option) => {
+              const disabled = option.key !== 'openbook' && federatedLinkedAccounts.length === 0;
+              const selected = publishDestination === option.key;
+              return (
+                <TouchableOpacity
+                  key={`native-publish-${option.key}`}
+                  style={[
+                    s.publishOption,
+                    {
+                      borderColor: selected ? c.primary : c.border,
+                      backgroundColor: selected ? `${c.primary}18` : c.surface,
+                      opacity: disabled ? 0.45 : 1,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  disabled={disabled}
+                  onPress={() => setPublishDestination(option.key)}
+                >
+                  <MaterialCommunityIcons name={option.icon as any} size={18} color={selected ? c.primary : c.textMuted} />
+                  <Text style={[s.publishOptionText, { color: selected ? c.primary : c.textPrimary }]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {federatedLinkedAccounts.length === 0 ? (
+            <Text style={[s.publishHint, { color: c.textMuted }]}>
+              {t('home.postComposerNoMastodonAccounts', {
+                defaultValue: 'Link a Mastodon account in Linked Accounts to publish there.',
+              })}
+            </Text>
+          ) : null}
+          {publishDestination !== 'openbook' && federatedLinkedAccounts.length > 0 ? (
+            <View style={s.publishAccountList}>
+              {federatedLinkedAccounts.map((account) => {
+                const selected = selectedFederatedAccountId === account.id;
+                return (
+                  <TouchableOpacity
+                    key={`native-mastodon-account-${account.id}`}
+                    style={[
+                      s.publishAccountRow,
+                      {
+                        borderColor: selected ? c.primary : c.border,
+                        backgroundColor: selected ? `${c.primary}18` : c.surface,
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedFederatedAccountId(account.id)}
+                  >
+                    <MaterialCommunityIcons
+                      name={selected ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={18}
+                      color={selected ? c.primary : c.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.publishAccountName, { color: c.textPrimary }]}>
+                        {account.acct || `@${account.username || ''}@${account.instance_domain}`}
+                      </Text>
+                      <Text style={[s.publishAccountSubtext, { color: c.textMuted }]} numberOfLines={1}>
+                        {account.instance_domain}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
 
         <TouchableOpacity
           style={[s.audienceRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -2143,6 +2302,61 @@ const makeStyles = (c: any) =>
       borderRadius: 13,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+
+    publishCard: {
+      marginTop: 18,
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      gap: 10,
+    },
+    publishCardTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    publishOptions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    publishOption: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    publishOptionText: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    publishHint: {
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    publishAccountList: {
+      gap: 8,
+    },
+    publishAccountRow: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    publishAccountName: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    publishAccountSubtext: {
+      fontSize: 12,
+      marginTop: 2,
     },
 
     audienceRow: {

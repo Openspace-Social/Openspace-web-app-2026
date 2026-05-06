@@ -15,6 +15,7 @@ import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@rea
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
 import FeedScreenContainer from './screens/FeedScreenContainer';
+import MastodonFeedScreenContainer from './screens/MastodonFeedScreenContainer';
 import type { FeedType } from '../api/client';
 
 export type FeedTopTabParamList = {
@@ -22,6 +23,7 @@ export type FeedTopTabParamList = {
   TrendingFeed: undefined;
   PublicFeed: undefined;
   ExploreFeed: undefined;
+  MastodonFeed: undefined;
 };
 
 const TopTabs = createMaterialTopTabNavigator<FeedTopTabParamList>();
@@ -39,6 +41,7 @@ const FEEDS: FeedDef[] = [
   { routeName: 'TrendingFeed', feedType: 'trending', icon: 'fire', labelKey: 'home.feedTabTrending', labelDefault: 'Trending' },
   { routeName: 'PublicFeed', feedType: 'public', icon: 'earth', labelKey: 'home.feedTabPublic', labelDefault: 'Public' },
   { routeName: 'ExploreFeed', feedType: 'explore', icon: 'compass-outline', labelKey: 'home.feedTabExplore', labelDefault: 'Explore' },
+  { routeName: 'MastodonFeed', feedType: 'mastodon', icon: 'mastodon', labelKey: 'home.feedTabMastodon', labelDefault: 'Mastodon' },
 ];
 
 function FeedTopTabBar({ state, navigation }: MaterialTopTabBarProps) {
@@ -90,6 +93,7 @@ const HomeFeedScreen = makeFeedScreen('home');
 const TrendingFeedScreen = makeFeedScreen('trending');
 const PublicFeedScreen = makeFeedScreen('public');
 const ExploreFeedScreen = makeFeedScreen('explore');
+const MastodonFeedScreen = () => <MastodonFeedScreenContainer />;
 
 export default function FeedTopTabs() {
   const renderTabBar = useCallback(
@@ -120,6 +124,11 @@ export default function FeedTopTabs() {
         name="ExploreFeed"
         component={ExploreFeedScreen}
         options={{ title: 'Explore' }}
+      />
+      <TopTabs.Screen
+        name="MastodonFeed"
+        component={MastodonFeedScreen}
+        options={{ title: 'Mastodon' }}
       />
     </TopTabs.Navigator>
   );

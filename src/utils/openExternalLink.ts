@@ -25,17 +25,18 @@ export async function openExternalLink(input: string | undefined | null): Promis
     // Fall through to system browser.
   }
 
+  // Linking.canOpenURL is unreliable across platforms — on Android 11+ it
+  // can return false for https URLs that the system would actually open
+  // fine (depends on <queries> declarations + user's installed apps), and
+  // on iOS it's been observed to throw inside Modals. Skip the gate and
+  // call openURL directly — system handles the dispatch and surfaces a
+  // real error if the URL is genuinely unopenable.
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) {
-      await Linking.openURL(url);
-      return true;
-    }
+    await Linking.openURL(url);
+    return true;
   } catch {
-    // Both browsers refused.
+    return false;
   }
-
-  return false;
 }
 
 function normalizeUrl(input: string | undefined | null): string | null {

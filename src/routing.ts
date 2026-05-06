@@ -31,7 +31,7 @@ export function parsePathToRoute(pathname: string): AppRoute {
 
   if (parts.length === 1) {
     const [first] = parts;
-    if (first === 'home' || first === 'trending' || first === 'public' || first === 'explore') {
+    if (first === 'home' || first === 'trending' || first === 'public' || first === 'explore' || first === 'mastodon') {
       return { screen: 'feed', feed: first };
     }
     if (first === 'me') return { screen: 'me' };

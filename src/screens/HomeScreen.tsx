@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import {
   api,
@@ -28,6 +29,9 @@ import {
   CommunityOwner,
   FeedPost,
   FeedType,
+  FederatedLinkedAccount,
+  FederatedTimelineStatus,
+  FederatedPublishResult,
   FollowingUserResult,
   GlobalModeratedObject,
   ListResult,
@@ -54,6 +58,7 @@ import CommunityProfileScreen from './CommunityProfileScreen';
 import { usePostReactions } from '../hooks/usePostReactions';
 import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
+import MastodonFeedScreen from '../components/MastodonFeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
 import RouteSummaryCard from '../components/RouteSummaryCard';
 import HashtagFeedSection from '../components/HashtagFeedSection';
@@ -612,12 +617,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [providerLoading, setProviderLoading] = useState<SocialProvider | null>(null);
   const [activeFeed, setActiveFeed] = useState<FeedType>('home');
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [mastodonFeedItems, setMastodonFeedItems] = useState<FederatedTimelineStatus[]>([]);
+  const [mastodonFeedLinkedAccount, setMastodonFeedLinkedAccount] = useState<FederatedLinkedAccount | null>(null);
   const [feedPostsFeed, setFeedPostsFeed] = useState<FeedType | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [feedHasMore, setFeedHasMore] = useState(false);
   const [feedNextMaxId, setFeedNextMaxId] = useState<number | undefined>(undefined);
+  const [mastodonFeedNextMaxId, setMastodonFeedNextMaxId] = useState<string | undefined>(undefined);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [newPostsAvailable, setNewPostsAvailable] = useState(false);
   // Ref to the newest (highest) post ID currently rendered — used by the new-posts poller
@@ -795,6 +803,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [longPostPreviewPost, setLongPostPreviewPost] = useState<FeedPost | null>(null);
   const [composerSelectedCircleId, setComposerSelectedCircleId] = useState<number | null>(null);
   const [composerSelectedCommunityNames, setComposerSelectedCommunityNames] = useState<string[]>([]);
+  const [composerPublishDestination, setComposerPublishDestination] = useState<'openbook' | 'mastodon' | 'both'>('openbook');
+  const [composerFederatedLinkedAccountId, setComposerFederatedLinkedAccountId] = useState<number | null>(null);
   const [composerCircles, setComposerCircles] = useState<CircleResult[]>([]);
   const [composerJoinedCommunities, setComposerJoinedCommunities] = useState<SearchCommunityResult[]>([]);
   const [composerPinnedCommunities, setComposerPinnedCommunities] = useState<SearchCommunityResult[]>([]);
@@ -834,6 +844,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [menuDrawerMounted, setMenuDrawerMounted] = useState(false);
   const [autoPlayMedia, setAutoPlayMedia] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
+  const [federatedLinkedAccounts, setFederatedLinkedAccounts] = useState<FederatedLinkedAccount[]>([]);
+  const [mastodonIdentifierInput, setMastodonIdentifierInput] = useState('');
+  const [mastodonLinkLoading, setMastodonLinkLoading] = useState(false);
+  const [mastodonUnlinkId, setMastodonUnlinkId] = useState<number | null>(null);
   const [blockedUsersDrawerOpen, setBlockedUsersDrawerOpen] = useState(false);
   const [linkedAccountsDrawerMounted, setLinkedAccountsDrawerMounted] = useState(false);
   const [blockedUsersDrawerMounted, setBlockedUsersDrawerMounted] = useState(false);
@@ -1132,6 +1146,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     { key: 'trending', label: t('home.feedTabTrending'), icon: 'fire', tooltip: t('home.feedTabTrendingTooltip') },
     { key: 'public', label: t('home.feedTabPublic'), icon: 'earth', tooltip: t('home.feedTabPublicTooltip') },
     { key: 'explore', label: t('home.feedTabExplore'), icon: 'compass-outline', tooltip: t('home.feedTabExploreTooltip') },
+    { key: 'mastodon', label: t('home.feedTabMastodon', { defaultValue: 'Mastodon' }), icon: 'mastodon', tooltip: t('home.feedTabMastodonTooltip', { defaultValue: 'Posts from your linked Mastodon home timeline.' }) },
   ];
 
   useEffect(() => {
@@ -1156,11 +1171,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     Promise.all([
       api.getAuthenticatedUser(token),
       api.getLinkedSocialIdentities(token),
+      api.getFederatedLinkedAccounts(token),
     ])
-      .then(([authenticatedUser, identities]) => {
+      .then(([authenticatedUser, identities, federatedAccounts]) => {
         if (!active) return;
         setUser(authenticatedUser);
         setLinkedIdentities(identities);
+        setFederatedLinkedAccounts(Array.isArray(federatedAccounts) ? federatedAccounts : []);
       })
       .catch((errorValue) => {
         if (!active) return;
@@ -1182,6 +1199,27 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       active = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (federatedLinkedAccounts.length === 0) {
+      setComposerFederatedLinkedAccountId(null);
+      if (composerPublishDestination !== 'openbook') {
+        setComposerPublishDestination('openbook');
+      }
+      return;
+    }
+    if (
+      composerFederatedLinkedAccountId == null
+      || !federatedLinkedAccounts.some((account) => account.id === composerFederatedLinkedAccountId)
+    ) {
+      setComposerFederatedLinkedAccountId(federatedLinkedAccounts[0]?.id ?? null);
+    }
+  }, [federatedLinkedAccounts, composerFederatedLinkedAccountId, composerPublishDestination]);
+
+  useEffect(() => {
+    if (route.screen !== 'feed' || activeFeed !== 'mastodon' || feedLoading) return;
+    void loadFeed('mastodon', true);
+  }, [route.screen, activeFeed, federatedLinkedAccounts, feedLoading]);
 
   // ── Notification unread-count polling ────────────────────────────────────────
   useEffect(() => {
@@ -1247,6 +1285,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const poll = async () => {
       // Only show the banner when the user is looking at the feed
       if (!isOnFeedRef.current) return;
+      if (activeFeedRef.current === 'mastodon') return;
       const newestId = feedNewestIdRef.current;
       if (typeof newestId !== 'number') return;
       try {
@@ -2048,16 +2087,42 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // Match the server's own page size — the existing site uses count=10
   const FEED_PAGE_SIZE = 10;
 
+  function getPrimaryMastodonAccount() {
+    return federatedLinkedAccounts.find((account) => account.provider_type === 'mastodon') || null;
+  }
+
   // silent=true skips the full-screen spinner (used by pull-to-refresh)
   async function loadFeed(feed: FeedType, silent = false) {
     if (!silent) setFeedLoading(true);
     setFeedError('');
     setFeedNextMaxId(undefined);
+    setMastodonFeedNextMaxId(undefined);
     setFeedHasMore(false);
     setNewPostsAvailable(false);
     try {
+      if (feed === 'mastodon') {
+        const linkedAccount = getPrimaryMastodonAccount();
+        setMastodonFeedLinkedAccount(linkedAccount);
+        if (!linkedAccount) {
+          setFeedPosts([]);
+          setMastodonFeedItems([]);
+          setFeedPostsFeed(feed);
+          return;
+        }
+        const payload = await api.getFederatedHomeFeed(token, linkedAccount.id, FEED_PAGE_SIZE);
+        const nextItems = Array.isArray(payload.items) ? payload.items : [];
+        setFeedPosts([]);
+        setMastodonFeedItems(nextItems);
+        setMastodonFeedLinkedAccount(payload.linked_account || linkedAccount);
+        setFeedPostsFeed(feed);
+        const nextCursor = payload.paging?.max_id || undefined;
+        setFeedHasMore(Boolean(nextCursor) && nextItems.length > 0);
+        setMastodonFeedNextMaxId(nextCursor || undefined);
+        return;
+      }
       const nextPosts = await api.getFeed(token, feed, FEED_PAGE_SIZE);
       setFeedPosts(nextPosts);
+      setMastodonFeedItems([]);
       setFeedPostsFeed(feed);
       if (nextPosts.length > 0) {
         // Optimistically assume more pages exist whenever any posts come back.
@@ -2069,6 +2134,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     } catch (e: any) {
       if (handleUnauthorized(e)) return;
       setFeedPosts([]);
+      setMastodonFeedItems([]);
       setFeedPostsFeed(feed);
       setFeedError(e.message || t('home.feedLoadError'));
     } finally {
@@ -2086,9 +2152,33 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function loadMoreFeed() {
-    if (feedLoadingMore || !feedHasMore || feedNextMaxId === undefined) return;
+    if (feedLoadingMore || !feedHasMore) return;
     setFeedLoadingMore(true);
     try {
+      if (activeFeed === 'mastodon') {
+        const linkedAccount = mastodonFeedLinkedAccount || getPrimaryMastodonAccount();
+        if (!linkedAccount || !mastodonFeedNextMaxId) {
+          setFeedHasMore(false);
+          setMastodonFeedNextMaxId(undefined);
+          return;
+        }
+        const payload = await api.getFederatedHomeFeed(token, linkedAccount.id, FEED_PAGE_SIZE, mastodonFeedNextMaxId);
+        const moreItems = Array.isArray(payload.items) ? payload.items : [];
+        if (moreItems.length > 0) {
+          setMastodonFeedItems((prev) => {
+            const existingIds = new Set(prev.map((item) => item.id));
+            return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
+          });
+          const nextCursor = payload.paging?.max_id || undefined;
+          setMastodonFeedNextMaxId(nextCursor || undefined);
+          setFeedHasMore(Boolean(nextCursor));
+        } else {
+          setFeedHasMore(false);
+          setMastodonFeedNextMaxId(undefined);
+        }
+        return;
+      }
+      if (feedNextMaxId === undefined) return;
       const morePosts = await api.getFeed(token, activeFeed, FEED_PAGE_SIZE, feedNextMaxId);
       if (morePosts.length > 0) {
         setFeedPosts((prev) => {
@@ -3865,6 +3955,108 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
   }
 
+  async function reloadFederatedLinkedAccounts() {
+    try {
+      const accounts = await api.getFederatedLinkedAccounts(token);
+      setFederatedLinkedAccounts(Array.isArray(accounts) ? accounts : []);
+    } catch (errorValue) {
+      if (handleUnauthorized(errorValue)) return;
+      throw errorValue;
+    }
+  }
+
+  function getMastodonRedirectUri() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      return process.env.EXPO_PUBLIC_SOCIAL_AUTH_REDIRECT_URI || window.location.origin;
+    }
+    return 'openspacesocial://mastodon-callback';
+  }
+
+  function parseMastodonCallback(url: string, expectedRedirectUri: string) {
+    if (!url || !url.startsWith(expectedRedirectUri)) {
+      throw new Error(
+        t('home.linkFailed', {
+          defaultValue: 'Could not complete account linking. Please try again.',
+        })
+      );
+    }
+    const query = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+    const params = new URLSearchParams(query);
+    const errorFromProvider = params.get('error');
+    const errorDescription = params.get('error_description');
+    if (errorFromProvider) {
+      throw new Error(errorDescription || errorFromProvider);
+    }
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code || !state) {
+      throw new Error(
+        t('home.linkFailed', {
+          defaultValue: 'Could not complete account linking. Please try again.',
+        })
+      );
+    }
+    return { code, state };
+  }
+
+  function openMastodonPopup(authUrl: string, redirectUri: string): Promise<{ code: string; state: string }> {
+    return new Promise((resolve, reject) => {
+      if (Platform.OS !== 'web' || typeof window === 'undefined') {
+        reject(new Error(t('home.linkWebOnly')));
+        return;
+      }
+
+      const width = 520;
+      const height = 760;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      const popup = window.open(
+        authUrl,
+        'mastodon-link-auth',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!popup) {
+        reject(new Error(t('home.linkPopupBlocked')));
+        return;
+      }
+
+      const maxWaitMs = 180000;
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(interval);
+          reject(new Error(t('home.linkCancelled')));
+          return;
+        }
+        if (Date.now() - startedAt > maxWaitMs) {
+          popup.close();
+          window.clearInterval(interval);
+          reject(new Error(t('home.linkTimeout')));
+          return;
+        }
+        let href = '';
+        try {
+          href = popup.location.href;
+        } catch {
+          return;
+        }
+        if (!href || !href.startsWith(redirectUri)) return;
+
+        try {
+          const result = parseMastodonCallback(href, redirectUri);
+          popup.close();
+          window.clearInterval(interval);
+          resolve(result);
+        } catch (errorValue: any) {
+          popup.close();
+          window.clearInterval(interval);
+          reject(errorValue);
+        }
+      }, 500);
+    });
+  }
+
   function openSocialPopup(provider: SocialProvider): Promise<string> {
     return new Promise((resolve, reject) => {
       if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -4046,6 +4238,81 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setError(e.message || t('home.unlinkFailed'));
     } finally {
       setProviderLoading(null);
+    }
+  }
+
+  async function handleLinkMastodon() {
+    const rawValue = mastodonIdentifierInput.trim();
+    if (!rawValue) {
+      setError(
+        t('home.mastodonIdentifierRequired', {
+          defaultValue: 'Enter a Mastodon instance URL or @name@instance to continue.',
+        })
+      );
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setMastodonLinkLoading(true);
+    try {
+      const redirectUri = getMastodonRedirectUri();
+      const payload = rawValue.startsWith('@')
+        ? { acct: rawValue, redirect_uri: redirectUri, scopes: 'read write' }
+        : { instance_domain: rawValue, redirect_uri: redirectUri, scopes: 'read write' };
+      const started = await api.startFederatedLink(token, payload);
+
+      let callbackData: { code: string; state: string };
+      if (Platform.OS === 'web') {
+        callbackData = await openMastodonPopup(started.authorization_url, redirectUri);
+      } else {
+        const result = await WebBrowser.openAuthSessionAsync(started.authorization_url, redirectUri);
+        if (result.type !== 'success' || !result.url) {
+          if (result.type === 'cancel' || result.type === 'dismiss') {
+            throw new Error(t('auth.socialCancelled'));
+          }
+          throw new Error(
+            t('home.linkFailed', {
+              defaultValue: 'Could not complete account linking. Please try again.',
+            })
+          );
+        }
+        callbackData = parseMastodonCallback(result.url, redirectUri);
+      }
+
+      const linkedAccount = await api.completeFederatedLink(token, callbackData);
+      await reloadFederatedLinkedAccounts();
+      setMastodonIdentifierInput('');
+      setComposerFederatedLinkedAccountId((current) => current ?? linkedAccount.id);
+      setNotice(
+        t('home.mastodonLinkSuccess', {
+          defaultValue: 'Mastodon account linked successfully.',
+        })
+      );
+    } catch (e: any) {
+      setError(e?.message || t('home.linkFailed'));
+    } finally {
+      setMastodonLinkLoading(false);
+    }
+  }
+
+  async function handleUnlinkMastodon(linkedAccountId: number) {
+    setError('');
+    setNotice('');
+    setMastodonUnlinkId(linkedAccountId);
+    try {
+      await api.unlinkFederatedLinkedAccount(token, linkedAccountId);
+      await reloadFederatedLinkedAccounts();
+      setComposerFederatedLinkedAccountId((current) => (current === linkedAccountId ? null : current));
+      setNotice(
+        t('home.mastodonUnlinkSuccess', {
+          defaultValue: 'Mastodon account unlinked.',
+        })
+      );
+    } catch (e: any) {
+      setError(e?.message || t('home.unlinkFailed'));
+    } finally {
+      setMastodonUnlinkId(null);
     }
   }
 
@@ -4561,6 +4828,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setComposerDrafts([]);
     setComposerSelectedCircleId(null);
     setComposerSelectedCommunityNames([]);
+    setComposerPublishDestination('openbook');
+    setComposerFederatedLinkedAccountId(null);
     setComposerCommunitySearch('');
     setLongPostDrawerOpen(false);
     setLongPostDrawerExpanded(false);
@@ -5277,13 +5546,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setComposerSelectedCommunityNames([]);
       }
 
-      if (safeCircles.length === 0 && !hasCommunities) {
-        throw new Error(
-          t('home.postComposerDestinationEmpty', {
-            defaultValue: 'You need at least one circle or joined community before publishing.',
-          })
-        );
-      }
     } finally {
       setComposerDestinationsLoading(false);
     }
@@ -5335,6 +5597,30 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
     const targetCircleId = saveAsDraft ? null : composerSelectedCircleId;
     const targetCommunityNames = saveAsDraft ? [] : composerSelectedCommunityNames.slice(0, 3);
+    const selectedPublishDestination = saveAsDraft ? 'openbook' : composerPublishDestination;
+    const selectedFederatedAccountId = !saveAsDraft && selectedPublishDestination !== 'openbook'
+      ? composerFederatedLinkedAccountId
+      : null;
+    const destinationNeedsLocalPublish = selectedPublishDestination !== 'mastodon';
+    const hasOpenSpaceDestinationOptions = composerCircles.length > 0 || composerJoinedCommunities.length > 0;
+
+    if (destinationNeedsLocalPublish && !hasOpenSpaceDestinationOptions) {
+      setError(
+        t('home.postComposerDestinationEmpty', {
+          defaultValue: 'You need at least one circle or joined community before publishing.',
+        })
+      );
+      return;
+    }
+
+    if (selectedPublishDestination !== 'openbook' && !selectedFederatedAccountId) {
+      setError(
+        t('home.postComposerMastodonAccountRequired', {
+          defaultValue: 'Choose a linked Mastodon account before publishing there.',
+        })
+      );
+      return;
+    }
 
     setComposerSubmitting(true);
     setError('');
@@ -5355,7 +5641,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       } as const;
 
       const createPrimaryPost = async (primaryImage?: Blob | null, isDraft = false) => {
-        return api.createPost(token, {
+        const payload = {
           ...postPayload,
           image: primaryImage,
           video: composerVideo?.file,
@@ -5363,7 +5649,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           community_names: targetCommunityNames.length > 0 ? targetCommunityNames : undefined,
           is_draft: isDraft || undefined,
           shared_post_uuid: composerSharedPost?.uuid,
-        });
+          publish_destination: !isDraft ? selectedPublishDestination : undefined,
+          federated_linked_account_id: !isDraft ? (selectedFederatedAccountId || undefined) : undefined,
+        };
+        return !isDraft && selectedPublishDestination !== 'openbook'
+          ? api.createPostWithFederation(token, payload)
+          : api.createPost(token, payload);
       };
 
       if (composerPostType === 'LP' && composerDraftUuid && !hasImages && !hasVideo && !saveAsDraft) {
@@ -5380,42 +5671,71 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           circle_id: targetCircleId ? [targetCircleId] : [],
           community_names: targetCommunityNames,
         });
-        finalizedPost = await api.publishPost(token, composerDraftUuid);
+        if (selectedPublishDestination !== 'openbook') {
+          const publishResult = await api.publishPostWithFederation(token, composerDraftUuid, {
+            publish_destination: selectedPublishDestination,
+            federated_linked_account_id: selectedFederatedAccountId || undefined,
+          });
+          if ('publish_destination' in (publishResult as any)) {
+            finalizedPost = (publishResult as FederatedPublishResult).local_post;
+          } else {
+            finalizedPost = publishResult as FeedPost;
+          }
+        } else {
+          finalizedPost = await api.publishPost(token, composerDraftUuid);
+        }
         finalizedUuid = composerDraftUuid;
       } else if (hasImages && composerImages.length > 1) {
         const draftPost = await createPrimaryPost(await getUploadBlob(composerImages[0]!), true);
 
-        if (!draftPost.uuid) {
+        if (!('uuid' in (draftPost as any)) || !(draftPost as FeedPost).uuid) {
           throw new Error(t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
         }
-        finalizedUuid = draftPost.uuid;
+        finalizedUuid = (draftPost as FeedPost).uuid || null;
 
         for (let index = 1; index < composerImages.length; index += 1) {
           const image = composerImages[index];
-          await api.addPostMedia(token, draftPost.uuid, {
+          await api.addPostMedia(token, (draftPost as FeedPost).uuid as string, {
             file: await getUploadBlob(image),
             order: index + 1,
           });
         }
         if (!saveAsDraft) {
-          finalizedPost = await api.publishPost(token, draftPost.uuid);
+          if (selectedPublishDestination !== 'openbook') {
+            const publishResult = await api.publishPostWithFederation(token, (draftPost as FeedPost).uuid as string, {
+              publish_destination: selectedPublishDestination,
+              federated_linked_account_id: selectedFederatedAccountId || undefined,
+            });
+            if ('publish_destination' in (publishResult as any)) {
+              finalizedPost = (publishResult as FederatedPublishResult).local_post;
+            } else {
+              finalizedPost = publishResult as FeedPost;
+            }
+          } else {
+            finalizedPost = await api.publishPost(token, (draftPost as FeedPost).uuid as string);
+          }
         }
       } else {
         const createdPost = await createPrimaryPost(
           composerImages[0] ? await getUploadBlob(composerImages[0]) : undefined,
           saveAsDraft,
         );
-        finalizedPost = createdPost;
-        finalizedUuid = createdPost.uuid || finalizedUuid;
-        if (saveAsDraft && composerPostType === 'LP') {
-          setComposerDraftUuid(createdPost.uuid || null);
+        if ('publish_destination' in (createdPost as any)) {
+          finalizedPost = (createdPost as FederatedPublishResult).local_post;
+          finalizedUuid = (createdPost as FederatedPublishResult).local_post?.uuid || finalizedUuid;
+        } else {
+          finalizedPost = createdPost as FeedPost;
+          finalizedUuid = (createdPost as FeedPost).uuid || finalizedUuid;
+        }
+        if (saveAsDraft && composerPostType === 'LP' && !('publish_destination' in (createdPost as any))) {
+          setComposerDraftUuid((createdPost as FeedPost).uuid || null);
           setComposerDraftSavedAt(new Date().toISOString());
         }
       }
 
       // Guardrail: don't show false success if backend returned an OK without
       // a verifiable published post payload.
-      if (!saveAsDraft) {
+      if (!saveAsDraft && selectedPublishDestination !== 'mastodon') {
         const hasPublishIdentity = !!finalizedPost?.id || !!finalizedUuid;
         if (!hasPublishIdentity) {
           console.error('[ComposerPublish] Missing post identity in publish response', {
@@ -5477,9 +5797,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       setNotice(
         saveAsDraft
           ? t('home.postComposerDraftSuccess', { defaultValue: 'Draft saved.' })
-          : t('home.postComposerSuccess', { defaultValue: 'Post published.' })
+          : selectedPublishDestination === 'mastodon'
+            ? t('home.postComposerMastodonSuccess', { defaultValue: 'Posted to Mastodon.' })
+            : selectedPublishDestination === 'both'
+              ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to OpenSpace and Mastodon.' })
+              : t('home.postComposerSuccess', { defaultValue: 'Post published.' })
       );
-      await loadFeed(activeFeed);
+      if (selectedPublishDestination !== 'mastodon') {
+        await loadFeed(activeFeed);
+      }
     } catch (e: any) {
       setError(e?.message || t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
     } finally {
@@ -6412,6 +6738,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             <ActivityIndicator color={c.primary} size="small" />
           ) : (
             <View style={styles.providerList}>
+              <Text style={[styles.linkedSectionTitle, { color: c.textPrimary }]}>
+                {t('home.linkedAccountsSocialTitle', { defaultValue: 'Social sign-in' })}
+              </Text>
               {providerOrder.map((provider) => {
                 const identity = getLinkedIdentity(provider);
                 const isLoadingProvider = providerLoading === provider;
@@ -6462,6 +6791,100 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   </View>
                 );
               })}
+
+              <Text style={[styles.linkedSectionTitle, { color: c.textPrimary }]}>
+                {t('home.linkedAccountsMastodonTitle', { defaultValue: 'Mastodon' })}
+              </Text>
+
+              {federatedLinkedAccounts.map((account) => {
+                const isUnlinking = mastodonUnlinkId === account.id;
+                const label = account.acct || (account.username && account.instance_domain
+                  ? `@${account.username}@${account.instance_domain}`
+                  : account.instance_domain);
+                const subtitle = account.profile_url || account.instance_domain;
+                return (
+                  <View
+                    key={`mastodon-account-${account.id}`}
+                    style={[styles.providerRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  >
+                    <View style={styles.providerMeta}>
+                      <MaterialCommunityIcons name="mastodon" size={18} color="#6364FF" />
+                      <View style={styles.providerTextWrap}>
+                        <Text style={[styles.providerName, { color: c.textPrimary }]}>
+                          {label}
+                        </Text>
+                        <Text style={[styles.providerStatus, { color: c.textMuted }]} numberOfLines={1}>
+                          {subtitle}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.providerButton,
+                        {
+                          borderColor: c.border,
+                          backgroundColor: c.background,
+                        },
+                      ]}
+                      onPress={() => void handleUnlinkMastodon(account.id)}
+                      disabled={mastodonLinkLoading || mastodonUnlinkId !== null}
+                      activeOpacity={0.85}
+                    >
+                      {isUnlinking ? (
+                        <ActivityIndicator color={c.textPrimary} size="small" />
+                      ) : (
+                        <Text style={[styles.providerButtonText, { color: c.textPrimary }]}>
+                          {t('home.unlinkAction')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+
+              <View style={[styles.mastodonLinkCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                <Text style={[styles.mastodonLinkTitle, { color: c.textPrimary }]}>
+                  {t('home.mastodonConnectTitle', { defaultValue: 'Connect a Mastodon account' })}
+                </Text>
+                <Text style={[styles.mastodonLinkBody, { color: c.textMuted }]}>
+                  {t('home.mastodonConnectBody', {
+                    defaultValue: 'Enter an instance URL or @name@instance to link your existing fediverse account.',
+                  })}
+                </Text>
+                <TextInput
+                  style={[
+                    styles.mastodonLinkInput,
+                    {
+                      borderColor: c.inputBorder,
+                      backgroundColor: c.surface,
+                      color: c.textPrimary,
+                    },
+                  ]}
+                  value={mastodonIdentifierInput}
+                  onChangeText={setMastodonIdentifierInput}
+                  placeholder={t('home.mastodonConnectPlaceholder', {
+                    defaultValue: '@name@mastodon.social or mastodon.social',
+                  })}
+                  placeholderTextColor={c.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!mastodonLinkLoading && mastodonUnlinkId == null}
+                />
+                <TouchableOpacity
+                  style={[styles.mastodonLinkButton, { backgroundColor: c.primary }]}
+                  onPress={() => void handleLinkMastodon()}
+                  disabled={mastodonLinkLoading || mastodonUnlinkId !== null}
+                  activeOpacity={0.85}
+                >
+                  {mastodonLinkLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.mastodonLinkButtonText}>
+                      {t('home.linkAction')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </Animated.View>
@@ -7249,6 +7672,89 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       defaultValue: 'Select one circle or up to 3 joined communities.',
                     })}
                   </Text>
+
+                  <View style={[styles.mastodonDestinationCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                    <Text style={[styles.mastodonDestinationTitle, { color: c.textPrimary }]}>
+                      {t('home.postComposerPublishDestinationLabel', { defaultValue: 'Publish destination' })}
+                    </Text>
+                    <View style={styles.mastodonDestinationOptions}>
+                      {([
+                        { key: 'openbook', icon: 'home-variant-outline', label: t('home.postComposerPublishDestinationOpenSpace', { defaultValue: 'OpenSpace' }) },
+                        { key: 'mastodon', icon: 'mastodon', label: t('home.postComposerPublishDestinationMastodon', { defaultValue: 'Mastodon' }) },
+                        { key: 'both', icon: 'source-branch', label: t('home.postComposerPublishDestinationBoth', { defaultValue: 'Both' }) },
+                      ] as Array<{ key: 'openbook' | 'mastodon' | 'both'; icon: string; label: string }>).map((option) => {
+                        const disabled = option.key !== 'openbook' && federatedLinkedAccounts.length === 0;
+                        const selected = composerPublishDestination === option.key;
+                        return (
+                          <TouchableOpacity
+                            key={`publish-destination-${option.key}`}
+                            style={[
+                              styles.mastodonDestinationOption,
+                              {
+                                borderColor: selected ? c.primary : c.border,
+                                backgroundColor: selected ? `${c.primary}16` : c.surface,
+                                opacity: disabled ? 0.45 : 1,
+                              },
+                            ]}
+                            activeOpacity={0.85}
+                            disabled={disabled}
+                            onPress={() => setComposerPublishDestination(option.key)}
+                          >
+                            <MaterialCommunityIcons
+                              name={option.icon as any}
+                              size={18}
+                              color={selected ? c.primary : c.textMuted}
+                            />
+                            <Text style={[styles.mastodonDestinationOptionText, { color: selected ? c.primary : c.textPrimary }]}>
+                              {option.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {federatedLinkedAccounts.length === 0 ? (
+                      <Text style={[styles.mastodonDestinationHint, { color: c.textMuted }]}>
+                        {t('home.postComposerNoMastodonAccounts', {
+                          defaultValue: 'Link a Mastodon account in Linked Accounts to publish there.',
+                        })}
+                      </Text>
+                    ) : null}
+                    {composerPublishDestination !== 'openbook' && federatedLinkedAccounts.length > 0 ? (
+                      <View style={styles.mastodonLinkedAccountList}>
+                        {federatedLinkedAccounts.map((account) => {
+                          const selected = composerFederatedLinkedAccountId === account.id;
+                          return (
+                            <TouchableOpacity
+                              key={`composer-mastodon-account-${account.id}`}
+                              style={[
+                                styles.mastodonLinkedAccountRow,
+                                {
+                                  borderColor: selected ? c.primary : c.border,
+                                  backgroundColor: selected ? `${c.primary}14` : c.surface,
+                                },
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() => setComposerFederatedLinkedAccountId(account.id)}
+                            >
+                              <MaterialCommunityIcons
+                                name={selected ? 'radiobox-marked' : 'radiobox-blank'}
+                                size={18}
+                                color={selected ? c.primary : c.textMuted}
+                              />
+                              <View style={styles.mastodonLinkedAccountMeta}>
+                                <Text style={[styles.mastodonLinkedAccountName, { color: c.textPrimary }]}>
+                                  {account.acct || `@${account.username || ''}@${account.instance_domain}`}
+                                </Text>
+                                <Text style={[styles.mastodonLinkedAccountSubtext, { color: c.textMuted }]} numberOfLines={1}>
+                                  {account.instance_domain}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
 
                   {/* Shared post preview when reposting */}
                   {composerSharedPost ? (
@@ -9136,23 +9642,37 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             ) : null}
 
             {!viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
-              <FeedScreen
-                styles={styles}
-                c={c}
-                t={t}
-                user={user}
-                onComposerPress={() => openComposerModal()}
-                onComposerActionPress={(action) => openComposerModal(action)}
-                feedLoading={feedLoading}
-                feedError={feedError}
-                feedPosts={feedPosts}
-                activeFeed={activeFeed}
-                feedLoadingMore={feedLoadingMore}
-                feedHasMore={feedHasMore}
-                renderPostCard={renderPostCard}
-                isEdgeToEdge={isEdgeToEdge}
-                hideComposer={showBottomTabs}
-              />
+              activeFeed === 'mastodon' ? (
+                <MastodonFeedScreen
+                  c={c}
+                  t={t}
+                  loading={feedLoading}
+                  error={feedError}
+                  items={mastodonFeedItems}
+                  linkedAccount={mastodonFeedLinkedAccount}
+                  loadingMore={feedLoadingMore}
+                  hasMore={feedHasMore}
+                  onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
+                />
+              ) : (
+                <FeedScreen
+                  styles={styles}
+                  c={c}
+                  t={t}
+                  user={user}
+                  onComposerPress={() => openComposerModal()}
+                  onComposerActionPress={(action) => openComposerModal(action)}
+                  feedLoading={feedLoading}
+                  feedError={feedError}
+                  feedPosts={feedPosts}
+                  activeFeed={activeFeed}
+                  feedLoadingMore={feedLoadingMore}
+                  feedHasMore={feedHasMore}
+                  renderPostCard={renderPostCard}
+                  isEdgeToEdge={isEdgeToEdge}
+                  hideComposer={showBottomTabs}
+                />
+              )
             ) : null}
 
           {!!suspensionExpiry && (
@@ -10072,6 +10592,62 @@ const styles = StyleSheet.create({
   postComposerDestinationBody: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  mastodonDestinationCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  mastodonDestinationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  mastodonDestinationOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  mastodonDestinationOption: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mastodonDestinationOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  mastodonDestinationHint: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  mastodonLinkedAccountList: {
+    gap: 8,
+  },
+  mastodonLinkedAccountRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  mastodonLinkedAccountMeta: {
+    flex: 1,
+  },
+  mastodonLinkedAccountName: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  mastodonLinkedAccountSubtext: {
+    fontSize: 12,
+    marginTop: 2,
   },
   postComposerDestinationCounterRow: {
     flexDirection: 'row',
@@ -12375,6 +12951,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
   },
+  linkedSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
   settingsModalCard: {
     width: 420,
     maxWidth: '92%',
@@ -12427,6 +13010,39 @@ const styles = StyleSheet.create({
   },
   providerList: {
     gap: 10,
+  },
+  mastodonLinkCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  mastodonLinkTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  mastodonLinkBody: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  mastodonLinkInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    fontSize: 15,
+  },
+  mastodonLinkButton: {
+    borderRadius: 10,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  mastodonLinkButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   providerRow: {
     borderWidth: 1,

@@ -139,6 +139,39 @@ export type SocialIdentity = {
   created: string;
   updated: string;
 };
+export type FederatedProviderType = 'mastodon';
+export type FederatedLinkedAccount = {
+  id: number;
+  provider_type: FederatedProviderType;
+  instance_domain: string;
+  account_id?: string;
+  username?: string;
+  acct?: string;
+  scopes?: string;
+  avatar_url?: string;
+  profile_url?: string;
+  last_synced_at?: string | null;
+  created?: string;
+  updated?: string;
+};
+export type FederatedLinkStartPayload = {
+  instance_domain?: string;
+  acct?: string;
+  redirect_uri: string;
+  scopes?: string;
+};
+export type FederatedLinkStartResult = {
+  provider_type: FederatedProviderType;
+  instance_domain: string;
+  scopes: string;
+  state: string;
+  authorization_url: string;
+  discovery?: Record<string, unknown>;
+};
+export type FederatedLinkCallbackPayload = {
+  code: string;
+  state: string;
+};
 export type RegisterPayload = {
   email: string;
   password: string;
@@ -251,7 +284,83 @@ export type UpdateAuthenticatedUserMediaPayload = {
   removeCover?: boolean;
 };
 
-export type FeedType = 'home' | 'trending' | 'public' | 'explore';
+export type FeedType = 'home' | 'trending' | 'public' | 'explore' | 'mastodon';
+
+export type FederatedTimelineAccount = {
+  id?: string;
+  username?: string;
+  display_name?: string;
+  acct?: string;
+  avatar_url?: string;
+  header_url?: string;
+  profile_url?: string;
+  note?: string;
+  followers_count?: number;
+  following_count?: number;
+  statuses_count?: number;
+  locked?: boolean;
+  bot?: boolean;
+  discoverable?: boolean;
+};
+
+export type FederatedTimelineMediaAttachment = {
+  id?: string;
+  type?: string;
+  url?: string;
+  preview_url?: string;
+  description?: string;
+  meta?: Record<string, unknown>;
+};
+
+export type FederatedTimelineStatus = {
+  id: string;
+  created_at?: string;
+  content?: string;
+  url?: string;
+  replies_count?: number;
+  reblogs_count?: number;
+  favourites_count?: number;
+  reblogged?: boolean;
+  favourited?: boolean;
+  bookmarked?: boolean;
+  muted?: boolean;
+  sensitive?: boolean;
+  spoiler_text?: string;
+  visibility?: string;
+  language?: string;
+  application?: {
+    name?: string;
+    website?: string;
+  } | null;
+  account?: FederatedTimelineAccount | null;
+  media_attachments?: FederatedTimelineMediaAttachment[];
+  mentions?: Array<{
+    id?: string;
+    username?: string;
+    acct?: string;
+    url?: string;
+  }>;
+  tags?: Array<{
+    name?: string;
+    url?: string;
+  }>;
+  poll?: Record<string, unknown> | null;
+  card?: Record<string, unknown> | null;
+  reblog?: FederatedTimelineStatus | null;
+};
+
+export type FederatedTimelinePaging = {
+  limit?: number;
+  max_id?: string | null;
+  since_id?: string | null;
+  min_id?: string | null;
+};
+
+export type FederatedTimelineResponse = {
+  linked_account: FederatedLinkedAccount;
+  items: FederatedTimelineStatus[];
+  paging?: FederatedTimelinePaging;
+};
 
 export type CreatePostPayload = {
   text?: string;
@@ -268,6 +377,8 @@ export type CreatePostPayload = {
   draft_expiry_days?: number;
   type?: string;
   shared_post_uuid?: string;
+  publish_destination?: 'openbook' | 'mastodon' | 'both';
+  federated_linked_account_id?: number;
 };
 
 export type UpdatePostPayload = {
@@ -289,6 +400,35 @@ export type UpdatePostTargetsPayload = {
 export type AddPostMediaPayload = {
   file: Blob;
   order?: number;
+};
+
+export type FederatedMastodonStatus = {
+  id?: string;
+  created_at?: string;
+  content?: string;
+  url?: string;
+  visibility?: string;
+  account?: {
+    id?: string;
+    username?: string;
+    display_name?: string;
+    acct?: string;
+    avatar_url?: string;
+    profile_url?: string;
+  } | null;
+  media_attachments?: Array<{
+    id?: string;
+    type?: string;
+    url?: string;
+    preview_url?: string;
+    description?: string;
+  }>;
+};
+
+export type FederatedPublishResult = {
+  publish_destination: 'mastodon' | 'both';
+  local_post: FeedPost | null;
+  mastodon_status: FederatedMastodonStatus | null;
 };
 
 export type PostMediaItem = {
@@ -430,6 +570,11 @@ export type PostComment = {
   id: number;
   text?: string;
   created?: string;
+  // Detected language of the comment text. Drives the "See translation"
+  // affordance — gating mirrors what's done for posts.
+  language?: {
+    code?: string;
+  };
   media?: Array<{
     id?: number;
     type?: 'I' | 'G' | string;
@@ -1013,6 +1158,27 @@ function normalizePostPayload(post: FeedPost): FeedPost {
   };
 }
 
+function normalizeFederatedPublishResult(payload: unknown): FederatedPublishResult {
+  const data = (payload || {}) as Record<string, any>;
+  return {
+    publish_destination: data.publish_destination === 'mastodon' ? 'mastodon' : 'both',
+    local_post: data.local_post ? normalizePostPayload(data.local_post as FeedPost) : null,
+    mastodon_status: data.mastodon_status
+      ? {
+          ...data.mastodon_status,
+          account: data.mastodon_status.account
+            ? {
+                ...data.mastodon_status.account,
+              }
+            : null,
+          media_attachments: Array.isArray(data.mastodon_status.media_attachments)
+            ? data.mastodon_status.media_attachments
+            : undefined,
+        }
+      : null,
+  };
+}
+
 function normalizeFeedResponse(feed: FeedType, payload: unknown): FeedPost[] {
   if (!Array.isArray(payload)) return [];
 
@@ -1313,6 +1479,52 @@ export const api = {
       body: JSON.stringify({ provider }),
     }).then(extractSuccessMessage),
 
+  getFederatedLinkedAccounts: (token: string) =>
+    request<FederatedLinkedAccount[]>('/api/auth/user/federation/link/start/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  getFederatedHomeFeed: (
+    token: string,
+    linkedAccountId: number,
+    count = 20,
+    maxId?: string,
+    sinceId?: string,
+    minId?: string,
+  ) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(count));
+    if (maxId) params.set('max_id', maxId);
+    if (sinceId) params.set('since_id', sinceId);
+    if (minId) params.set('min_id', minId);
+    return request<FederatedTimelineResponse>(
+      `/api/auth/user/federation/link/${linkedAccountId}/feed/?${params.toString()}`,
+      {
+        headers: { Authorization: `Token ${token}` },
+      },
+    );
+  },
+
+  startFederatedLink: (token: string, payload: FederatedLinkStartPayload) =>
+    request<FederatedLinkStartResult>('/api/auth/user/federation/link/start/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  completeFederatedLink: (token: string, payload: FederatedLinkCallbackPayload) =>
+    request<FederatedLinkedAccount>('/api/auth/user/federation/link/callback/', {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  unlinkFederatedLinkedAccount: (token: string, linkedAccountId: number) =>
+    request<void>(`/api/auth/user/federation/link/${linkedAccountId}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
   getFeed: (token: string, feed: FeedType, count = 20, maxId?: number, minId?: number) => {
     const maxIdParam = typeof maxId === 'number' ? `&max_id=${maxId}` : '';
     const minIdParam = typeof minId === 'number' ? `&min_id=${minId}` : '';
@@ -1322,7 +1534,9 @@ export const api = {
         ? `/api/posts/trending/new/?count=${count}${maxIdParam}${minIdParam}`
         : feed === 'public'
           ? `/api/posts/top/?count=${count}${maxIdParam}${minIdParam}`
-          : `/api/posts/top/?count=${count}&exclude_joined_communities=true${maxIdParam}${minIdParam}`;
+          : feed === 'explore'
+            ? `/api/posts/top/?count=${count}&exclude_joined_communities=true${maxIdParam}${minIdParam}`
+            : `/api/posts/?count=${count}${maxIdParam}${minIdParam}`;
 
     return request<unknown>(path, {
       headers: { Authorization: `Token ${token}` },
@@ -1376,6 +1590,12 @@ export const api = {
           form.append('community_names', name);
         });
     }
+    if (typeof payload.publish_destination === 'string' && payload.publish_destination.trim()) {
+      form.append('publish_destination', payload.publish_destination);
+    }
+    if (typeof payload.federated_linked_account_id === 'number' && Number.isFinite(payload.federated_linked_account_id)) {
+      form.append('federated_linked_account_id', String(payload.federated_linked_account_id));
+    }
 
     if (payload.image) {
       const imageFile = payload.image as Blob & { name?: string };
@@ -1396,6 +1616,53 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
       body: form,
     }).then((post) => normalizePostPayload(post));
+  },
+
+  createPostWithFederation: (token: string, payload: CreatePostPayload) => {
+    const form = new FormData();
+
+    if (typeof payload.text === 'string') form.append('text', payload.text);
+    if (typeof payload.long_text === 'string') form.append('long_text', payload.long_text);
+    if (Array.isArray(payload.long_text_blocks)) form.append('long_text_blocks', JSON.stringify(payload.long_text_blocks));
+    if (typeof payload.long_text_rendered_html === 'string') form.append('long_text_rendered_html', payload.long_text_rendered_html);
+    if (typeof payload.long_text_version === 'number' && Number.isFinite(payload.long_text_version)) {
+      form.append('long_text_version', String(payload.long_text_version));
+    }
+    if (typeof payload.type === 'string' && payload.type.trim()) form.append('type', payload.type);
+    if (typeof payload.is_draft === 'boolean') form.append('is_draft', payload.is_draft ? 'true' : 'false');
+    if (typeof payload.draft_expiry_days === 'number' && Number.isFinite(payload.draft_expiry_days)) {
+      form.append('draft_expiry_days', String(payload.draft_expiry_days));
+    }
+    if (Array.isArray(payload.circle_id)) payload.circle_id.forEach((id) => form.append('circle_id', String(id)));
+    if (typeof payload.community_name === 'string' && payload.community_name.trim()) form.append('community_name', payload.community_name.trim());
+    if (Array.isArray(payload.community_names)) {
+      payload.community_names.map((name) => name?.trim()).filter((name): name is string => !!name).forEach((name) => form.append('community_names', name));
+    }
+    if (typeof payload.shared_post_uuid === 'string' && payload.shared_post_uuid.trim()) form.append('shared_post_uuid', payload.shared_post_uuid);
+    if (typeof payload.publish_destination === 'string' && payload.publish_destination.trim()) form.append('publish_destination', payload.publish_destination);
+    if (typeof payload.federated_linked_account_id === 'number' && Number.isFinite(payload.federated_linked_account_id)) {
+      form.append('federated_linked_account_id', String(payload.federated_linked_account_id));
+    }
+    if (payload.image) {
+      const imageFile = payload.image as Blob & { name?: string };
+      form.append('image', imageFile, imageFile.name || 'post-image.jpg');
+    }
+    if (payload.video) {
+      const videoFile = payload.video as Blob & { name?: string };
+      form.append('video', videoFile, videoFile.name || 'post-video.mp4');
+    }
+
+    return request<unknown>('/api/posts/', {
+      method: 'PUT',
+      headers: { Authorization: `Token ${token}` },
+      body: form,
+    }).then((response) => {
+      const asObj = response as Record<string, unknown>;
+      if (asObj && (asObj.publish_destination === 'mastodon' || asObj.publish_destination === 'both')) {
+        return normalizeFederatedPublishResult(response);
+      }
+      return normalizePostPayload(response as FeedPost);
+    });
   },
 
   createCommunityPost: (
@@ -1505,6 +1772,26 @@ export const api = {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }).then((post) => normalizePostPayload(post)),
+
+  publishPostWithFederation: (
+    token: string,
+    postUuid: string,
+    options: {
+      publish_destination: 'openbook' | 'mastodon' | 'both';
+      federated_linked_account_id?: number;
+    }
+  ) =>
+    request<unknown>(`/api/posts/${postUuid}/publish/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(options),
+    }).then((response) => {
+      const asObj = response as Record<string, unknown>;
+      if (asObj && (asObj.publish_destination === 'mastodon' || asObj.publish_destination === 'both')) {
+        return normalizeFederatedPublishResult(response);
+      }
+      return normalizePostPayload(response as FeedPost);
+    }),
 
   getDraftPosts: (token: string, count = 20, maxId?: number) => {
     const params = new URLSearchParams();
