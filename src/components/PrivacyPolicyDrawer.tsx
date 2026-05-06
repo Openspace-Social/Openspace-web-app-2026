@@ -10,7 +10,7 @@ import {
   Animated,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
 import { useSwipeToClose } from '../hooks/useSwipeToClose';
@@ -26,6 +26,10 @@ export default function PrivacyPolicyDrawer({ visible, onClose }: PrivacyPolicyD
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+  // Manual insets — Modal renders outside the app's safe-area context
+  // on iOS and SafeAreaView's auto-detection breaks under the drawer's
+  // translateX transform.
+  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const drawerWidth = Platform.OS === 'web'
     ? Math.min(680, viewportWidth)
@@ -100,7 +104,7 @@ export default function PrivacyPolicyDrawer({ visible, onClose }: PrivacyPolicyD
             },
           ]}
         >
-          <SafeAreaView style={styles.drawerInner}>
+          <View style={[styles.drawerInner, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: c.border }]}>
               <Text style={[styles.headerTitle, { color: c.textPrimary }]}>
@@ -158,7 +162,7 @@ export default function PrivacyPolicyDrawer({ visible, onClose }: PrivacyPolicyD
                 </View>
               ))}
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </Animated.View>
       </View>
     </Modal>

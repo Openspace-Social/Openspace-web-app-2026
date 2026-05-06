@@ -13,6 +13,7 @@ import {
   ScrollView,
   Image,
   ImageBackground,
+  Share,
   useWindowDimensions,
 } from 'react-native';
 import { AntDesign } from '@expo/vector-icons';
@@ -71,7 +72,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -93,6 +94,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [socialUsername, setSocialUsername] = useState('');
   const [shareFlowToken, setShareFlowToken] = useState('');
   const [shareFlowUsername, setShareFlowUsername] = useState('');
+  // Mastodon-link onboarding step (slots in between verifyEmail/socialUsername
+  // and shareProfile). Reuses the shareFlowToken — that's the auth token
+  // the user has just been issued by register/verifyEmail/socialAuth, and
+  // it's already authorised to call /api/auth/user/federation/link/.
+  const [onboardingMastodonInput, setOnboardingMastodonInput] = useState('');
+  const [onboardingMastodonLinking, setOnboardingMastodonLinking] = useState(false);
   const [appleLinkIdToken, setAppleLinkIdToken] = useState('');
   const [appleLinkUsername, setAppleLinkUsername] = useState('');
   const [appleLinkCode, setAppleLinkCode] = useState('');
@@ -481,7 +488,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     if (!verificationToken) return;
     setShareFlowToken(verificationToken);
     setShareFlowUsername(signupUsername.trim());
-    setAuthMode('shareProfile');
+    setAuthMode('linkMastodon');
   }
 
   function finishShareAndContinue() {
@@ -490,6 +497,78 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       return;
     }
     onLogin?.(shareFlowToken);
+  }
+
+  // Onboarding-time Mastodon link. Mirrors the OAuth flow used by the
+  // post-signup LinkedAccountsScreen but operates against `shareFlowToken`
+  // (the token the user just received from register / verifyEmail /
+  // social auth), and advances to the share-profile step on success.
+  async function handleOnboardingLinkMastodon() {
+    const value = onboardingMastodonInput.trim();
+    if (!value) {
+      setError(
+        t('home.mastodonIdentifierRequired', {
+          defaultValue: 'Enter a Mastodon instance URL or @name@instance to continue.',
+        }),
+      );
+      return;
+    }
+    if (!shareFlowToken) {
+      setError(t('auth.errorShareSessionMissing'));
+      return;
+    }
+    setError('');
+    setNotice('');
+    setOnboardingMastodonLinking(true);
+    try {
+      const redirectUri = Platform.OS === 'web'
+        ? `${window.location.origin.replace(/\/+$/, '')}/mastodon-callback`
+        : 'openspacesocial://mastodon-callback';
+      const started = await api.startFederatedLink(shareFlowToken, {
+        redirect_uri: redirectUri,
+        acct: value.startsWith('@') ? value : undefined,
+        instance_domain: value.startsWith('@') ? undefined : value,
+      });
+      const authResult = await WebBrowser.openAuthSessionAsync(started.authorization_url, redirectUri);
+      if (authResult.type !== 'success' || !authResult.url) {
+        throw new Error(
+          t('home.mastodonAuthorizationFailed', {
+            defaultValue: 'Mastodon authorization was cancelled or failed.',
+          }),
+        );
+      }
+      const parsed = new URL(authResult.url);
+      const code = parsed.searchParams.get('code');
+      const state = parsed.searchParams.get('state');
+      if (!code || !state) {
+        throw new Error(
+          t('home.mastodonMissingCallbackParams', {
+            defaultValue: 'Mastodon did not return the expected authorization details.',
+          }),
+        );
+      }
+      await api.completeFederatedLink(shareFlowToken, { code, state });
+      setOnboardingMastodonInput('');
+      setNotice(
+        t('home.mastodonLinkSuccess', {
+          defaultValue: 'Mastodon account linked successfully.',
+        }),
+      );
+      setAuthMode('shareProfile');
+    } catch (e: any) {
+      setError(
+        e?.message
+        || t('home.mastodonLinkFailed', { defaultValue: 'Could not link your Mastodon account.' }),
+      );
+    } finally {
+      setOnboardingMastodonLinking(false);
+    }
+  }
+
+  function skipOnboardingMastodon() {
+    setError('');
+    setNotice('');
+    setAuthMode('shareProfile');
   }
 
   async function handleCompleteSocialUsername() {
@@ -511,7 +590,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       });
       setShareFlowToken(socialOnboardingToken);
       setShareFlowUsername(socialUsername.trim());
-      setAuthMode('shareProfile');
+      setAuthMode('linkMastodon');
     } catch (e: any) {
       setError(e.message || t('auth.errorSocialUsernameUpdateFailed'));
     } finally {
@@ -598,37 +677,67 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     }
   }
 
-  async function handleShareProfile(platform: 'instagram' | 'facebook' | 'x' | 'bluesky' | 'reddit') {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-
+  async function handleShareProfile(platform: 'mastodon' | 'threads' | 'x' | 'bluesky' | 'reddit') {
     const profileHandle = shareFlowUsername ? `@${shareFlowUsername}` : '';
     const profileUrl = `https://openspace.social/${shareFlowUsername || ''}`.replace(/\/$/, '');
     const shareText = t('auth.shareProfileMessage', { username: profileHandle || t('auth.newAccountLabel') });
     const encodedUrl = encodeURIComponent(profileUrl);
     const encodedText = encodeURIComponent(shareText);
+    // Mastodon's /share takes a single `text` param — URL is folded into
+    // the text body. Defaulting to mastodon.social gives the largest
+    // pool of users a working compose dialog out of the box; users
+    // logged into a different instance can still post from there.
+    const mastodonShareText = encodeURIComponent(`${shareText} ${profileUrl}`);
+    const threadsShareText = encodeURIComponent(`${shareText} ${profileUrl}`);
 
-    if (platform === 'instagram') {
-      try {
-        if (navigator?.clipboard?.writeText) {
-          await navigator.clipboard.writeText(`${shareText} ${profileUrl}`);
-          setNotice(t('auth.shareInstagramNotice'));
-        }
-      } catch (e) {
-        setNotice(t('auth.shareInstagramNotice'));
-      }
-      window.open('https://www.instagram.com/', '_blank', 'noopener,noreferrer');
+    const intentUrl = platform === 'mastodon'
+      ? `https://mastodon.social/share?text=${mastodonShareText}`
+      : platform === 'threads'
+        ? `https://www.threads.net/intent/post?text=${threadsShareText}`
+        : platform === 'x'
+          ? `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`
+          : platform === 'bluesky'
+            ? `https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText} ${profileUrl}`)}`
+            : platform === 'reddit'
+              ? `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodedText}`
+              : null;
+
+    // ── Web ────────────────────────────────────────────────────────────
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (intentUrl) window.open(intentUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    const shareUrl = platform === 'facebook'
-      ? `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}`
-      : platform === 'x'
-        ? `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`
-        : platform === 'bluesky'
-          ? `https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText} ${profileUrl}`)}`
-          : `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodedText}`;
+    // ── Native (iOS / Android) ────────────────────────────────────────
+    // All five remaining platforms have working web compose intents
+    // that route to the installed app via Universal Links / App Links
+    // (with the system browser as the fallback when the app isn't
+    // installed). If the OS rejects the URL for some reason, fall back
+    // to the native share sheet so the user still has SOME way to
+    // share.
+    const nativeSharePayload =
+      Platform.OS === 'ios'
+        ? { url: profileUrl, message: shareText }
+        : { message: `${shareText} ${profileUrl}` };
 
-    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    if (!intentUrl) {
+      try {
+        await Share.share(nativeSharePayload);
+      } catch {
+        // user cancelled
+      }
+      return;
+    }
+
+    try {
+      await Linking.openURL(intentUrl);
+    } catch {
+      try {
+        await Share.share(nativeSharePayload);
+      } catch {
+        // user cancelled the fallback — no-op
+      }
+    }
   }
 
   function createRandomState() {
@@ -1066,6 +1175,8 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     ? 'Link Existing Account'
                   : authMode === 'appleLinkVerify'
                     ? 'Verify Email Code'
+                  : authMode === 'linkMastodon'
+                    ? t('auth.linkMastodonTitle', { defaultValue: 'Bring your Mastodon timeline' })
                   : authMode === 'shareProfile'
                     ? t('auth.shareProfileTitle')
                   : authMode === 'recoverPassword'
@@ -1514,6 +1625,60 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 )}
               </TouchableOpacity>
             </>
+          ) : authMode === 'linkMastodon' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.linkMastodonDescription', {
+                  defaultValue: 'Already on Mastodon? Sign in once and your home timeline will live alongside Openspace, with replies, boosts, and bookmarks all wired up.',
+                })}
+              </Text>
+
+              <TextInput
+                style={[
+                  styles.input,
+                  { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
+                ]}
+                value={onboardingMastodonInput}
+                onChangeText={setOnboardingMastodonInput}
+                placeholder={t('auth.linkMastodonPlaceholder', {
+                  defaultValue: 'mastodon.social or @you@mastodon.social',
+                })}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!onboardingMastodonLinking}
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  onboardingMastodonLinking && styles.buttonDisabled,
+                ]}
+                onPress={handleOnboardingLinkMastodon}
+                disabled={onboardingMastodonLinking}
+                activeOpacity={0.85}
+              >
+                {onboardingMastodonLinking ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    {t('auth.linkMastodonCta', { defaultValue: 'Link Mastodon' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
+                onPress={skipOnboardingMastodon}
+                disabled={onboardingMastodonLinking}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
+                  {t('auth.linkMastodonSkipCta', { defaultValue: 'Skip for now' })}
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : authMode === 'shareProfile' ? (
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
@@ -1523,25 +1688,25 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               <View style={styles.shareGrid}>
                 <TouchableOpacity
                   style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }, styles.shareChip]}
-                  onPress={() => handleShareProfile('instagram')}
+                  onPress={() => handleShareProfile('mastodon')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.shareButtonContent}>
-                    <MaterialCommunityIcons name="instagram" size={16} color={c.textLink} />
+                    <MaterialCommunityIcons name="mastodon" size={16} color={c.textLink} />
                     <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
-                      {t('auth.shareInstagram')}
+                      {t('auth.shareMastodon', { defaultValue: 'Mastodon' })}
                     </Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }, styles.shareChip]}
-                  onPress={() => handleShareProfile('facebook')}
+                  onPress={() => handleShareProfile('threads')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.shareButtonContent}>
-                    <MaterialCommunityIcons name="facebook" size={16} color={c.textLink} />
+                    <MaterialCommunityIcons name="at" size={16} color={c.textLink} />
                     <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
-                      {t('auth.shareFacebook')}
+                      {t('auth.shareThreads', { defaultValue: 'Threads' })}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1594,16 +1759,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 activeOpacity={0.85}
               >
                 <Text style={styles.buttonText}>{t('auth.shareContinueCta')}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
-                onPress={finishShareAndContinue}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
-                  {t('auth.shareSkipCta')}
-                </Text>
               </TouchableOpacity>
             </>
           ) : authMode === 'recoverPassword' ? (
@@ -1997,6 +2152,17 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 <TouchableOpacity onPress={switchToLogin}>
                   <Text style={[styles.footerLink, { color: c.textLink }]}>
                     {t('auth.backToSignIn')}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'linkMastodon' ? (
+              <>
+                <Text style={[styles.footerText, { color: c.textMuted }]}>
+                  {t('auth.linkMastodonFooterHint', { defaultValue: 'Not on Mastodon yet?' })}{' '}
+                </Text>
+                <TouchableOpacity onPress={skipOnboardingMastodon}>
+                  <Text style={[styles.footerLink, { color: c.textLink }]}>
+                    {t('auth.linkMastodonSkipCta', { defaultValue: 'Skip for now' })}
                   </Text>
                 </TouchableOpacity>
               </>

@@ -10,7 +10,7 @@ import {
   Animated,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../theme/ThemeContext';
 import { useSwipeToClose } from '../hooks/useSwipeToClose';
@@ -26,6 +26,11 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+  // Modal renders outside the app's safe-area auto-detection on iOS;
+  // SafeAreaView's measurement also gets confused by the drawer's
+  // translateX transform. Reading insets directly + applying them by
+  // hand is reliable.
+  const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const drawerWidth = Platform.OS === 'web'
     ? Math.min(680, viewportWidth)
@@ -94,7 +99,7 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
             },
           ]}
         >
-          <SafeAreaView style={styles.drawerInner}>
+          <View style={[styles.drawerInner, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: c.border }]}>
               <Text style={[styles.headerTitle, { color: c.textPrimary }]}>
@@ -138,7 +143,7 @@ export default function AboutUsDrawer({ visible, onClose }: AboutUsDrawerProps) 
                 {t('aboutUs.about5')}
               </Text>
             </ScrollView>
-          </SafeAreaView>
+          </View>
         </Animated.View>
       </View>
     </Modal>

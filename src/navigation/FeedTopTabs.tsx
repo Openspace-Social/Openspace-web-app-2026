@@ -8,8 +8,8 @@
  * point of view except the new gesture.
  */
 
-import React, { useCallback } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useTranslation } from 'react-i18next';
@@ -44,17 +44,98 @@ const FEEDS: FeedDef[] = [
   { routeName: 'MastodonFeed', feedType: 'mastodon', icon: 'mastodon', labelKey: 'home.feedTabMastodon', labelDefault: 'Mastodon' },
 ];
 
+// How often the bar peeks to hint at offscreen tabs, and how long it
+// stays peeked before sliding back. Tuned so it's noticeable but not
+// distracting during normal feed scrolling.
+const PEEK_INTERVAL_MS = 90_000; // 1.5 minutes
+const PEEK_HOLD_MS = 700;
+const PEEK_DISTANCE_PX = 44;
+// Don't peek if the user has interacted with the bar recently — we
+// don't want to fight an in-progress scroll.
+const PEEK_USER_QUIET_MS = 20_000;
+
 function FeedTopTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const c = theme.colors;
+
+  // Track each tab's measured x/width so we can auto-scroll the bar to
+  // bring the active tab into view when the user swipes the underlying
+  // pager (or taps a tab that's clipped offscreen).
+  const scrollViewRef = useRef<ScrollView>(null);
+  const tabLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+  const containerWidthRef = useRef(0);
+  // Bookkeeping for the peek animation below.
+  const contentWidthRef = useRef(0);
+  const scrollXRef = useRef(0);
+  const lastUserScrollAtRef = useRef(0);
+
+  useEffect(() => {
+    const activeRoute = state.routes[state.index];
+    if (!activeRoute) return;
+    const layout = tabLayoutsRef.current[activeRoute.key];
+    const containerWidth = containerWidthRef.current;
+    if (!layout || !scrollViewRef.current || containerWidth <= 0) return;
+    // Centre the active tab in the visible area, clamped at zero so the
+    // first tab doesn't get pushed off the left edge.
+    const target = Math.max(0, layout.x + layout.width / 2 - containerWidth / 2);
+    scrollViewRef.current.scrollTo({ x: target, animated: true });
+  }, [state.index, state.routes]);
+
+  // Periodic peek — slides the bar a few pixels and back so a partially
+  // clipped tab briefly comes into view, hinting that more options
+  // exist. Skipped when there's no overflow or the user just touched
+  // the bar (so we don't fight an in-progress gesture).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const ref = scrollViewRef.current;
+      if (!ref) return;
+      const containerWidth = containerWidthRef.current;
+      const contentWidth = contentWidthRef.current;
+      if (containerWidth <= 0 || contentWidth <= containerWidth) return;
+      if (Date.now() - lastUserScrollAtRef.current < PEEK_USER_QUIET_MS) return;
+
+      const currentX = scrollXRef.current;
+      const maxX = Math.max(0, contentWidth - containerWidth);
+      // If we're already at the right edge, peek by going LEFT instead
+      // — the hint is "there's more this way", whichever way that is.
+      const direction = currentX >= maxX - 1 ? -1 : 1;
+      const peekTo = Math.max(0, Math.min(maxX, currentX + direction * PEEK_DISTANCE_PX));
+      if (peekTo === currentX) return;
+
+      ref.scrollTo({ x: peekTo, animated: true });
+      const restoreTimer = setTimeout(() => {
+        // Re-check the user hasn't grabbed the bar in the meantime.
+        if (Date.now() - lastUserScrollAtRef.current < PEEK_HOLD_MS / 2) return;
+        scrollViewRef.current?.scrollTo({ x: currentX, animated: true });
+      }, PEEK_HOLD_MS);
+      // No global cleanup for restoreTimer — it self-resolves after a
+      // single tick. The interval cleanup below covers unmount.
+      void restoreTimer;
+    }, PEEK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <View style={[styles.tabBar, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
+    <ScrollView
+      ref={scrollViewRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.tabBar, { backgroundColor: c.surface, borderBottomColor: c.border }]}
+      contentContainerStyle={styles.tabBarContent}
+      onLayout={(e) => { containerWidthRef.current = e.nativeEvent.layout.width; }}
+      onContentSizeChange={(w) => { contentWidthRef.current = w; }}
+      onScroll={(e) => { scrollXRef.current = e.nativeEvent.contentOffset.x; }}
+      onScrollBeginDrag={() => { lastUserScrollAtRef.current = Date.now(); }}
+      onScrollEndDrag={() => { lastUserScrollAtRef.current = Date.now(); }}
+      scrollEventThrottle={32}
+    >
       {state.routes.map((route, index) => {
         const isActive = state.index === index;
         const def = FEEDS.find((f) => f.routeName === (route.name as keyof FeedTopTabParamList));
         if (!def) return null;
         const color = isActive ? c.primary : c.textMuted;
+        const label = t(def.labelKey, { defaultValue: def.labelDefault });
         return (
           <TouchableOpacity
             key={route.key}
@@ -65,18 +146,25 @@ function FeedTopTabBar({ state, navigation }: MaterialTopTabBarProps) {
                 navigation.navigate(route.name as never);
               }
             }}
+            onLayout={(e) => {
+              tabLayoutsRef.current[route.key] = {
+                x: e.nativeEvent.layout.x,
+                width: e.nativeEvent.layout.width,
+              };
+            }}
             style={[styles.tab, { borderBottomColor: isActive ? c.primary : 'transparent' }]}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
+            accessibilityLabel={label}
           >
             <MaterialCommunityIcons name={def.icon} size={18} color={color} />
             <Text numberOfLines={1} style={[styles.label, { color }]}>
-              {t(def.labelKey, { defaultValue: def.labelDefault })}
+              {label}
             </Text>
           </TouchableOpacity>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -136,16 +224,25 @@ export default function FeedTopTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    flexDirection: 'row',
     borderBottomWidth: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  // ScrollView doesn't accept flexDirection on itself — it's set on the
+  // content container so the children lay out in a row.
+  tabBarContent: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
   },
   tab: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 11,
+    // Was flex:1 in the fixed-grid layout; with horizontal scroll each tab
+    // sizes to its content + a comfortable tap target.
+    paddingHorizontal: 16,
     borderBottomWidth: 2,
   },
   label: {

@@ -1,6 +1,6 @@
 {
   "tagline": "Your space to connect, share, and explore.",
-  "federationBadge": "Federated with the open social web — coming soon",
+  "federationBadge": "Federated with the open social web",
   "auth": {
     "signIn": "Sign in",
     "signOut": "Sign out",

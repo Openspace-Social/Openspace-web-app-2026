@@ -1525,6 +1525,70 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }),
 
+  /** Mastodon's /context endpoint — returns the comment thread around a
+   *  status as `ancestors` (parents up the chain) + `descendants` (replies
+   *  and their replies). Both arrays come back already-normalised in the
+   *  same shape as a timeline status. */
+  getFederatedStatusContext: (token: string, linkedAccountId: number, statusId: string) =>
+    request<{ ancestors: FederatedTimelineStatus[]; descendants: FederatedTimelineStatus[] }>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/context/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  favouriteFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/favourite/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  unfavouriteFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/favourite/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  reblogFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/reblog/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  unreblogFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/reblog/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  bookmarkFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/bookmark/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  unbookmarkFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/bookmark/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  /** Post a reply to a Mastodon status. The new status is returned
+   *  already-normalised so the caller can append it directly to the
+   *  open thread. */
+  replyToFederatedStatus: (
+    token: string,
+    linkedAccountId: number,
+    statusId: string,
+    text: string,
+  ) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/reply/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({ text }),
+      },
+    ),
+
   getFeed: (token: string, feed: FeedType, count = 20, maxId?: number, minId?: number) => {
     const maxIdParam = typeof maxId === 'number' ? `&max_id=${maxId}` : '';
     const minIdParam = typeof minId === 'number' ? `&min_id=${minId}` : '';

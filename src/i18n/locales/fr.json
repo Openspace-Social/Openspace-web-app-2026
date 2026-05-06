@@ -1,6 +1,6 @@
 {
   "tagline": "Votre espace pour vous connecter, partager et explorer.",
-  "federationBadge": "Fédéré avec le web social ouvert — bientôt disponible",
+  "federationBadge": "Fédéré avec le web social ouvert",
   "auth": {
     "signIn": "Se connecter",
     "signOut": "Se déconnecter",

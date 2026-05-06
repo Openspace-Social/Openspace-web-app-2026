@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, RefreshControl, View } from 'react-native';
+import { useScrollToTop } from '@react-navigation/native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +14,13 @@ export default function MastodonFeedScreenContainer() {
   const { t } = useTranslation();
   const { token } = useAuth();
   const c = theme.colors;
+
+  // Wire scroll-to-top so tapping the bottom Home tab + iOS's status-bar
+  // tap both jump to the top of this feed, matching the FeedScreen
+  // behaviour. useScrollToTop also flips `scrollsToTop` on the
+  // underlying ScrollView so the system handles the status-bar gesture.
+  const scrollViewRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollViewRef);
 
   const [linkedAccount, setLinkedAccount] = useState<FederatedLinkedAccount | null>(null);
   const [items, setItems] = useState<FederatedTimelineStatus[]>([]);
@@ -40,9 +48,14 @@ export default function MastodonFeedScreenContainer() {
       const payload = await api.getFederatedHomeFeed(token, primaryAccount.id, FEED_PAGE_SIZE);
       const nextItems = Array.isArray(payload.items) ? payload.items : [];
       setItems(nextItems);
-      const nextCursor = payload.paging?.max_id || undefined;
-      setNextMaxId(nextCursor || undefined);
-      setHasMore(Boolean(nextCursor) && nextItems.length > 0);
+      // Mastodon paginates with `max_id=X` meaning "give me items older
+      // than X". The server's `paging` block on this endpoint just
+      // echoes the request params, so we derive the next-page cursor
+      // from the id of the LAST (oldest) item in this page.
+      const lastItem = nextItems[nextItems.length - 1];
+      const nextCursor = lastItem?.id;
+      setNextMaxId(nextCursor);
+      setHasMore(!!nextCursor && nextItems.length >= FEED_PAGE_SIZE);
     } catch (e: any) {
       setItems([]);
       setError(e?.message || t('home.feedLoadError', { defaultValue: 'Could not load the feed.' }));
@@ -76,9 +89,12 @@ export default function MastodonFeedScreenContainer() {
           const existingIds = new Set(prev.map((item) => item.id));
           return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
         });
-        const nextCursor = payload.paging?.max_id || undefined;
-        setNextMaxId(nextCursor || undefined);
-        setHasMore(Boolean(nextCursor));
+        // Same client-side cursor derivation as the initial load —
+        // last item's id is the next request's max_id.
+        const lastItem = moreItems[moreItems.length - 1];
+        const nextCursor = lastItem?.id;
+        setNextMaxId(nextCursor);
+        setHasMore(!!nextCursor && moreItems.length >= FEED_PAGE_SIZE);
       } else {
         setHasMore(false);
         setNextMaxId(undefined);
@@ -92,8 +108,11 @@ export default function MastodonFeedScreenContainer() {
 
   return (
     <ScrollView
+      ref={scrollViewRef}
       style={{ flex: 1, backgroundColor: c.background }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+      // Edge-to-edge cards (matching FeedScreenContainer) — the screen
+      // component pads non-card chrome (banners, empty states) itself.
+      contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 24 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={c.primary} />}
       onScroll={({ nativeEvent }) => {
         const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
@@ -107,6 +126,7 @@ export default function MastodonFeedScreenContainer() {
         <MastodonFeedScreen
           c={c}
           t={t}
+          token={token ?? null}
           loading={loading}
           error={error}
           items={items}

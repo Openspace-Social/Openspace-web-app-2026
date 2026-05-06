@@ -9646,6 +9646,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 <MastodonFeedScreen
                   c={c}
                   t={t}
+                  token={token ?? null}
                   loading={feedLoading}
                   error={feedError}
                   items={mastodonFeedItems}
