@@ -166,8 +166,12 @@ export function useNativePostInteractions({
 
   const getPostLengthType = useCallback(
     (post: FeedPost): 'long' | 'short' => {
+      // The API uses Django's `POST_TYPES` enum codes — 'P' for normal
+      // / short and 'LP' for long. The previous check looked for
+      // `'long'` / `'article'`, which never match anything the server
+      // sends, so every post showed up as short on native.
       const type = (post as any)?.type || (post as any)?.post_type;
-      if (type === 'long' || type === 'article') return 'long';
+      if (type === 'LP') return 'long';
       return 'short';
     },
     [],

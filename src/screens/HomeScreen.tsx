@@ -2115,9 +2115,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setMastodonFeedItems(nextItems);
         setMastodonFeedLinkedAccount(payload.linked_account || linkedAccount);
         setFeedPostsFeed(feed);
-        const nextCursor = payload.paging?.max_id || undefined;
-        setFeedHasMore(Boolean(nextCursor) && nextItems.length > 0);
-        setMastodonFeedNextMaxId(nextCursor || undefined);
+        // Mastodon paginates with `max_id=X` meaning "give me items
+        // older than X". The server's `paging` block on this endpoint
+        // just echoes the request params, so we derive the next-page
+        // cursor from the id of the last (oldest) item in this page.
+        const lastItem = nextItems[nextItems.length - 1];
+        const nextCursor = lastItem?.id;
+        setFeedHasMore(!!nextCursor && nextItems.length >= FEED_PAGE_SIZE);
+        setMastodonFeedNextMaxId(nextCursor);
         return;
       }
       const nextPosts = await api.getFeed(token, feed, FEED_PAGE_SIZE);
@@ -2169,9 +2174,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             const existingIds = new Set(prev.map((item) => item.id));
             return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
           });
-          const nextCursor = payload.paging?.max_id || undefined;
-          setMastodonFeedNextMaxId(nextCursor || undefined);
-          setFeedHasMore(Boolean(nextCursor));
+          // Same client-side cursor derivation as the initial load —
+          // last item's id is the next request's max_id.
+          const lastItem = moreItems[moreItems.length - 1];
+          const nextCursor = lastItem?.id;
+          setMastodonFeedNextMaxId(nextCursor);
+          setFeedHasMore(!!nextCursor && moreItems.length >= FEED_PAGE_SIZE);
         } else {
           setFeedHasMore(false);
           setMastodonFeedNextMaxId(undefined);

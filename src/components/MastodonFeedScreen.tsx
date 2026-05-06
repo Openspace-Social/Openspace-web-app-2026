@@ -269,24 +269,44 @@ export default function MastodonFeedScreen({
 
   const showConnectBanner = !linkedAccount;
 
-  // Edge-to-edge override of the base feedPostCard style — drops the
-  // horizontal borders + radius + padding so cards run flush to the
-  // viewport edges (matching FeedScreenContainer's edgeToEdgePostCardStyles).
+  // On web, wrap the whole feed in a `feedCard`-equivalent outer card
+  // so the Mastodon column matches the OpenSpace one (HomeScreen uses
+  // the same maxWidth: 760 / padding: 16 / bordered wrapper around its
+  // composer + post list). On native the screen renders flat.
+  const webOuterCardStyle = Platform.OS === 'web' ? styles.webOuterCard : null;
+
+  // Card chrome — match whatever the surrounding feed uses on this
+  // platform so the Mastodon column doesn't look out-of-place.
+  //  - Native: FeedScreenContainer overrides postCardStyles.feedPostCard
+  //    to edge-to-edge (no L/R borders, hairline bottom, no radius).
+  //    We mirror that here so the Mastodon cards have the same width.
+  //  - Web: HomeScreen renders OpenSpace cards with the BASE style
+  //    (rounded, bordered, full padding). Edge-to-edge there made the
+  //    Mastodon cards visibly wider than the OpenSpace ones.
   const cardStyle = useMemo(
-    () => ({
-      ...postCardStyles.feedPostCard,
-      borderTopWidth: 0,
-      borderLeftWidth: 0,
-      borderRightWidth: 0,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderRadius: 0,
-      paddingHorizontal: 14,
-    }),
+    () =>
+      Platform.OS === 'web'
+        ? postCardStyles.feedPostCard
+        : {
+            ...postCardStyles.feedPostCard,
+            borderTopWidth: 0,
+            borderLeftWidth: 0,
+            borderRightWidth: 0,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderRadius: 0,
+            paddingHorizontal: 14,
+          },
     [],
   );
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        webOuterCardStyle,
+        Platform.OS === 'web' ? { borderColor: c.border, backgroundColor: c.surface } : null,
+      ]}
+    >
       {showConnectBanner ? (
         <View style={styles.chromeInset}>
         <View style={[styles.connectBanner, { borderColor: c.border, backgroundColor: c.surface }]}>
@@ -787,9 +807,21 @@ function makeStyles(c: any) {
       // states) get their own horizontal padding via the inset wrapper
       // below.
     },
+    // Web-only: matches HomeScreen's `feedCard` exactly so the Mastodon
+    // column has identical width and chrome to the OpenSpace one.
+    webOuterCard: {
+      width: '100%',
+      maxWidth: 760,
+      alignSelf: 'center',
+      borderWidth: 1,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 20,
+    },
     chromeInset: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
+      // Outer card already pads on web; no need to inset further.
+      paddingHorizontal: Platform.OS === 'web' ? 0 : 16,
+      paddingTop: Platform.OS === 'web' ? 0 : 12,
     },
     connectBanner: {
       borderWidth: 1,
