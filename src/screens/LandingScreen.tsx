@@ -1504,20 +1504,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </View>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                onPress={switchToContinueMastodon}
-                disabled={loading || socialLoadingProvider !== null}
-                activeOpacity={0.85}
-              >
-                <View style={styles.socialButtonContent}>
-                  <MaterialCommunityIcons name="mastodon" size={17} color="#6364FF" />
-                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
-                    {t('auth.socialContinueMastodon', { defaultValue: 'Continue with Mastodon' })}
-                  </Text>
-                </View>
-              </TouchableOpacity>
             </WebForm>
           ) : authMode === 'signup' ? (
             <WebForm onSubmit={handleRegister}>
