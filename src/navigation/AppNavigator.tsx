@@ -53,6 +53,7 @@ import SearchResultsScreenContainer from './screens/SearchResultsScreenContainer
 import HashtagScreenContainer from './screens/HashtagScreenContainer';
 import { NotificationsProvider } from '../context/NotificationsContext';
 import PostDetailScreenContainer from './screens/PostDetailScreenContainer';
+import LongPostDetailScreenContainer from './screens/LongPostDetailScreenContainer';
 import PublicProfileScreenContainer from './screens/PublicProfileScreenContainer';
 import UserCommunitiesScreenContainer from './screens/UserCommunitiesScreenContainer';
 import UserFollowingsScreenContainer from './screens/UserFollowingsScreenContainer';
@@ -107,6 +108,10 @@ export type PostScreenParams = {
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' | 'mastodon' } | undefined;
   Post: PostScreenParams;
+  /** Dedicated screen for long posts (post.type === 'LP'). Uses the
+   *  same params shape as Post — useNativePostInteractions decides
+   *  which route to navigate to based on post type. */
+  LongPost: PostScreenParams;
   Profile: { username: string };
   Community: { name: string };
   Hashtag: { name: string };
@@ -122,6 +127,7 @@ export type CommunitiesStackParamList = {
   Community: { name: string };
   CommunityMembers: { name: string };
   Post: PostScreenParams;
+  LongPost: PostScreenParams;
 };
 
 export type ProfileStackParamList = {
@@ -142,6 +148,7 @@ export type ProfileStackParamList = {
   UserCommunities: { username: string };
   UserFollowings: { username: string };
   Post: PostScreenParams;
+  LongPost: PostScreenParams;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -203,6 +210,11 @@ function HomeTabStack() {
         // The Post viewer flips to its immersive dark background only once
         // the post has loaded; while we're fetching it we want the regular
         // theme background so the user doesn't see a black flash.
+        options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
+      <HomeStack.Screen
+        name="LongPost"
+        component={LongPostDetailScreenContainer}
         options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
       />
       <HomeStack.Screen
@@ -298,6 +310,11 @@ function CommunitiesTabStack() {
       <CommunitiesStack.Screen
         name="Post"
         component={PostDetailScreenContainer}
+        options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
+      <CommunitiesStack.Screen
+        name="LongPost"
+        component={LongPostDetailScreenContainer}
         options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
       />
     </CommunitiesStack.Navigator>
@@ -397,6 +414,11 @@ function ProfileTabStack() {
       <ProfileStack.Screen
         name="Post"
         component={PostDetailScreenContainer}
+        options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
+      <ProfileStack.Screen
+        name="LongPost"
+        component={LongPostDetailScreenContainer}
         options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
       />
     </ProfileStack.Navigator>

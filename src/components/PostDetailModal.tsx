@@ -2436,30 +2436,84 @@ export default function PostDetailModal({
                         {renderCommentMedia(reply.media)}
                       </>
                     )}
+                    {(() => {
+                      // Reaction chips for the reply — same shape as the
+                      // parent comment's chips. Tapping a chip toggles
+                      // the user's reaction for the matching emoji.
+                      const activeEntries = (reply.reactions_emoji_counts || []).filter((e) => (e?.count || 0) > 0);
+                      if (activeEntries.length === 0) return null;
+                      const total = activeEntries.reduce((sum, e) => sum + (e.count || 0), 0);
+                      return (
+                        <View style={styles.commentReactionBubbleRow}>
+                          <View style={styles.commentReactionChipGroup}>
+                            {activeEntries.map((entry, idx) => {
+                              const isMyReaction = !!entry.emoji?.id && reply.reaction?.emoji?.id === entry.emoji.id;
+                              return (
+                                <TouchableOpacity
+                                  key={`detail-reply-reaction-${reply.id}-${entry.emoji?.id || idx}`}
+                                  style={[
+                                    styles.commentReactionChip,
+                                    { borderColor: isMyReaction ? c.primary : c.border, backgroundColor: isMyReaction ? c.surface : c.inputBackground },
+                                  ]}
+                                  activeOpacity={0.75}
+                                  disabled={reactionActionLoading}
+                                  onPress={() => { void onReactToComment(postId, reply.id, entry.emoji?.id); }}
+                                >
+                                  {entry.emoji?.image ? (
+                                    <Image source={{ uri: entry.emoji.image }} style={styles.commentReactionEmojiImage} resizeMode="contain" />
+                                  ) : (
+                                    <MaterialCommunityIcons name="emoticon-outline" size={12} color={isMyReaction ? c.primary : c.textSecondary} />
+                                  )}
+                                  <Text style={[styles.commentReactionCount, { color: isMyReaction ? c.primary : c.textSecondary }]}>
+                                    {entry.count || 0}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          <Text style={[styles.commentReactionTotal, { color: c.textMuted }]}>{total}</Text>
+                        </View>
+                      );
+                    })()}
                   </View>
                 </View>
-                {isOwnReply && !isEditingReply ? (
+                {!isEditingReply ? (
                   <View style={[styles.detailCommentMetaRow, { marginTop: 4, marginLeft: 44 }]}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => onStartEditingComment(reply.id, reply.text || '', true)}>
-                      <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>{t('home.editAction')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      disabled={!!commentMutationLoadingById[reply.id]}
-                      onPress={() => onDeleteComment(postId, reply.id, true, comment.id)}
+                    {/* React button is always available — picker host is
+                        keyed by reply id so the popover anchors here. */}
+                    <View
+                      style={styles.commentReactionActionWrap}
+                      ref={(node) => {
+                        if (!node) return;
+                        commentReactionHostRefs.current[reply.id] = node as any;
+                      }}
                     >
-                        <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>
-                        {commentMutationLoadingById[reply.id] ? '...' : t('home.deleteAction')}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (!isOwnReply && !!onReportComment && !!activePost?.uuid) ? (
-                  <View style={[styles.detailCommentMetaRow, { marginTop: 4, marginLeft: 44 }]}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => onReportComment(activePost.uuid!, reply.id)}>
-                      <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
-                        {t('home.reportCommentAction', { defaultValue: 'Report' })}
-                      </Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity activeOpacity={0.85} onPress={() => toggleCommentReactionPicker(reply.id)}>
+                        <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>{t('home.reactAction')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {isOwnReply ? (
+                      <>
+                        <TouchableOpacity activeOpacity={0.85} onPress={() => onStartEditingComment(reply.id, reply.text || '', true)}>
+                          <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>{t('home.editAction')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          disabled={!!commentMutationLoadingById[reply.id]}
+                          onPress={() => onDeleteComment(postId, reply.id, true, comment.id)}
+                        >
+                          <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>
+                            {commentMutationLoadingById[reply.id] ? '...' : t('home.deleteAction')}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (!!onReportComment && !!activePost?.uuid) ? (
+                      <TouchableOpacity activeOpacity={0.85} onPress={() => onReportComment(activePost.uuid!, reply.id)}>
+                        <Text style={[styles.detailCommentMetaAction, { color: c.textMuted }]}>
+                          {t('home.reportCommentAction', { defaultValue: 'Report' })}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
               </View>

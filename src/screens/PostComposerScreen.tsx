@@ -56,7 +56,7 @@ import {
 } from '../utils/shortPostEmbeds';
 
 const MAX_COMMUNITIES = 3;
-const MAX_SHORT_LENGTH = 280;
+const MAX_SHORT_LENGTH = 5000;
 const MAX_LONG_LENGTH = 10_000;
 const MAX_IMAGES = 5;
 
@@ -1875,7 +1875,7 @@ function AudienceSheet({
                         activeOpacity={0.85}
                         onPress={() => circle.id != null && onSelectCircle(circle.id)}
                       >
-                        <View style={[sheetStyles.colorDot, { backgroundColor: circle.color || c.primary }]} />
+                        <View style={[sheetStyles.colorDot, { backgroundColor: circle.color || c.primary, borderWidth: 1, borderColor: c.border }]} />
                         <View style={{ flex: 1 }}>
                           <Text style={[sheetStyles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
                             {circle.name || t('home.composerCircleFallback', { defaultValue: 'Circle' })}
@@ -2036,7 +2036,7 @@ function LongAudiencePage({
                   activeOpacity={0.85}
                   onPress={() => onSelectCircle(cc.id)}
                 >
-                  <View style={[sheetStyles.avatar, { backgroundColor: circleColor }]} />
+                  <View style={[sheetStyles.avatar, { backgroundColor: circleColor, borderWidth: 1, borderColor: c.border }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={[sheetStyles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>{cc.name}</Text>
                     <Text style={[sheetStyles.rowSub, { color: c.textMuted }]} numberOfLines={1}>

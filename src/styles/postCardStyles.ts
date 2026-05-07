@@ -188,6 +188,24 @@ export const postCardStyles = StyleSheet.create({
     maxHeight: 460,
     borderRadius: 12,
   },
+  // LP feed-card hero image — small visual hint that the post has
+  // visual content. Capped to 180px so the card doesn't grow too tall.
+  longPostHeroImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  // LP feed-card metadata line ("3 photos · 2 min read"). Plain inline
+  // text — no chip/icons — so the layout is bulletproof on RN Web where
+  // nested-flex + icon font rendering caused stacking issues.
+  longPostMetaLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
   longPostEmbedChip: {
     flexDirection: 'row',
     alignItems: 'center',

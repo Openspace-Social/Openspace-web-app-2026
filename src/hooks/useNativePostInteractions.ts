@@ -222,24 +222,35 @@ export function useNativePostInteractions({
         if (openReactionList) openReactionList(post);
         else stub('Reaction details');
       },
-      onReactToComment: () => {
-        stub('Comment reactions');
+      // PostCard / PostDetailModal already render the comment-reaction
+      // picker + chips; this just wires the tap to the real API call.
+      // Hook handles optimistic update + rollback, locates the target
+      // across both top-level comments and replies, and toggles off if
+      // the user re-picks their existing reaction.
+      onReactToComment: (postId, commentId, emojiId) => {
+        if (typeof emojiId !== 'number') return;
+        void comments.reactToComment(postId, commentId, emojiId);
       },
 
       // ── Navigation (real) ─────────────────────────────────────────
       onOpenPostDetail: (post, options) => {
         const uuid = (post as any)?.uuid;
         if (!uuid) return;
-        navigation.navigate('Post', {
+        // Long posts route to a dedicated full-screen reader instead of
+        // PostDetailModal — the modal's split-view media gallery layout
+        // doesn't suit article-style content.
+        const isLongPost = String((post as any)?.type || '').toUpperCase() === 'LP';
+        const route = isLongPost ? 'LongPost' : 'Post';
+        navigation.navigate(route as any, {
           postUuid: uuid,
           focusComment: !!options?.focusComposer,
           // Pass the inline-feed video's playback position through so the
           // detail player resumes where the feed cell left off (mirrors
           // web's resumeTimeSec hand-off via openPostDetailWithPause).
           resumeTimeSec: options?.resumeTimeSec,
-          // Lets the detail screen pick the right initial view mode (media
-          // tap → mediaFull, comment-icon tap → commentsFull). Without this
-          // every entry would default to the same mode regardless of intent.
+          // Lets the (short-post) detail screen pick the right initial
+          // view mode based on what the user tapped. The long-post
+          // reader ignores it.
           initialView: options?.initialView,
         });
       },

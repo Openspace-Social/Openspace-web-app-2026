@@ -636,7 +636,7 @@ export default function ProfileActionsMenu({
                 <View style={{
                   width: 18, height: 18, borderRadius: 9,
                   backgroundColor: circle.color || c.primary,
-                  borderWidth: selected ? 0 : 2,
+                  borderWidth: selected ? 1 : 2,
                   borderColor: c.border,
                 }} />
                 <Text style={{ flex: 1, fontSize: 15, color: c.textPrimary }}>{circle.name}</Text>

@@ -878,8 +878,94 @@ function PostCard({
         defaultValue: `+${extraCommunitiesCount} ${extraCommunitiesCount === 1 ? 'community' : 'communities'}`,
       })
     : '';
-  const visibleLongPostBlocks = expandedPostIds[post.id] ? longPostBlocks : longPostBlocks.slice(0, 3);
-  const hasHiddenLongBlocks = longPostBlocks.length > visibleLongPostBlocks.length;
+  // In the feed card, render only TEXT blocks (heading / paragraph /
+  // quote). Images / embeds / tables reserve big chunks of vertical
+  // space (minHeight 220-460 per image), which created the huge blank
+  // gaps and 6-7-line paragraph distances reported on long-post cards.
+  // The full block layout — including images at full size — still
+  // renders inside PostDetailModal when the user taps to open the post.
+  const TEXT_BLOCK_TYPES = new Set(['heading', 'paragraph', 'quote']);
+  const longPostTextOnlyBlocks = React.useMemo(
+    () => longPostBlocks.filter((b: any) => TEXT_BLOCK_TYPES.has(b.type)),
+    [longPostBlocks],
+  );
+  // Feed-card preview: heading(s) + the FIRST paragraph only, with the
+  // paragraph itself capped at ~400 chars (truncated at a word boundary
+  // and elided). Anything more belongs to the dedicated LP reader,
+  // which "See more" navigates to. Keeps cards short and scannable.
+  const LP_PREVIEW_CHAR_BUDGET = 400;
+  const { previewBlocks, previewWasTruncated } = React.useMemo(() => {
+    const blocks: any[] = [];
+    let firstParagraphSeen = false;
+    let truncated = false;
+    for (const b of longPostTextOnlyBlocks) {
+      if (b.type === 'heading' || b.type === 'quote') {
+        blocks.push(b);
+        continue;
+      }
+      if (b.type === 'paragraph') {
+        if (firstParagraphSeen) break;
+        firstParagraphSeen = true;
+        const raw = (b.text || '').trim();
+        if (raw.length > LP_PREVIEW_CHAR_BUDGET) {
+          // Trim back to the last word boundary inside the budget so
+          // we don't slice mid-word. 280 is a floor — if there's no
+          // space in the first 280 chars, just hard-cut at the budget.
+          const cut = raw.slice(0, LP_PREVIEW_CHAR_BUDGET);
+          const lastSpace = cut.lastIndexOf(' ');
+          const trimmedText = (lastSpace > 280 ? cut.slice(0, lastSpace) : cut).trimEnd();
+          blocks.push({ ...b, text: `${trimmedText}…` });
+          truncated = true;
+        } else {
+          blocks.push(b);
+        }
+      }
+    }
+    return { previewBlocks: blocks, previewWasTruncated: truncated };
+  }, [longPostTextOnlyBlocks]);
+  const visibleLongPostBlocks = previewBlocks;
+  // "See more" surfaces when there's anything the card couldn't show:
+  // hidden text blocks, truncated paragraph text, or non-text blocks
+  // (images, embeds, tables) — tapping always opens the dedicated LP
+  // reader where the full layout renders.
+  const hasMoreParagraphsHidden =
+    longPostTextOnlyBlocks.filter((b: any) => b.type === 'paragraph').length > 1;
+  const hasNonTextBlocks = longPostBlocks.length > longPostTextOnlyBlocks.length;
+  const hasHiddenLongBlocks = previewWasTruncated || hasMoreParagraphsHidden || hasNonTextBlocks;
+  // Hero image — first image block with a URL — renders as a small
+  // teaser at the top of the LP feed card so the card has visual
+  // weight without giving up the whole layout to inline images.
+  const longPostHeroImage = React.useMemo(
+    () => longPostBlocks.find((b: any) => b.type === 'image' && !!b.url) || null,
+    [longPostBlocks],
+  );
+  // Metadata chip — `📷 N photos · M min read` style. Reading time is
+  // a rough words-per-minute estimate over all text blocks; only shown
+  // when ≥1 minute. Photo count includes every image block.
+  const longPostImageCount = React.useMemo(
+    () => longPostBlocks.filter((b: any) => b.type === 'image' && !!b.url).length,
+    [longPostBlocks],
+  );
+  const longPostReadMinutes = React.useMemo(() => {
+    const wordCount = longPostBlocks.reduce((sum: number, b: any) => {
+      if (!TEXT_BLOCK_TYPES.has(b.type)) return sum;
+      const text = (b.text || '').trim();
+      if (!text) return sum;
+      return sum + text.split(/\s+/).length;
+    }, 0);
+    if (wordCount === 0) return 0;
+    return Math.max(1, Math.round(wordCount / 225));
+  }, [longPostBlocks]);
+  const longPostMetaLabel = React.useMemo(() => {
+    const parts: string[] = [];
+    if (longPostImageCount > 0) {
+      parts.push(t('home.longPostPhotosCount', { count: longPostImageCount, defaultValue: '{{count}} photos' }));
+    }
+    if (longPostReadMinutes > 0) {
+      parts.push(t('home.longPostReadMinutes', { count: longPostReadMinutes, defaultValue: '{{count}} min read' }));
+    }
+    return parts.join(' · ');
+  }, [longPostImageCount, longPostReadMinutes, t]);
   // LP posts that contain inline image blocks own those images — suppress the
   // detached media gallery so images stay in their authored body position.
   const hasLongPostInlineImages = postType === 'LP' && longPostBlocks.some((b) => b.type === 'image' && !!b.url);
@@ -1816,6 +1902,18 @@ function PostCard({
       {postType === 'LP' && longPostBlocks.length > 0 ? (
         Platform.OS !== 'web' ? (
           <TouchableOpacity activeOpacity={0.92} onPress={openPostDetailDefault} style={styles.feedTextWrap}>
+            {longPostHeroImage?.url ? (
+              <Image
+                source={{ uri: longPostHeroImage.url }}
+                style={styles.longPostHeroImage}
+                resizeMode="cover"
+              />
+            ) : null}
+            {longPostMetaLabel ? (
+              <Text style={[styles.longPostMetaLine, { color: c.textMuted }]}>
+                {longPostMetaLabel}
+              </Text>
+            ) : null}
             <View style={styles.longPostBlockList}>
               {visibleLongPostBlocks.map((block, idx) => {
                 if (block.type === 'heading') {
@@ -1979,15 +2077,30 @@ function PostCard({
               })}
             </View>
             {allowExpandControl && hasHiddenLongBlocks ? (
-              <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
+              <TouchableOpacity
+                onPress={openPostDetailDefault}
+                activeOpacity={0.85}
+              >
                 <Text style={[styles.seeMoreText, { color: c.textLink }]}>
-                  {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+                  {t('home.seeMore')}
                 </Text>
               </TouchableOpacity>
             ) : null}
           </TouchableOpacity>
         ) : (
         <View style={styles.feedTextWrap}>
+          {longPostHeroImage?.url ? (
+            <Image
+              source={{ uri: longPostHeroImage.url }}
+              style={styles.longPostHeroImage}
+              resizeMode="cover"
+            />
+          ) : null}
+          {longPostMetaLabel ? (
+            <Text style={[styles.longPostMetaLine, { color: c.textMuted }]}>
+              {longPostMetaLabel}
+            </Text>
+          ) : null}
           <View style={styles.longPostBlockList}>
             {visibleLongPostBlocks.map((block, idx) => {
               if (block.type === 'heading') {
@@ -2213,9 +2326,9 @@ function PostCard({
             })}
           </View>
           {allowExpandControl && hasHiddenLongBlocks ? (
-            <TouchableOpacity onPress={() => onToggleExpand(post.id)} activeOpacity={0.85}>
+            <TouchableOpacity onPress={openPostDetailDefault} activeOpacity={0.85}>
               <Text style={[styles.seeMoreText, { color: c.textLink }]}>
-                {expandedPostIds[post.id] ? t('home.seeLess') : t('home.seeMore')}
+                {t('home.seeMore')}
               </Text>
             </TouchableOpacity>
           ) : null}

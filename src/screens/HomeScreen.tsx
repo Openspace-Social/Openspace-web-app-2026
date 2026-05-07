@@ -60,6 +60,7 @@ import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import MastodonFeedScreen from '../components/MastodonFeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
+import LongPostDetailWebView from '../components/LongPostDetailWebView';
 import RouteSummaryCard from '../components/RouteSummaryCard';
 import HashtagFeedSection from '../components/HashtagFeedSection';
 import LongPostDrawer, { LongPostBlock, LongPostEditorMode } from '../components/LongPostDrawer';
@@ -7955,7 +7956,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                               <View
                                 style={[
                                   styles.postComposerCircleColorSwatch,
-                                  { backgroundColor: circleColor || c.border },
+                                  { backgroundColor: circleColor || c.border, borderWidth: 1, borderColor: c.border },
                                 ]}
                               />
                               <View style={styles.postComposerDestinationItemMeta}>
@@ -8201,11 +8202,46 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         </TouchableOpacity>
       </Modal>
 
+      {String((activePost as any)?.type || '').toUpperCase() === 'LP' ? (
+        <LongPostDetailWebView
+          c={c}
+          t={t}
+          visible={!!activePost || postRouteLoading}
+          postRouteLoading={postRouteLoading}
+          activePost={activePost}
+          currentUsername={user?.username}
+          localComments={localComments}
+          commentRepliesById={commentRepliesById}
+          commentRepliesExpanded={commentRepliesExpanded}
+          commentRepliesLoadingById={commentRepliesLoadingById}
+          editingCommentById={editingCommentById}
+          editingReplyById={editingReplyById}
+          commentMutationLoadingById={commentMutationLoadingById}
+          reactionGroups={reactionGroups}
+          reactionPickerLoading={reactionPickerLoading}
+          reactionActionLoading={reactionActionLoading}
+          getPostReactionCount={getPostReactionCount}
+          getPostCommentsCount={getPostCommentsCount}
+          onClose={closePostDetail}
+          onEnsureReactionGroups={ensureReactionGroups}
+          onReactToPostWithEmoji={reactToPostWithEmoji}
+          onReactToComment={reactToComment}
+          onToggleCommentReplies={toggleCommentReplies}
+          onSubmitComment={submitComment}
+          onSubmitReply={submitReply}
+          onStartEditingComment={startEditingComment}
+          onCancelEditingComment={cancelEditingComment}
+          onSaveEditedComment={saveEditedComment}
+          onDeleteComment={deleteComment}
+          onSharePost={handleSharePost}
+        />
+      ) : null}
+
       <PostDetailModal
         styles={styles}
         c={c}
         t={t}
-        visible={!!activePost || postRouteLoading}
+        visible={(!!activePost || postRouteLoading) && String((activePost as any)?.type || '').toUpperCase() !== 'LP'}
         postRouteLoading={postRouteLoading}
         activePost={activePost}
         hasActivePostMedia={hasActivePostMedia}
@@ -9767,7 +9803,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     activeOpacity={0.8}
                     onPress={() => onNavigate({ screen: 'circles' })}
                   >
-                    <View style={[styles.sidebarCircleDot, { backgroundColor: circle.color || c.primary }]} />
+                    <View style={[styles.sidebarCircleDot, { backgroundColor: circle.color || c.primary, borderWidth: 1, borderColor: c.border }]} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={[styles.sidebarListRowTitle, { color: c.textPrimary }]} numberOfLines={1}>
                         {circle.name}

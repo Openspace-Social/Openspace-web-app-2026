@@ -68,7 +68,7 @@ function DetailScroller({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CircleColorDot({ color, size = 12 }: { color?: string; size?: number }) {
+function CircleColorDot({ color, size = 12, borderColor }: { color?: string; size?: number; borderColor?: string }) {
   return (
     <View
       style={{
@@ -77,6 +77,8 @@ function CircleColorDot({ color, size = 12 }: { color?: string; size?: number })
         borderRadius: size / 2,
         backgroundColor: color || '#64748B',
         marginRight: 8,
+        borderWidth: 1,
+        borderColor: borderColor || 'rgba(15, 23, 42, 0.18)',
       }}
     />
   );
@@ -410,7 +412,7 @@ export default function CirclesScreen({ token, c, t, onNotice }: Props) {
               onPress={() => void openDetail(circle)}
             >
               <View style={s.circleRowLeft}>
-                <CircleColorDot color={circle.color} size={14} />
+                <CircleColorDot color={circle.color} size={14} borderColor={c.border} />
                 <Text style={[s.circleName, { color: c.textPrimary }]}>
                   {circle.name || t('circles.unnamed', { defaultValue: 'Unnamed circle' })}
                 </Text>
@@ -501,7 +503,7 @@ export default function CirclesScreen({ token, c, t, onNotice }: Props) {
                 {/* ── Detail header */}
                 <View style={s.detailHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <CircleColorDot color={detailCircle.color} size={16} />
+                    <CircleColorDot color={detailCircle.color} size={16} borderColor={c.border} />
                     <Text style={[s.cardTitle, { color: c.textPrimary, marginBottom: 0 }]}>
                       {detailCircle.name || t('circles.unnamed', { defaultValue: 'Unnamed circle' })}
                     </Text>

@@ -1,5 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, FederatedLinkedAccount, FederatedTimelineStatus } from '../api/client';
 import { openExternalLink } from '../utils/openExternalLink';
@@ -107,6 +121,14 @@ export default function MastodonFeedScreen({
 
   const [replyDraftById, setReplyDraftById] = useState<Record<string, string>>({});
   const [replySubmitting, setReplySubmitting] = useState<Record<string, boolean>>({});
+
+  // Reply-composer modal state. When set, a focused full-screen sheet
+  // appears with a preview of the post being replied to + a single
+  // multi-line input — mirrors the `composerState` pattern from
+  // PostDetailModal so writing a reply feels the same on Mastodon
+  // posts as it does on OpenSpace ones.
+  const [composerStatusId, setComposerStatusId] = useState<string | null>(null);
+  const { height: screenHeight } = useWindowDimensions();
 
   // Single read of the user's autoplay-media preference; threaded down
   // to each video so they all honour the same setting without re-reading
@@ -251,6 +273,10 @@ export default function MastodonFeedScreen({
             [id]: { ...prev[id], repliesCount: baseCount + 1 },
           };
         });
+        // Reveal the thread (with the new reply at the bottom) and
+        // close the focused composer modal.
+        setExpandedById((prev) => ({ ...prev, [id]: true }));
+        setComposerStatusId((prev) => (prev === id ? null : prev));
       } catch (e: any) {
         setContextError((prev) => ({
           ...prev,
@@ -266,6 +292,31 @@ export default function MastodonFeedScreen({
     },
     [token, linkedAccount?.id, replyDraftById, replySubmitting, t],
   );
+
+  // Resolve the status the composer is targeting. Mastodon items can be
+  // reblogs (item.reblog), so the inner status — the one whose id we
+  // captured — is what we render in the preview.
+  const composerStatus = useMemo(() => {
+    if (!composerStatusId) return null;
+    for (const item of items) {
+      const inner = item.reblog || item;
+      if (inner.id === composerStatusId) return inner;
+    }
+    return null;
+  }, [composerStatusId, items]);
+
+  const composerDraft = composerStatusId ? (replyDraftById[composerStatusId] || '') : '';
+  const composerSubmitting = composerStatusId ? !!replySubmitting[composerStatusId] : false;
+  const composerCanSubmit = composerDraft.trim().length > 0 && !composerSubmitting;
+  const closeComposer = () => {
+    if (composerSubmitting) return;
+    // Dismiss the keyboard ourselves — without this, on iOS the first
+    // tap on the X (or backdrop) only blurs the focused TextInput and
+    // doesn't fire the press handler, making the close button feel
+    // broken until the user taps a second time.
+    Keyboard.dismiss();
+    setComposerStatusId(null);
+  };
 
   const showConnectBanner = !linkedAccount;
 
@@ -618,33 +669,25 @@ export default function MastodonFeedScreen({
                     )}
 
                     {token && linkedAccount?.id ? (
-                      <View style={[styles.replyComposer, { borderTopColor: c.border }]}>
-                        <TextInput
-                          style={[styles.replyInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-                          value={draft}
-                          onChangeText={(value) => setReplyDraftById((prev) => ({ ...prev, [status.id]: value }))}
-                          placeholder={t('home.mastodonReplyPlaceholder', { defaultValue: 'Reply to this Mastodon post…' })}
-                          placeholderTextColor={c.placeholder}
-                          multiline
-                        />
-                        <TouchableOpacity
-                          style={[
-                            styles.replySubmit,
-                            { backgroundColor: canSubmitReply ? c.primary : c.inputBackground, borderColor: c.border },
-                          ]}
-                          activeOpacity={0.85}
-                          disabled={!canSubmitReply}
-                          onPress={() => void handleSubmitReply(status)}
-                        >
-                          {isReplySubmitting ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={[styles.replySubmitText, { color: canSubmitReply ? '#fff' : c.textMuted }]}>
-                              {t('home.mastodonReplySubmit', { defaultValue: 'Reply' })}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.replyLauncher,
+                          {
+                            borderTopColor: c.border,
+                            borderColor: c.inputBorder,
+                            backgroundColor: c.inputBackground,
+                          },
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => setComposerStatusId(status.id)}
+                      >
+                        <Text style={[styles.replyLauncherText, { color: c.textMuted }]} numberOfLines={1}>
+                          {draft.trim().length > 0
+                            ? draft
+                            : t('home.mastodonReplyPlaceholder', { defaultValue: 'Reply to this Mastodon post…' })}
+                        </Text>
+                        <MaterialCommunityIcons name="pencil-outline" size={16} color={c.textMuted} />
+                      </TouchableOpacity>
                     ) : null}
                   </View>
                 ) : null}
@@ -661,6 +704,163 @@ export default function MastodonFeedScreen({
           ) : null}
         </View>
       )}
+
+      <Modal
+        visible={composerStatus !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={closeComposer}
+      >
+        {composerStatus ? (
+          <View style={styles.composerOverlay} pointerEvents="box-none">
+            <Pressable
+              style={styles.composerBackdrop}
+              onPress={closeComposer}
+            />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.composerKeyboardWrap}
+            >
+              <View
+                style={[
+                  styles.composerSheet,
+                  Platform.OS === 'web' ? styles.composerSheetWeb : styles.composerSheetMobile,
+                  {
+                    borderColor: c.border,
+                    backgroundColor: c.surface,
+                    maxHeight: Math.min(screenHeight * 0.88, 760),
+                  },
+                ]}
+              >
+                {Platform.OS !== 'web' ? (
+                  <View style={styles.composerGrabberWrap}>
+                    <View style={[styles.composerGrabber, { backgroundColor: c.border }]} />
+                  </View>
+                ) : null}
+
+                <View style={styles.composerHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.composerTitle, { color: c.textPrimary }]}>
+                      {t('home.mastodonReplySubmit', { defaultValue: 'Reply' })}
+                    </Text>
+                    <Text style={[styles.composerSubtitle, { color: c.textMuted }]} numberOfLines={1}>
+                      {t('home.replyingToLabel', {
+                        defaultValue: 'Replying to @{{username}}',
+                        username:
+                          composerStatus.account?.acct
+                          || composerStatus.account?.username
+                          || linkedAccount?.instance_domain
+                          || 'Mastodon',
+                      })}
+                    </Text>
+                  </View>
+                  <Pressable
+                    // Pressable instead of TouchableOpacity — avoids the
+                    // iOS quirk where, with the keyboard open inside a
+                    // Modal, the first tap on a TouchableOpacity above
+                    // the input gets eaten by the keyboard's
+                    // tap-to-dismiss behaviour and never fires onPress.
+                    onPress={closeComposer}
+                    disabled={composerSubmitting}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.composerCloseBtn,
+                      { borderColor: c.border, backgroundColor: c.inputBackground },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <MaterialCommunityIcons name="close" size={18} color={c.textSecondary} />
+                  </Pressable>
+                </View>
+
+                {(() => {
+                  const previewText = stripHtml(composerStatus.content);
+                  const previewMedia = composerStatus.media_attachments || [];
+                  const previewImage = previewMedia.find((m) => m.type === 'image');
+                  const previewAccount = composerStatus.account;
+                  return (
+                    <View
+                      style={[
+                        styles.composerPreview,
+                        { borderColor: c.border, backgroundColor: c.inputBackground },
+                      ]}
+                    >
+                      <View style={styles.composerPreviewHeader}>
+                        {previewAccount?.avatar_url ? (
+                          <Image source={{ uri: previewAccount.avatar_url }} style={styles.composerPreviewAvatar} />
+                        ) : (
+                          <View style={[styles.composerPreviewAvatar, { backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }]}>
+                            <Text style={styles.composerPreviewAvatarLetter}>
+                              {(previewAccount?.display_name || previewAccount?.username || 'M').slice(0, 1).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text numberOfLines={1} style={[styles.composerPreviewAuthor, { color: c.textPrimary }]}>
+                            {previewAccount?.display_name || previewAccount?.username || 'Mastodon'}
+                          </Text>
+                          <Text numberOfLines={1} style={[styles.composerPreviewHandle, { color: c.textMuted }]}>
+                            @{previewAccount?.acct || previewAccount?.username || linkedAccount?.instance_domain || ''}
+                          </Text>
+                        </View>
+                      </View>
+                      {previewText ? (
+                        <Text numberOfLines={4} style={[styles.composerPreviewText, { color: c.textSecondary }]}>
+                          {previewText}
+                        </Text>
+                      ) : null}
+                      {previewImage?.preview_url || previewImage?.url ? (
+                        <Image
+                          source={{ uri: previewImage.preview_url || previewImage.url }}
+                          style={styles.composerPreviewImage}
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                    </View>
+                  );
+                })()}
+
+                <TextInput
+                  style={[
+                    styles.composerInput,
+                    { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
+                  ]}
+                  value={composerDraft}
+                  onChangeText={(value) =>
+                    setReplyDraftById((prev) => ({ ...prev, [composerStatus.id]: value }))
+                  }
+                  placeholder={t('home.mastodonReplyPlaceholder', { defaultValue: 'Reply to this Mastodon post…' })}
+                  placeholderTextColor={c.placeholder}
+                  multiline
+                  autoFocus
+                  editable={!composerSubmitting}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.composerSubmit,
+                    {
+                      backgroundColor: composerCanSubmit ? c.primary : c.inputBackground,
+                      borderColor: c.border,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  disabled={!composerCanSubmit}
+                  onPress={() => void handleSubmitReply(composerStatus)}
+                >
+                  {composerSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={[styles.composerSubmitText, { color: composerCanSubmit ? '#fff' : c.textMuted }]}>
+                      {t('home.mastodonReplySubmit', { defaultValue: 'Reply' })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        ) : null}
+      </Modal>
     </View>
   );
 }
@@ -993,33 +1193,142 @@ function makeStyles(c: any) {
       fontSize: 13,
       lineHeight: 18,
     },
-    replyComposer: {
+    // Inline launcher button at the bottom of the expanded thread —
+    // tapping it opens the focused composer modal.
+    replyLauncher: {
       borderTopWidth: 1,
-      paddingTop: 10,
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      gap: 8,
-    },
-    replyInput: {
-      flex: 1,
       borderWidth: 1,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      fontSize: 14,
-      maxHeight: 100,
-    },
-    replySubmit: {
-      borderWidth: 1,
-      borderRadius: 10,
+      borderRadius: 999,
       paddingHorizontal: 14,
       paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      marginTop: 4,
+    },
+    replyLauncherText: {
+      flex: 1,
+      fontSize: 13,
+    },
+    // Focused reply composer modal — mirrors PostDetailModal's composer
+    // overlay so the UX is consistent across feed types.
+    composerOverlay: {
+      flex: 1,
+      justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+      alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
+    },
+    composerBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(11,14,19,0.7)',
+    },
+    composerKeyboardWrap: {
+      width: '100%',
+      alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
+      justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+    },
+    composerSheet: {
+      borderWidth: 1,
+      padding: 16,
+      gap: 12,
+    },
+    composerSheetWeb: {
+      width: '100%',
+      maxWidth: 640,
+      borderRadius: 18,
+    },
+    composerSheetMobile: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 28,
+    },
+    composerGrabberWrap: {
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    composerGrabber: {
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+    },
+    composerHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+    },
+    composerTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+    },
+    composerSubtitle: {
+      fontSize: 13,
+      marginTop: 2,
+    },
+    composerCloseBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 999,
+      borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: 64,
     },
-    replySubmitText: {
+    composerPreview: {
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 12,
+      gap: 8,
+    },
+    composerPreviewHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    composerPreviewAvatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 999,
+      overflow: 'hidden',
+    },
+    composerPreviewAvatarLetter: {
+      color: '#fff',
+      fontWeight: '700',
       fontSize: 13,
+    },
+    composerPreviewAuthor: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    composerPreviewHandle: {
+      fontSize: 12,
+    },
+    composerPreviewText: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    composerPreviewImage: {
+      width: '100%',
+      height: 140,
+      borderRadius: 10,
+    },
+    composerInput: {
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+      lineHeight: 20,
+      minHeight: 120,
+      textAlignVertical: 'top' as const,
+    },
+    composerSubmit: {
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    composerSubmitText: {
+      fontSize: 14,
       fontWeight: '700',
     },
     loadingMore: {
