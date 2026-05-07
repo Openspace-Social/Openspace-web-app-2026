@@ -92,10 +92,14 @@ const GAP         = 6;
 
 function detectTrigger(text: string, pos: number): ActiveTrigger | null {
   const before = text.slice(0, pos);
-  const m = /(?:^|[\s\n])([@#])([A-Za-z0-9_]*)$/.exec(before);
+  // Mentions allow `.` (matches server `username_characters_validator`);
+  // hashtags allow alphanumerics + `_` only (server `\w+` excludes `.`).
+  const m = /(?:^|[\s\n])(@[A-Za-z0-9_.]*|#[A-Za-z0-9_]*)$/.exec(before);
   if (!m) return null;
-  const spaceLen = m[0].length - m[1].length - m[2].length;
-  return { trigger: m[1] as '@' | '#', query: m[2], startIndex: m.index + spaceLen };
+  const trigger = m[1].charAt(0) as '@' | '#';
+  const query = m[1].slice(1);
+  const spaceLen = m[0].length - m[1].length;
+  return { trigger, query, startIndex: m.index + spaceLen };
 }
 
 function applyInsertion(text: string, start: number, cursor: number, rep: string): string {
