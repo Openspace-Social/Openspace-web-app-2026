@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAppToast } from '../../toast/AppToastContext';
-import { api, type FederatedLinkedAccount, type SocialIdentity, type SocialProvider } from '../../api/client';
+import { api, type FederatedIdentityLink, type FederatedLinkedAccount, type SocialIdentity, type SocialProvider } from '../../api/client';
 import { nativeSocialIdToken } from '../../utils/nativeSocialAuth';
 
 const PROVIDERS: SocialProvider[] = ['google', 'apple'];
@@ -38,6 +38,7 @@ export default function LinkedAccountsScreenContainer() {
 
   const [identities, setIdentities] = useState<SocialIdentity[]>([]);
   const [federatedLinkedAccounts, setFederatedLinkedAccounts] = useState<FederatedLinkedAccount[]>([]);
+  const [federatedIdentities, setFederatedIdentities] = useState<FederatedIdentityLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [providerBusy, setProviderBusy] = useState<SocialProvider | null>(null);
@@ -50,12 +51,14 @@ export default function LinkedAccountsScreenContainer() {
     setLoading(true);
     setError('');
     try {
-      const [socialList, federatedList] = await Promise.all([
+      const [socialList, federatedList, identityList] = await Promise.all([
         api.getLinkedSocialIdentities(token),
         api.getFederatedLinkedAccounts(token),
+        api.getFederatedIdentities(token),
       ]);
       setIdentities(Array.isArray(socialList) ? socialList : []);
       setFederatedLinkedAccounts(Array.isArray(federatedList) ? federatedList : []);
+      setFederatedIdentities(Array.isArray(identityList) ? identityList : []);
     } catch (e: any) {
       setError(e?.message || t('home.linkedAccountsLoadFailed', { defaultValue: 'Could not load linked accounts.' }));
     } finally {

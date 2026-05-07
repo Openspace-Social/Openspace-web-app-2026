@@ -172,6 +172,56 @@ export type FederatedLinkCallbackPayload = {
   code: string;
   state: string;
 };
+export type MastodonOnboardingStartPayload = {
+  handleOrInstance: string;
+  frontend_redirect_uri?: string;
+};
+export type MastodonOnboardingStartResult = {
+  redirectUrl: string;
+  instanceDomain: string;
+  discovery?: Record<string, unknown>;
+};
+export type MastodonOnboardingCallbackResult = {
+  token: string;
+  username: string;
+  isNewUser: boolean;
+  identityLinkId: number;
+  linkedAccountId?: number | null;
+  remoteHandle: string;
+  localActorUrl?: string | null;
+  usernameSuggestions: string[];
+};
+export type FederatedIdentityJob = {
+  id: number;
+  identity_link: number;
+  job_type: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  error?: string | null;
+  result?: any;
+  cursor?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type FederatedIdentityLink = {
+  id: number;
+  user: number;
+  linked_account_id?: number | null;
+  local_actor_id?: number | null;
+  remote_handle: string;
+  remote_account_id: string;
+  remote_actor_url: string;
+  remote_instance_url: string;
+  remote_username: string;
+  scopes: string;
+  verified_at?: string | null;
+  link_status: 'pending' | 'verified' | 'revoked';
+  crosspost_openbook_to_mastodon: boolean;
+  crosspost_mastodon_to_openbook: boolean;
+  profile_note?: string | null;
+  created_at: string;
+  updated_at: string;
+  recent_jobs?: FederatedIdentityJob[];
+};
 export type RegisterPayload = {
   email: string;
   password: string;
@@ -1481,6 +1531,57 @@ export const api = {
 
   getFederatedLinkedAccounts: (token: string) =>
     request<FederatedLinkedAccount[]>('/api/auth/user/federation/link/start/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  startMastodonOnboarding: (payload: MastodonOnboardingStartPayload) =>
+    request<MastodonOnboardingStartResult>('/api/auth/mastodon/start', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getFederatedIdentities: (token: string) =>
+    request<FederatedIdentityLink[]>('/api/users/me/federated-identities', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  importFederatedIdentityFollows: (token: string, identityId: number, payload?: { limit?: number; cursor?: string }) =>
+    request<FederatedIdentityJob>(`/api/users/me/federated-identities/${identityId}/import-follows`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload || {}),
+    }),
+
+  importFederatedIdentityFollowers: (token: string, identityId: number, payload?: { limit?: number; cursor?: string }) =>
+    request<FederatedIdentityJob>(`/api/users/me/federated-identities/${identityId}/import-followers`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload || {}),
+    }),
+
+  autoFollowFederatedOldAccount: (token: string, identityId: number) =>
+    request<FederatedIdentityJob>(`/api/users/me/federated-identities/${identityId}/auto-follow-old-account`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  updateFederatedCrosspostSettings: (
+    token: string,
+    identityId: number,
+    payload: { crosspost_openbook_to_mastodon?: boolean; crosspost_mastodon_to_openbook?: boolean }
+  ) =>
+    request<{ identity: FederatedIdentityLink; job: FederatedIdentityJob }>(
+      `/api/users/me/federated-identities/${identityId}/crosspost-settings`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify(payload),
+      },
+    ),
+
+  createFederatedMigrationNotice: (token: string, identityId: number) =>
+    request<FederatedIdentityJob>(`/api/users/me/federated-identities/${identityId}/migration-notice`, {
+      method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
 

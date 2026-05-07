@@ -19,7 +19,7 @@ import {
 import { AntDesign } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { ApiRequestError, api } from '../api/client';
+import { ApiRequestError, api, type FederatedIdentityJob } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
 import AboutUsDrawer from '../components/AboutUsDrawer';
@@ -72,7 +72,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -100,6 +100,13 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   // it's already authorised to call /api/auth/user/federation/link/.
   const [onboardingMastodonInput, setOnboardingMastodonInput] = useState('');
   const [onboardingMastodonLinking, setOnboardingMastodonLinking] = useState(false);
+  const [mastodonContinueInput, setMastodonContinueInput] = useState('');
+  const [mastodonContinueLoading, setMastodonContinueLoading] = useState(false);
+  const [mastodonOnboardingIdentityId, setMastodonOnboardingIdentityId] = useState<number | null>(null);
+  const [mastodonOnboardingRemoteHandle, setMastodonOnboardingRemoteHandle] = useState('');
+  const [mastodonOnboardingLocalActorUrl, setMastodonOnboardingLocalActorUrl] = useState('');
+  const [mastodonOnboardingSuggestedUsernames, setMastodonOnboardingSuggestedUsernames] = useState<string[]>([]);
+  const [mastodonOnboardingJobs, setMastodonOnboardingJobs] = useState<FederatedIdentityJob[]>([]);
   const [appleLinkIdToken, setAppleLinkIdToken] = useState('');
   const [appleLinkUsername, setAppleLinkUsername] = useState('');
   const [appleLinkCode, setAppleLinkCode] = useState('');
@@ -461,6 +468,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setSocialUsername('');
     setShareFlowToken('');
     setShareFlowUsername('');
+    setMastodonContinueInput('');
+    setMastodonOnboardingIdentityId(null);
+    setMastodonOnboardingRemoteHandle('');
+    setMastodonOnboardingLocalActorUrl('');
+    setMastodonOnboardingSuggestedUsernames([]);
+    setMastodonOnboardingJobs([]);
     setAppleLinkIdToken('');
     setAppleLinkUsername('');
     setAppleLinkCode('');
@@ -569,6 +582,157 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setError('');
     setNotice('');
     setAuthMode('shareProfile');
+  }
+
+  function switchToContinueMastodon() {
+    setError('');
+    setNotice('');
+    setMastodonContinueInput('');
+    setAuthMode('continueMastodon');
+  }
+
+  function getMastodonOnboardingRedirectUri() {
+    return Platform.OS === 'web'
+      ? window.location.origin.replace(/\/+$/, '')
+      : 'openspacesocial://mastodon-auth-complete';
+  }
+
+  function parseMastodonOnboardingCallback(url: string, expectedRedirectUri: string) {
+    const parsed = new URL(url);
+    const normalizedExpected = expectedRedirectUri.replace(/\/+$/, '');
+    const callbackBase = `${parsed.protocol}//${parsed.host}${parsed.pathname}`.replace(/\/+$/, '');
+    if (callbackBase !== normalizedExpected) {
+      throw new Error(
+        t('auth.mastodonUnexpectedCallback', {
+          defaultValue: 'Received an unexpected Mastodon callback.',
+        }),
+      );
+    }
+    const fragment = new URLSearchParams((parsed.hash || '').replace(/^#/, ''));
+    if (fragment.get('status') !== 'success') {
+      throw new Error(
+        fragment.get('error') ||
+        t('auth.mastodonOnboardingFailed', {
+          defaultValue: 'Mastodon sign in was cancelled or failed.',
+        }),
+      );
+    }
+    const token = fragment.get('token');
+    const username = fragment.get('username');
+    const identityLinkId = Number(fragment.get('identity_link_id') || '0');
+    if (!token || !username || !identityLinkId) {
+      throw new Error(
+        t('auth.mastodonMissingCallbackParams', {
+          defaultValue: 'Mastodon did not return the expected onboarding details.',
+        }),
+      );
+    }
+    return {
+      token,
+      username,
+      isNewUser: fragment.get('is_new_user') === '1',
+      identityLinkId,
+      linkedAccountId: fragment.get('linked_account_id') ? Number(fragment.get('linked_account_id')) : null,
+      remoteHandle: fragment.get('remote_handle') || '',
+      localActorUrl: fragment.get('local_actor_url') || '',
+      usernameSuggestions: (() => {
+        try {
+          return JSON.parse(fragment.get('username_suggestions') || '[]');
+        } catch {
+          return [];
+        }
+      })() as string[],
+    };
+  }
+
+  async function handleContinueWithMastodon() {
+    const handleOrInstance = mastodonContinueInput.trim();
+    if (!handleOrInstance) {
+      setError(
+        t('auth.mastodonIdentifierRequired', {
+          defaultValue: 'Enter a Mastodon handle or instance to continue.',
+        }),
+      );
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setMastodonContinueLoading(true);
+    try {
+      const frontendRedirectUri = getMastodonOnboardingRedirectUri();
+      const started = await api.startMastodonOnboarding({
+        handleOrInstance,
+        frontend_redirect_uri: frontendRedirectUri,
+      });
+      const authResult = await WebBrowser.openAuthSessionAsync(started.redirectUrl, frontendRedirectUri);
+      if (authResult.type !== 'success' || !authResult.url) {
+        throw new Error(
+          t('auth.mastodonOnboardingCancelled', {
+            defaultValue: 'Mastodon authorization was cancelled.',
+          }),
+        );
+      }
+      const callback = parseMastodonOnboardingCallback(authResult.url, frontendRedirectUri);
+      if (!callback.isNewUser) {
+        onLogin?.(callback.token);
+        return;
+      }
+      setShareFlowToken(callback.token);
+      setShareFlowUsername(callback.username);
+      setMastodonOnboardingIdentityId(callback.identityLinkId);
+      setMastodonOnboardingRemoteHandle(callback.remoteHandle);
+      setMastodonOnboardingLocalActorUrl(callback.localActorUrl || `https://openspace.social/${callback.username}`);
+      setMastodonOnboardingSuggestedUsernames(callback.usernameSuggestions || []);
+      setMastodonOnboardingJobs([]);
+      setNotice(
+        t('auth.mastodonOnboardingVerified', {
+          defaultValue: 'Verified {{remoteHandle}} and created @{{username}} on OpenSpace.',
+          remoteHandle: callback.remoteHandle || handleOrInstance,
+          username: callback.username,
+        }),
+      );
+      setAuthMode('mastodonSetupChecklist');
+    } catch (e: any) {
+      setError(e?.message || t('auth.mastodonOnboardingFailed', { defaultValue: 'Could not continue with Mastodon.' }));
+    } finally {
+      setMastodonContinueLoading(false);
+    }
+  }
+
+  async function runMastodonChecklistAction(
+    action: 'importFollows' | 'importFollowers' | 'autoFollow' | 'migrationNotice' | 'enableCrosspost'
+  ) {
+    if (!shareFlowToken || !mastodonOnboardingIdentityId) {
+      setError(t('auth.errorShareSessionMissing'));
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      let job: FederatedIdentityJob | null = null;
+      if (action === 'importFollows') {
+        job = await api.importFederatedIdentityFollows(shareFlowToken, mastodonOnboardingIdentityId, { limit: 25 });
+      } else if (action === 'importFollowers') {
+        job = await api.importFederatedIdentityFollowers(shareFlowToken, mastodonOnboardingIdentityId, { limit: 25 });
+      } else if (action === 'autoFollow') {
+        job = await api.autoFollowFederatedOldAccount(shareFlowToken, mastodonOnboardingIdentityId);
+      } else if (action === 'migrationNotice') {
+        job = await api.createFederatedMigrationNotice(shareFlowToken, mastodonOnboardingIdentityId);
+      } else if (action === 'enableCrosspost') {
+        const response = await api.updateFederatedCrosspostSettings(shareFlowToken, mastodonOnboardingIdentityId, {
+          crosspost_openbook_to_mastodon: true,
+        });
+        job = response.job;
+      }
+      if (job) {
+        setMastodonOnboardingJobs((prev) => [job!, ...prev.filter((entry) => entry.job_type !== job!.job_type)]);
+      }
+    } catch (e: any) {
+      setError(e?.message || t('auth.mastodonChecklistActionFailed', { defaultValue: 'Could not complete that Mastodon setup step.' }));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCompleteSocialUsername() {
@@ -1177,6 +1341,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     ? 'Verify Email Code'
                   : authMode === 'linkMastodon'
                     ? t('auth.linkMastodonTitle', { defaultValue: 'Bring your Mastodon timeline' })
+                  : authMode === 'continueMastodon'
+                    ? t('auth.continueWithMastodonTitle', { defaultValue: 'Continue with Mastodon' })
+                  : authMode === 'mastodonSetupChecklist'
+                    ? t('auth.mastodonSetupChecklistTitle', { defaultValue: 'Set up your fediverse identity' })
                   : authMode === 'shareProfile'
                     ? t('auth.shareProfileTitle')
                   : authMode === 'recoverPassword'
@@ -1319,6 +1487,34 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   <AntDesign name="apple" size={17} color={c.textPrimary} />
                   <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
                     {socialLoadingProvider === 'apple' ? t('auth.socialLoadingApple') : t('auth.socialContinueApple')}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={switchToContinueMastodon}
+                disabled={loading || socialLoadingProvider !== null}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="mastodon" size={17} color="#6364FF" />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.socialContinueMastodon', { defaultValue: 'Continue with Mastodon' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={switchToContinueMastodon}
+                disabled={loading || socialLoadingProvider !== null}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="mastodon" size={17} color="#6364FF" />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.socialContinueMastodon', { defaultValue: 'Continue with Mastodon' })}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -1526,6 +1722,207 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 ) : (
                   <Text style={styles.buttonText}>{t('auth.socialUsernameCta')}</Text>
                 )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'continueMastodon' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.continueWithMastodonDescription', {
+                  defaultValue: 'Enter your Mastodon handle or instance, verify ownership, and we will create or reconnect your OpenSpace identity from there.',
+                })}
+              </Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>
+                {t('auth.continueWithMastodonLabel', { defaultValue: 'Mastodon handle or instance' })}
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: c.inputBackground,
+                    borderColor: c.inputBorder,
+                    color: c.textPrimary,
+                  },
+                ]}
+                value={mastodonContinueInput}
+                onChangeText={setMastodonContinueInput}
+                placeholder={t('auth.continueWithMastodonPlaceholder', { defaultValue: '@mem1984@mastodon.social' })}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!mastodonContinueLoading}
+                returnKeyType="done"
+                onSubmitEditing={handleContinueWithMastodon}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  mastodonContinueLoading && styles.buttonDisabled,
+                ]}
+                onPress={handleContinueWithMastodon}
+                disabled={mastodonContinueLoading}
+                activeOpacity={0.85}
+              >
+                {mastodonContinueLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    {t('auth.socialContinueMastodon', { defaultValue: 'Continue with Mastodon' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'mastodonSetupChecklist' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.mastodonSetupChecklistDescription', {
+                  defaultValue: 'Verified {{remoteHandle}}. We created @{{username}} on OpenSpace and linked the identities. You can bootstrap a few fediverse steps now, or skip ahead and finish inside settings later.',
+                  remoteHandle: mastodonOnboardingRemoteHandle || 'your Mastodon account',
+                  username: shareFlowUsername || 'your account',
+                })}
+              </Text>
+
+              <View style={[styles.noticeBox, { backgroundColor: c.inputBackground, borderColor: c.inputBorder }]}>
+                <Text style={[styles.noticeText, { color: c.textSecondary }]}>
+                  {t('auth.mastodonCreatedIdentity', {
+                    defaultValue: 'Created @{{username}} on OpenSpace.',
+                    username: shareFlowUsername || 'your account',
+                  })}
+                </Text>
+                {mastodonOnboardingLocalActorUrl ? (
+                  <Text style={[styles.noticeText, { color: c.textMuted, marginTop: 4 }]}>
+                    {mastodonOnboardingLocalActorUrl}
+                  </Text>
+                ) : null}
+                {mastodonOnboardingSuggestedUsernames.length > 0 ? (
+                  <Text style={[styles.noticeText, { color: c.textMuted, marginTop: 6 }]}>
+                    {t('auth.mastodonUsernameSuggestions', {
+                      defaultValue: 'Username suggestions: {{suggestions}}',
+                      suggestions: mastodonOnboardingSuggestedUsernames.join(', '),
+                    })}
+                  </Text>
+                ) : null}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => runMastodonChecklistAction('importFollows')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="account-arrow-right-outline" size={18} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.mastodonChecklistImportFollows', { defaultValue: 'Import accounts I follow' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => runMastodonChecklistAction('importFollowers')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="account-multiple-outline" size={18} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.mastodonChecklistImportFollowers', { defaultValue: 'Preview my followers' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => runMastodonChecklistAction('autoFollow')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="account-plus-outline" size={18} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.mastodonChecklistAutoFollow', { defaultValue: 'Auto-follow my old Mastodon account' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => runMastodonChecklistAction('migrationNotice')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="bullhorn-outline" size={18} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.mastodonChecklistMigrationNotice', { defaultValue: 'Prepare a migration notice' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                onPress={() => runMastodonChecklistAction('enableCrosspost')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <View style={styles.socialButtonContent}>
+                  <MaterialCommunityIcons name="source-branch" size={18} color={c.textPrimary} />
+                  <Text style={[styles.socialButtonText, { color: c.textPrimary }]}>
+                    {t('auth.mastodonChecklistEnableCrosspost', { defaultValue: 'Enable OpenSpace → Mastodon cross-posting' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {mastodonOnboardingJobs.length > 0 ? (
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  {mastodonOnboardingJobs.map((job) => (
+                    <View
+                      key={job.id}
+                      style={[
+                        styles.noticeBox,
+                        { backgroundColor: c.inputBackground, borderColor: c.inputBorder },
+                      ]}
+                    >
+                      <Text style={[styles.noticeText, { color: c.textPrimary }]}>
+                        {job.job_type.replace(/_/g, ' ')} · {job.status}
+                      </Text>
+                      {job.result?.imported_count ? (
+                        <Text style={[styles.noticeText, { color: c.textSecondary, marginTop: 4 }]}>
+                          {t('auth.mastodonImportedCount', {
+                            defaultValue: '{{count}} accounts ready to review.',
+                            count: job.result.imported_count,
+                          })}
+                        </Text>
+                      ) : null}
+                      {job.result?.suggested_notice ? (
+                        <Text style={[styles.noticeText, { color: c.textSecondary, marginTop: 4 }]}>
+                          {job.result.suggested_notice}
+                        </Text>
+                      ) : null}
+                      {job.error ? (
+                        <Text style={[styles.noticeText, { color: c.errorText, marginTop: 4 }]}>
+                          {job.error}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  loading && styles.buttonDisabled,
+                ]}
+                onPress={() => setAuthMode('shareProfile')}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.buttonText}>
+                  {t('auth.mastodonChecklistContinue', { defaultValue: 'Continue to OpenSpace' })}
+                </Text>
               </TouchableOpacity>
             </>
           ) : authMode === 'appleLinkAccount' ? (
@@ -2161,6 +2558,28 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   {t('auth.linkMastodonFooterHint', { defaultValue: 'Not on Mastodon yet?' })}{' '}
                 </Text>
                 <TouchableOpacity onPress={skipOnboardingMastodon}>
+                  <Text style={[styles.footerLink, { color: c.textLink }]}>
+                    {t('auth.linkMastodonSkipCta', { defaultValue: 'Skip for now' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'continueMastodon' ? (
+              <>
+                <Text style={[styles.footerText, { color: c.textMuted }]}>
+                  {t('auth.alreadyHaveAccount')}{' '}
+                </Text>
+                <TouchableOpacity onPress={switchToLogin}>
+                  <Text style={[styles.footerLink, { color: c.textLink }]}>
+                    {t('auth.backToSignIn')}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'mastodonSetupChecklist' ? (
+              <>
+                <Text style={[styles.footerText, { color: c.textMuted }]}>
+                  {t('auth.mastodonChecklistFooterHint', { defaultValue: 'You can finish the rest later from Linked Accounts.' })}{' '}
+                </Text>
+                <TouchableOpacity onPress={() => setAuthMode('shareProfile')}>
                   <Text style={[styles.footerLink, { color: c.textLink }]}>
                     {t('auth.linkMastodonSkipCta', { defaultValue: 'Skip for now' })}
                   </Text>
