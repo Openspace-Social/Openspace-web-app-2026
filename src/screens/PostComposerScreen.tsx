@@ -59,6 +59,12 @@ const MAX_COMMUNITIES = 3;
 const MAX_SHORT_LENGTH = 5000;
 const MAX_LONG_LENGTH = 10_000;
 const MAX_IMAGES = 5;
+// Default Mastodon status limit. Most instances run the upstream default
+// of 500 chars; some allow more. We don't currently fetch the linked
+// instance's `max_status_chars`, so we gate optimistically at 500 — false
+// positive (instance allows more) is benign; false negative would let the
+// user submit and get a confusing remote 422 toast.
+const MASTODON_DEFAULT_MAX_CHARS = 500;
 
 type Mode = 'short' | 'long';
 
@@ -384,6 +390,18 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   );
   const remaining = maxLength - text.length;
   const overLimit = mode === 'long' ? false : remaining < 0;
+  // Effective length the Mastodon instance will see — long posts ship as
+  // plain text, short posts ship as the typed text.
+  const mastodonEffectiveLength = mode === 'long' ? longPlain.length : text.length;
+  const mastodonGateActive = publishDestination !== 'openbook';
+  const mastodonRemaining = MASTODON_DEFAULT_MAX_CHARS - mastodonEffectiveLength;
+  const mastodonOverLimit = mastodonGateActive && mastodonRemaining < 0;
+  // Mastodon doesn't accept video uploads via the cross-post path — see
+  // `_upload_post_media_to_mastodon`. Catching it client-side avoids the
+  // confusing post-publish "video not supported" toast that leaves an
+  // orphan draft when destination is Mastodon-only.
+  const mastodonHasUnsupportedMedia = mastodonGateActive && composerVideo != null;
+  const mastodonBlocked = mastodonOverLimit || mastodonHasUnsupportedMedia;
   const remainingImageSlots = Math.max(0, MAX_IMAGES - imageUris.length);
 
   // Lexical editor calls back to RN whenever the user inserts an image.
@@ -582,7 +600,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   }, []);
 
   const submit = useCallback(async () => {
-    if (!canPost || overLimit) return;
+    if (!canPost || overLimit || mastodonBlocked) return;
     if (publishDestination !== 'mastodon' && circles.length === 0 && communities.length === 0) {
       const msg = t('home.postComposerDestinationEmpty', {
         defaultValue: 'You need at least one circle or joined community before publishing.',
@@ -714,20 +732,33 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         const draft = await api.createPost(token, { ...basePayload, text: trimmed, is_draft: true });
         const draftUuid = (draft as any)?.uuid as string | undefined;
         if (!draftUuid) throw new Error('Draft post has no uuid');
-        for (let i = 0; i < imageUris.length; i += 1) {
-          const uri = imageUris[i];
-          const finalUri = await rotateIfNeeded(uri);
-          await api.addPostMedia(token, draftUuid, {
-            file: { uri: finalUri, type: 'image/jpeg', name: `post-image-${i + 1}.jpg` } as any,
-            order: i,
-          });
-        }
-        finalized = publishDestination === 'openbook'
-          ? await api.publishPost(token, draftUuid)
-          : await api.publishPostWithFederation(token, draftUuid, {
-              publish_destination: publishDestination,
-              federated_linked_account_id: selectedFederatedAccountId || undefined,
+        // If any image attach (or the publish) fails we own the orphan
+        // draft. Roll it back so the user retries from a clean state
+        // instead of accumulating invisible drafts that only the daily
+        // flush job (~24h) cleans up.
+        try {
+          for (let i = 0; i < imageUris.length; i += 1) {
+            const uri = imageUris[i];
+            const finalUri = await rotateIfNeeded(uri);
+            await api.addPostMedia(token, draftUuid, {
+              file: { uri: finalUri, type: 'image/jpeg', name: `post-image-${i + 1}.jpg` } as any,
+              order: i,
             });
+          }
+          finalized = publishDestination === 'openbook'
+            ? await api.publishPost(token, draftUuid)
+            : await api.publishPostWithFederation(token, draftUuid, {
+                publish_destination: publishDestination,
+                federated_linked_account_id: selectedFederatedAccountId || undefined,
+              });
+        } catch (uploadErr) {
+          try {
+            await api.deletePost(token, draftUuid);
+          } catch (cleanupErr) {
+            console.warn('[ComposerPublish] Orphan draft cleanup failed', cleanupErr);
+          }
+          throw uploadErr;
+        }
       }
 
       const localPost = finalized && 'publish_destination' in (finalized as any)
@@ -865,7 +896,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           ) : null}
         </View>
         <TouchableOpacity
-          style={[s.postBtn, { backgroundColor: canPost && !overLimit ? c.primary : c.border, opacity: canPost && !overLimit ? 1 : 0.7 }]}
+          style={[s.postBtn, { backgroundColor: canPost && !overLimit && !mastodonBlocked ? c.primary : c.border, opacity: canPost && !overLimit && !mastodonBlocked ? 1 : 0.7 }]}
           activeOpacity={0.85}
           onPress={() => {
             if (mode === 'long') {
@@ -874,7 +905,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
               void submit();
             }
           }}
-          disabled={!canPost || overLimit}
+          disabled={!canPost || overLimit || mastodonBlocked}
         >
           {submitting ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -1133,7 +1164,37 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
               <Text style={[s.charCounter, { color: overLimit ? c.errorText : c.textMuted }]}>
                 {remaining}
               </Text>
+              {mastodonGateActive ? (
+                <Text style={[s.charCounter, { color: mastodonOverLimit ? c.errorText : c.textMuted, marginLeft: 12 }]}>
+                  {t('home.composerMastodonCounter', {
+                    remaining: mastodonRemaining,
+                    max: MASTODON_DEFAULT_MAX_CHARS,
+                    defaultValue: 'Mastodon: {{remaining}}',
+                  })}
+                </Text>
+              ) : null}
             </View>
+            {mastodonOverLimit ? (
+              <View style={[s.linkPreviewCard, { borderColor: c.errorText, backgroundColor: c.inputBackground }]}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} style={{ marginRight: 8 }} />
+                <Text style={{ color: c.errorText, flex: 1 }}>
+                  {t('home.composerMastodonOverLimitWarning', {
+                    max: MASTODON_DEFAULT_MAX_CHARS,
+                    defaultValue: 'This post is too long for Mastodon (max {{max}} characters). Shorten it or post to Openspace only.',
+                  })}
+                </Text>
+              </View>
+            ) : null}
+            {mastodonHasUnsupportedMedia ? (
+              <View style={[s.linkPreviewCard, { borderColor: c.errorText, backgroundColor: c.inputBackground }]}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} style={{ marginRight: 8 }} />
+                <Text style={{ color: c.errorText, flex: 1 }}>
+                  {t('home.composerMastodonVideoUnsupportedWarning', {
+                    defaultValue: 'Mastodon cross-posting does not support video yet. Remove the video or post to Openspace only.',
+                  })}
+                </Text>
+              </View>
+            ) : null}
 
         {linkPreviewLoading && !linkPreview ? (
           <View style={[s.linkPreviewCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
@@ -1550,7 +1611,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             setLongAudienceOpen(false);
           }}
           submitting={submitting}
-          canPost={canPost && !overLimit}
+          canPost={canPost && !overLimit && !mastodonBlocked}
           audienceSummary={audienceSummary}
         />
       </Modal>

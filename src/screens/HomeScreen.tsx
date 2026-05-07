@@ -102,6 +102,10 @@ const PROFILE_COMMUNITIES_PAGE_SIZE = 20;
 const PROFILE_FOLLOWINGS_PAGE_SIZE = 20;
 const SHORT_POST_MAX_LENGTH = 5000;
 const LONG_POST_MAX_IMAGES = 5;
+// Default Mastodon status limit (matches PostComposerScreen). When the
+// composer destination includes Mastodon we surface the smaller of the
+// two limits so the user knows before they hit Publish.
+const MASTODON_DEFAULT_MAX_CHARS = 500;
 const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
 
 type CommentDraftMedia = {
@@ -995,6 +999,27 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     onLogout();
     return true;
   }
+
+  // Mastodon length pre-flight. When the publish destination is mastodon
+  // or both, the Mastodon instance will see plain-text content (LP body
+  // is HTML-stripped server-side, short post text passes through). Most
+  // instances default to 500 chars; we surface a warning + button gate
+  // before the user submits to avoid the confusing post-publish 422 toast.
+  const composerMastodonEffectiveLength = React.useMemo(() => {
+    if (composerPostType === 'LP') {
+      const composed = composeLongPostBlocksWithTitle(composerLongPostTitle, composerLongPostBlocks);
+      return extractPlainTextFromBlocks(composed).length;
+    }
+    return composerTextLength;
+  }, [composerPostType, composerLongPostBlocks, composerLongPostTitle, composerTextLength]);
+  const composerMastodonGateActive = composerPublishDestination !== 'openbook';
+  const composerMastodonRemaining = MASTODON_DEFAULT_MAX_CHARS - composerMastodonEffectiveLength;
+  const composerMastodonOverLimit = composerMastodonGateActive && composerMastodonRemaining < 0;
+  // Mastodon doesn't accept video uploads via the cross-post path. Same
+  // pre-flight as the length gate — block here so the user doesn't end
+  // up with an orphan draft when Mastodon-only mode 422s.
+  const composerMastodonHasUnsupportedMedia = composerMastodonGateActive && !!composerVideo;
+  const composerMastodonBlocked = composerMastodonOverLimit || composerMastodonHasUnsupportedMedia;
 
   const longPostPreviewExpandState = React.useMemo(() => {
     if (!longPostPreviewPost) {
@@ -5588,6 +5613,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       await goToComposerDestinationStep();
       return;
     }
+    // Mastodon over-limit / unsupported-media gate: drafts bypass
+    // federation, so only block a real publish attempt.
+    if (!saveAsDraft && composerMastodonBlocked) return;
     const trimmedText = composerTextRef.current.trim();
     const longPayload = composerPostType === 'LP' ? getComposerLongPayload() : null;
     const trimmedLongText = longPayload?.long_text || extractPlainTextFromHtml(longPayload?.long_text_rendered_html);
@@ -5700,29 +5728,47 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         if (!('uuid' in (draftPost as any)) || !(draftPost as FeedPost).uuid) {
           throw new Error(t('home.postComposerFailed', { defaultValue: 'Could not publish your post right now.' }));
         }
-        finalizedUuid = (draftPost as FeedPost).uuid || null;
+        const draftUuid = (draftPost as FeedPost).uuid as string;
+        finalizedUuid = draftUuid;
 
-        for (let index = 1; index < composerImages.length; index += 1) {
-          const image = composerImages[index];
-          await api.addPostMedia(token, (draftPost as FeedPost).uuid as string, {
-            file: await getUploadBlob(image),
-            order: index + 1,
-          });
-        }
-        if (!saveAsDraft) {
-          if (selectedPublishDestination !== 'openbook') {
-            const publishResult = await api.publishPostWithFederation(token, (draftPost as FeedPost).uuid as string, {
-              publish_destination: selectedPublishDestination,
-              federated_linked_account_id: selectedFederatedAccountId || undefined,
+        // Multi-image flow creates a draft post then attaches each image
+        // separately. If any attach (or the final publish) fails we own
+        // the orphan draft, so roll it back here — otherwise it stays
+        // invisible to the user until the daily flush job (~24h) and
+        // they have no way to retry cleanly.
+        try {
+          for (let index = 1; index < composerImages.length; index += 1) {
+            const image = composerImages[index];
+            await api.addPostMedia(token, draftUuid, {
+              file: await getUploadBlob(image),
+              order: index + 1,
             });
-            if ('publish_destination' in (publishResult as any)) {
-              finalizedPost = (publishResult as FederatedPublishResult).local_post;
-            } else {
-              finalizedPost = publishResult as FeedPost;
-            }
-          } else {
-            finalizedPost = await api.publishPost(token, (draftPost as FeedPost).uuid as string);
           }
+          if (!saveAsDraft) {
+            if (selectedPublishDestination !== 'openbook') {
+              const publishResult = await api.publishPostWithFederation(token, draftUuid, {
+                publish_destination: selectedPublishDestination,
+                federated_linked_account_id: selectedFederatedAccountId || undefined,
+              });
+              if ('publish_destination' in (publishResult as any)) {
+                finalizedPost = (publishResult as FederatedPublishResult).local_post;
+              } else {
+                finalizedPost = publishResult as FeedPost;
+              }
+            } else {
+              finalizedPost = await api.publishPost(token, draftUuid);
+            }
+          }
+        } catch (uploadErr) {
+          if (!saveAsDraft) {
+            try {
+              await api.deletePost(token, draftUuid);
+            } catch (cleanupErr) {
+              console.warn('[ComposerPublish] Orphan draft cleanup failed', cleanupErr);
+            }
+            finalizedUuid = null;
+          }
+          throw uploadErr;
         }
       } else {
         const createdPost = await createPrimaryPost(
@@ -7546,6 +7592,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                           max: SHORT_POST_MAX_LENGTH,
                         })}
                       </Text>
+                      {composerMastodonGateActive ? (
+                        <Text style={[styles.postComposerCounterText, { color: composerMastodonOverLimit ? c.errorText : c.textMuted, marginLeft: 12 }]}>
+                          {t('home.postComposerMastodonCounter', {
+                            defaultValue: 'Mastodon: {{count}}/{{max}}',
+                            count: composerMastodonEffectiveLength,
+                            max: MASTODON_DEFAULT_MAX_CHARS,
+                          })}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
 
@@ -7761,6 +7816,28 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                             </TouchableOpacity>
                           );
                         })}
+                      </View>
+                    ) : null}
+                    {composerMastodonOverLimit ? (
+                      <View style={{ marginTop: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: c.errorText, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} />
+                        <Text style={{ color: c.errorText, flex: 1, fontSize: 13, lineHeight: 18 }}>
+                          {t('home.postComposerMastodonOverLimitWarning', {
+                            defaultValue: 'This post is too long for Mastodon (max {{max}} characters, currently {{count}}). Shorten it or post to OpenSpace only.',
+                            max: MASTODON_DEFAULT_MAX_CHARS,
+                            count: composerMastodonEffectiveLength,
+                          })}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {composerMastodonHasUnsupportedMedia ? (
+                      <View style={{ marginTop: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: c.errorText, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} />
+                        <Text style={{ color: c.errorText, flex: 1, fontSize: 13, lineHeight: 18 }}>
+                          {t('home.postComposerMastodonVideoUnsupportedWarning', {
+                            defaultValue: 'Mastodon cross-posting does not support video yet. Remove the video or post to OpenSpace only.',
+                          })}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
@@ -8179,10 +8256,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.externalLinkContinueButton, { backgroundColor: c.primary }]}
+                  style={[styles.externalLinkContinueButton, { backgroundColor: c.primary, opacity: composerMastodonBlocked ? 0.55 : 1 }]}
                   onPress={() => void submitComposerPost()}
                   activeOpacity={0.85}
-                  disabled={composerSubmitting || composerDestinationsLoading}
+                  disabled={composerSubmitting || composerDestinationsLoading || composerMastodonBlocked}
                 >
                   {composerSubmitting || composerDestinationsLoading ? (
                     <ActivityIndicator color="#fff" size="small" />
