@@ -62,6 +62,36 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/users/:username"
+  to = "https://staging-api.openspace.social/users/:username"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/users/:username/inbox"
+  to = "https://staging-api.openspace.social/users/:username/inbox"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/users/:username/outbox"
+  to = "https://staging-api.openspace.social/users/:username/outbox"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/users/:username/followers"
+  to = "https://staging-api.openspace.social/users/:username/followers"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/users/:username/following"
+  to = "https://staging-api.openspace.social/users/:username/following"
+  status = 200
+  force = true
+
 # SPA fallback. The static files + proxies above match before this rule
 # fires, so /.well-known/apple-app-site-association, /api/*, etc. are
 # routed correctly and the SPA fallback only applies to actual app routes.
