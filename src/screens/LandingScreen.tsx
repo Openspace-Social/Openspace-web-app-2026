@@ -26,6 +26,7 @@ import AboutUsDrawer from '../components/AboutUsDrawer';
 import PrivacyPolicyDrawer from '../components/PrivacyPolicyDrawer';
 import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
 import GuidelinesDrawer from '../components/GuidelinesDrawer';
+import { AppRoute } from '../routing';
 import { useAppToast } from '../toast/AppToastContext';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 import { AppleSignInCancelled, webAppleSignIn } from '../utils/webAppleAuth';
@@ -60,6 +61,8 @@ if (_googleWebClientId) {
 
 interface LandingScreenProps {
   onLogin?: (token: string) => void;
+  route?: AppRoute;
+  onNavigate?: (next: AppRoute, replace?: boolean) => void;
 }
 
 type SocialProvider = 'google' | 'apple';
@@ -101,7 +104,7 @@ function formatMastodonJobStatus(job: FederatedIdentityJob) {
   }
 }
 
-export default function LandingScreen({ onLogin }: LandingScreenProps) {
+export default function LandingScreen({ onLogin, route, onNavigate }: LandingScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { showToast } = useAppToast();
   const { t } = useTranslation();
@@ -161,6 +164,44 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [privacyPolicyOpen, setPrivacyPolicyOpen] = useState(false);
   const [termsOfUseOpen, setTermsOfUseOpen] = useState(false);
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
+
+  // Sync the legal drawers with the route. When the user lands on /terms,
+  // /privacy, /about, or /guidelines (either by typing the URL or by tapping
+  // a footer/agreement link that called onNavigate), open the matching drawer.
+  // Closing a drawer below calls onNavigate({screen:'landing'}) which flips
+  // the URL back to / and unsets the drawer here on the next render.
+  useEffect(() => {
+    setAboutUsOpen(route?.screen === 'about');
+    setPrivacyPolicyOpen(route?.screen === 'privacy');
+    setTermsOfUseOpen(route?.screen === 'terms');
+    setGuidelinesOpen(route?.screen === 'guidelines');
+  }, [route?.screen]);
+
+  // When the user taps a drawer-opening button (footer link, agreement text),
+  // change the URL via onNavigate. The useEffect above then opens the drawer.
+  // If onNavigate isn't wired (e.g. running on native), fall back to setting
+  // the local state directly so the drawer still works.
+  const openLegalDrawer = (screen: 'about' | 'privacy' | 'terms' | 'guidelines') => {
+    if (onNavigate) {
+      onNavigate({ screen });
+      return;
+    }
+    if (screen === 'about') setAboutUsOpen(true);
+    if (screen === 'privacy') setPrivacyPolicyOpen(true);
+    if (screen === 'terms') setTermsOfUseOpen(true);
+    if (screen === 'guidelines') setGuidelinesOpen(true);
+  };
+
+  const closeLegalDrawer = () => {
+    if (onNavigate) {
+      onNavigate({ screen: 'landing' });
+      return;
+    }
+    setAboutUsOpen(false);
+    setPrivacyPolicyOpen(false);
+    setTermsOfUseOpen(false);
+    setGuidelinesOpen(false);
+  };
   const headerLinks = ['aboutUs', 'privacyPolicy', 'termsOfUse', 'guidelines'] as const;
 
   // Extract a password-reset token from a URL we received from a deep link
@@ -237,19 +278,19 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
 
   const handleHeaderLinkPress = (key: typeof headerLinks[number]) => {
     if (key === 'aboutUs') {
-      setAboutUsOpen(true);
+      openLegalDrawer('about');
       return;
     }
     if (key === 'privacyPolicy') {
-      setPrivacyPolicyOpen(true);
+      openLegalDrawer('privacy');
       return;
     }
     if (key === 'termsOfUse') {
-      setTermsOfUseOpen(true);
+      openLegalDrawer('terms');
       return;
     }
     if (key === 'guidelines') {
-      setGuidelinesOpen(true);
+      openLegalDrawer('guidelines');
     }
   };
 
@@ -1784,15 +1825,15 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 </Text>
                 {' '}
                 {t('auth.signUpAgreementPrefix')}{' '}
-                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => setTermsOfUseOpen(true)}>
+                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => openLegalDrawer('terms')}>
                   {t('footer.termsOfUse')}
                 </Text>
                 {', '}
-                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => setGuidelinesOpen(true)}>
+                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => openLegalDrawer('guidelines')}>
                   {t('footer.guidelines')}
                 </Text>
                 {' '}{t('auth.signUpAgreementAnd')}{' '}
-                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => setPrivacyPolicyOpen(true)}>
+                <Text style={[styles.agreementLink, { color: c.textLink }]} onPress={() => openLegalDrawer('privacy')}>
                   {t('footer.privacyPolicy')}
                 </Text>
                 {'.'}
@@ -2968,10 +3009,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
           © 2026–2027 Openspace.Social. All rights reserved.
         </Text>
       </ScrollView>
-      <AboutUsDrawer visible={aboutUsOpen} onClose={() => setAboutUsOpen(false)} />
-      <PrivacyPolicyDrawer visible={privacyPolicyOpen} onClose={() => setPrivacyPolicyOpen(false)} />
-      <TermsOfUseDrawer visible={termsOfUseOpen} onClose={() => setTermsOfUseOpen(false)} />
-      <GuidelinesDrawer visible={guidelinesOpen} onClose={() => setGuidelinesOpen(false)} />
+      <AboutUsDrawer visible={aboutUsOpen} onClose={closeLegalDrawer} />
+      <PrivacyPolicyDrawer visible={privacyPolicyOpen} onClose={closeLegalDrawer} />
+      <TermsOfUseDrawer visible={termsOfUseOpen} onClose={closeLegalDrawer} />
+      <GuidelinesDrawer visible={guidelinesOpen} onClose={closeLegalDrawer} />
 
       {/* Full-screen sign-in overlay — visible whenever a social provider's
        *  round-trip is in flight. Without this the user lands back on the

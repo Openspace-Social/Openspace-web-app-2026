@@ -12,7 +12,7 @@ import LandingScreen from './src/screens/LandingScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import PublicPostScreen from './src/screens/PublicPostScreen';
 import CookieConsentBanner from './src/components/CookieConsentBanner';
-import { AppRoute, defaultAuthedRoute, parsePathToRoute, routeToPath } from './src/routing';
+import { AppRoute, defaultAuthedRoute, isLegalDrawerRoute, parsePathToRoute, routeToPath } from './src/routing';
 import { AppToastProvider } from './src/toast/AppToastContext';
 import { GifPickerProvider } from './src/components/GifPickerProvider';
 import { MentionPopupProvider } from './src/components/MentionPopupProvider';
@@ -43,7 +43,7 @@ const USE_NEW_NAVIGATOR = Platform.OS !== 'web';
 
 // Routes that should be accessible without authentication.
 function isPublicRoute(r: AppRoute): boolean {
-  return r.screen === 'post';
+  return r.screen === 'post' || isLegalDrawerRoute(r);
 }
 
 function Root() {
@@ -160,6 +160,12 @@ function Root() {
       return <AppNavigator isAuthed={!!token} />;
     }
 
+    // Legal-drawer routes (/about, /privacy, /terms, /guidelines) always render
+    // the splash with the matching drawer auto-opened — regardless of auth state.
+    if (isLegalDrawerRoute(route)) {
+      return <LandingScreen onLogin={handleLogin} route={route} onNavigate={navigate} />;
+    }
+
     if (token) {
       return (
         <HomeScreen
@@ -185,7 +191,7 @@ function Root() {
       );
     }
 
-    return <LandingScreen onLogin={handleLogin} />;
+    return <LandingScreen onLogin={handleLogin} route={route} onNavigate={navigate} />;
   }
 
   // Web-only mount tweaks:

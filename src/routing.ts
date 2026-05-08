@@ -2,6 +2,10 @@ import { FeedType } from './api/client';
 
 export type AppRoute =
   | { screen: 'landing' }
+  | { screen: 'about' }
+  | { screen: 'privacy' }
+  | { screen: 'terms' }
+  | { screen: 'guidelines' }
   | { screen: 'feed'; feed: FeedType }
   | { screen: 'search'; query: string }
   | { screen: 'post'; postUuid: string; feed?: FeedType; focusCommentId?: number; focusParentCommentId?: number }
@@ -18,6 +22,12 @@ export type AppRoute =
   | { screen: 'manage-communities' }
   | { screen: 'muted-communities' }
   | { screen: 'settings' };
+
+export type LegalDrawerScreen = 'about' | 'privacy' | 'terms' | 'guidelines';
+
+export function isLegalDrawerRoute(route: AppRoute): route is { screen: LegalDrawerScreen } {
+  return route.screen === 'about' || route.screen === 'privacy' || route.screen === 'terms' || route.screen === 'guidelines';
+}
 
 export function defaultAuthedRoute(): AppRoute {
   return { screen: 'feed', feed: 'home' };
@@ -44,6 +54,10 @@ export function parsePathToRoute(pathname: string): AppRoute {
     if (first === 'manage-communities') return { screen: 'manage-communities' };
     if (first === 'muted-communities') return { screen: 'muted-communities' };
     if (first === 'settings') return { screen: 'settings' };
+    if (first === 'about') return { screen: 'about' };
+    if (first === 'privacy') return { screen: 'privacy' };
+    if (first === 'terms') return { screen: 'terms' };
+    if (first === 'guidelines') return { screen: 'guidelines' };
   }
 
   if (parts.length === 2 && parts[0] === 'posts' && parts[1]) {
@@ -105,6 +119,14 @@ export function routeToPath(route: AppRoute): string {
       return '/muted-communities';
     case 'settings':
       return '/settings';
+    case 'about':
+      return '/about';
+    case 'privacy':
+      return '/privacy';
+    case 'terms':
+      return '/terms';
+    case 'guidelines':
+      return '/guidelines';
     default:
       return '/';
   }
