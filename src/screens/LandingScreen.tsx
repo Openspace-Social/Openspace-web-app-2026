@@ -1916,11 +1916,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   {t('auth.mastodonChooseFlowNew', { defaultValue: "I'm new to Openspace" })}
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.footerText, { color: c.textMuted, alignSelf: 'stretch', marginTop: -4, marginBottom: 8 }]}>
-                {t('auth.mastodonChooseFlowNewHint', {
-                  defaultValue: 'Sign in with Mastodon and create a new Openspace account.',
-                })}
-              </Text>
 
               <TouchableOpacity
                 style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
@@ -1935,11 +1930,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   {t('auth.mastodonChooseFlowExisting', { defaultValue: 'I already have an Openspace account' })}
                 </Text>
               </TouchableOpacity>
-              <Text style={[styles.footerText, { color: c.textMuted, alignSelf: 'stretch', marginTop: -4 }]}>
-                {t('auth.mastodonChooseFlowExistingHint', {
-                  defaultValue: 'Link your Mastodon to your existing Openspace account. We\'ll send a verification code to your Openspace email.',
-                })}
-              </Text>
             </>
           ) : authMode === 'continueMastodon' ? (
             <>
