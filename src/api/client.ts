@@ -175,11 +175,26 @@ export type FederatedLinkCallbackPayload = {
 export type MastodonOnboardingStartPayload = {
   handleOrInstance: string;
   frontend_redirect_uri?: string;
+  flow?: 'onboarding' | 'link_existing';
+  existing_username?: string;
 };
 export type MastodonOnboardingStartResult = {
   redirectUrl: string;
   instanceDomain: string;
   discovery?: Record<string, unknown>;
+};
+export type MastodonLinkConfirmPayload = {
+  link_token: string;
+  code: string;
+};
+export type MastodonLinkConfirmResult = {
+  token: string;
+  username: string;
+  is_new_user: boolean;
+  identity_link_id: number;
+  linked_account_id?: number | null;
+  remote_handle: string;
+  local_actor_url?: string | null;
 };
 export type MastodonOnboardingCallbackResult = {
   token: string;
@@ -1536,6 +1551,12 @@ export const api = {
 
   startMastodonOnboarding: (payload: MastodonOnboardingStartPayload) =>
     request<MastodonOnboardingStartResult>('/api/auth/mastodon/start', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  confirmMastodonLink: (payload: MastodonLinkConfirmPayload) =>
+    request<MastodonLinkConfirmResult>('/api/auth/mastodon/link/confirm/', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

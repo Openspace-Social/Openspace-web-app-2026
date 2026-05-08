@@ -109,7 +109,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify' | 'mastodonLinkAccount' | 'mastodonLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -147,6 +147,12 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const [appleLinkIdToken, setAppleLinkIdToken] = useState('');
   const [appleLinkUsername, setAppleLinkUsername] = useState('');
   const [appleLinkCode, setAppleLinkCode] = useState('');
+  const [mastodonLinkUsernameInput, setMastodonLinkUsernameInput] = useState('');
+  const [mastodonLinkInstanceInput, setMastodonLinkInstanceInput] = useState('');
+  const [mastodonLinkLoading, setMastodonLinkLoading] = useState(false);
+  const [mastodonLinkToken, setMastodonLinkToken] = useState('');
+  const [mastodonLinkUsernameDisplay, setMastodonLinkUsernameDisplay] = useState('');
+  const [mastodonLinkCode, setMastodonLinkCode] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
@@ -734,6 +740,135 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
       setError(e?.message || t('auth.mastodonOnboardingFailed', { defaultValue: 'Could not continue with Mastodon.' }));
     } finally {
       setMastodonContinueLoading(false);
+    }
+  }
+
+  function parseMastodonLinkCallback(url: string, expectedRedirect: string) {
+    const parsed = new URL(url);
+    const expected = new URL(expectedRedirect);
+    const normalizedExpected = `${expected.protocol}//${expected.host}${expected.pathname}`.replace(/\/+$/, '');
+    const callbackBase = `${parsed.protocol}//${parsed.host}${parsed.pathname}`.replace(/\/+$/, '');
+    if (callbackBase !== normalizedExpected) {
+      throw new Error(
+        t('auth.mastodonUnexpectedCallback', {
+          defaultValue: 'Received an unexpected Mastodon callback.',
+        }),
+      );
+    }
+    const fragment = new URLSearchParams((parsed.hash || '').replace(/^#/, ''));
+    if (fragment.get('status') !== 'success') {
+      throw new Error(
+        fragment.get('error') ||
+        t('auth.mastodonLinkFailed', {
+          defaultValue: 'Mastodon link failed or was cancelled.',
+        }),
+      );
+    }
+    const flow = fragment.get('flow') || 'link_existing';
+    const isAlreadyLinked = fragment.get('is_already_linked') === '1';
+    return {
+      flow,
+      isAlreadyLinked,
+      token: fragment.get('token') || '',
+      username: fragment.get('username') || '',
+      linkToken: fragment.get('link_token') || '',
+    };
+  }
+
+  async function handleStartMastodonLink() {
+    const username = mastodonLinkUsernameInput.trim();
+    const handleOrInstance = mastodonLinkInstanceInput.trim();
+    if (!username) {
+      setError(
+        t('auth.mastodonLinkUsernameRequired', {
+          defaultValue: 'Enter your existing Openspace username to link.',
+        }),
+      );
+      return;
+    }
+    if (!handleOrInstance) {
+      setError(
+        t('auth.mastodonIdentifierRequired', {
+          defaultValue: 'Enter a Mastodon handle or instance to continue.',
+        }),
+      );
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setMastodonLinkLoading(true);
+    try {
+      const frontendRedirectUri = getMastodonOnboardingRedirectUri();
+      const started = await api.startMastodonOnboarding({
+        handleOrInstance,
+        frontend_redirect_uri: frontendRedirectUri,
+        flow: 'link_existing',
+        existing_username: username,
+      });
+      const authResult = await WebBrowser.openAuthSessionAsync(started.redirectUrl, frontendRedirectUri);
+      if (authResult.type !== 'success' || !authResult.url) {
+        throw new Error(
+          t('auth.mastodonOnboardingCancelled', {
+            defaultValue: 'Mastodon authorization was cancelled.',
+          }),
+        );
+      }
+      const callback = parseMastodonLinkCallback(authResult.url, frontendRedirectUri);
+      if (callback.isAlreadyLinked && callback.token) {
+        onLogin?.(callback.token);
+        return;
+      }
+      if (!callback.linkToken) {
+        throw new Error(
+          t('auth.mastodonMissingCallbackParams', {
+            defaultValue: 'Mastodon did not return the expected link details.',
+          }),
+        );
+      }
+      setMastodonLinkToken(callback.linkToken);
+      setMastodonLinkUsernameDisplay(callback.username || username);
+      setMastodonLinkCode('');
+      setNotice(
+        t('auth.mastodonLinkCodeSent', {
+          defaultValue: 'A verification code was sent to the email on file for {{username}}.',
+          username: callback.username || username,
+        }),
+      );
+      setAuthMode('mastodonLinkVerify');
+    } catch (e: any) {
+      setError(e?.message || t('auth.mastodonLinkFailed', { defaultValue: 'Could not link Mastodon to your account.' }));
+    } finally {
+      setMastodonLinkLoading(false);
+    }
+  }
+
+  async function handleConfirmMastodonLink() {
+    const code = mastodonLinkCode.trim();
+    if (!mastodonLinkToken) {
+      setError(t('auth.mastodonLinkSessionExpired', {
+        defaultValue: 'This link request expired. Please start over.',
+      }));
+      return;
+    }
+    if (!code) {
+      setError(t('auth.verificationCodeRequired', { defaultValue: 'Enter the verification code.' }));
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setMastodonLinkLoading(true);
+    try {
+      const result = await api.confirmMastodonLink({
+        link_token: mastodonLinkToken,
+        code,
+      });
+      onLogin?.(result.token);
+    } catch (e: any) {
+      setError(e?.message || t('auth.mastodonLinkConfirmFailed', { defaultValue: 'Could not verify the code.' }));
+    } finally {
+      setMastodonLinkLoading(false);
     }
   }
 
@@ -1380,6 +1515,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     ? t('auth.linkMastodonTitle', { defaultValue: 'Bring your Mastodon timeline' })
                   : authMode === 'continueMastodon'
                     ? t('auth.continueWithMastodonTitle', { defaultValue: 'Continue with Mastodon' })
+                  : authMode === 'mastodonLinkAccount'
+                    ? t('auth.mastodonLinkAccountTitle', { defaultValue: 'Link Mastodon to existing account' })
+                  : authMode === 'mastodonLinkVerify'
+                    ? t('auth.mastodonLinkVerifyTitle', { defaultValue: 'Verify Email Code' })
                   : authMode === 'mastodonSetupChecklist'
                     ? t('auth.mastodonSetupChecklistTitle', { defaultValue: 'Set up your fediverse identity' })
                   : authMode === 'shareProfile'
@@ -1794,6 +1933,24 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 )}
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
+                onPress={() => {
+                  setError('');
+                  setNotice('');
+                  setMastodonLinkInstanceInput(mastodonContinueInput);
+                  setMastodonLinkUsernameInput('');
+                  setMastodonLinkCode('');
+                  setMastodonLinkToken('');
+                  setAuthMode('mastodonLinkAccount');
+                }}
+                disabled={mastodonContinueLoading}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
+                  {t('auth.mastodonLinkInsteadButton', { defaultValue: 'Already have an Openspace account? Link instead' })}
+                </Text>
+              </TouchableOpacity>
             </>
           ) : authMode === 'mastodonSetupChecklist' ? (
             <>
@@ -2048,6 +2205,116 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.buttonText}>Verify & Link Account</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'mastodonLinkAccount' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.mastodonLinkAccountIntro', {
+                  defaultValue: 'Already have an Openspace account? Sign in to your Mastodon and we\'ll link the two together. We\'ll email a verification code to your Openspace email to confirm.',
+                })}
+              </Text>
+
+              <Text style={[styles.label, { color: c.textSecondary }]}>
+                {t('auth.openspaceUsername', { defaultValue: 'Your Openspace username' })}
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: c.inputBackground, borderColor: c.inputBorder, color: c.textPrimary },
+                ]}
+                value={mastodonLinkUsernameInput}
+                onChangeText={setMastodonLinkUsernameInput}
+                placeholder={t('auth.usernamePlaceholder')}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                editable={!mastodonLinkLoading}
+              />
+
+              <Text style={[styles.label, { color: c.textSecondary, marginTop: 12 }]}>
+                {t('auth.mastodonHandleOrInstance', { defaultValue: 'Mastodon handle or instance' })}
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: c.inputBackground, borderColor: c.inputBorder, color: c.textPrimary },
+                ]}
+                value={mastodonLinkInstanceInput}
+                onChangeText={setMastodonLinkInstanceInput}
+                placeholder={t('auth.continueMastodonPlaceholder', { defaultValue: '@you@mastodon.social or mastodon.social' })}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleStartMastodonLink}
+                editable={!mastodonLinkLoading}
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  mastodonLinkLoading && styles.buttonDisabled,
+                ]}
+                onPress={handleStartMastodonLink}
+                disabled={mastodonLinkLoading}
+                activeOpacity={0.85}
+              >
+                {mastodonLinkLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    {t('auth.mastodonLinkContinueButton', { defaultValue: 'Continue with Mastodon' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : authMode === 'mastodonLinkVerify' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.mastodonLinkVerifyIntro', {
+                  defaultValue: 'Enter the verification code we sent to the email on file for {{username}}.',
+                  username: mastodonLinkUsernameDisplay || '',
+                })}
+              </Text>
+              <Text style={[styles.label, { color: c.textSecondary }]}>
+                {t('auth.verificationCode', { defaultValue: 'Verification Code' })}
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: c.inputBackground, borderColor: c.inputBorder, color: c.textPrimary },
+                ]}
+                value={mastodonLinkCode}
+                onChangeText={setMastodonLinkCode}
+                placeholder={t('auth.verificationCodePlaceholder')}
+                placeholderTextColor={c.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                onSubmitEditing={handleConfirmMastodonLink}
+                editable={!mastodonLinkLoading}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                  mastodonLinkLoading && styles.buttonDisabled,
+                ]}
+                onPress={handleConfirmMastodonLink}
+                disabled={mastodonLinkLoading}
+                activeOpacity={0.85}
+              >
+                {mastodonLinkLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    {t('auth.mastodonLinkVerifyButton', { defaultValue: 'Verify & Link Account' })}
+                  </Text>
                 )}
               </TouchableOpacity>
             </>
@@ -2574,6 +2841,17 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               <>
                 <Text style={[styles.footerText, { color: c.textMuted }]}>
                   Already linked or changed your mind?{' '}
+                </Text>
+                <TouchableOpacity onPress={switchToLogin}>
+                  <Text style={[styles.footerLink, { color: c.textLink }]}>
+                    {t('auth.backToSignIn')}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'mastodonLinkAccount' || authMode === 'mastodonLinkVerify' ? (
+              <>
+                <Text style={[styles.footerText, { color: c.textMuted }]}>
+                  {t('auth.changedYourMind', { defaultValue: 'Changed your mind?' })}{' '}
                 </Text>
                 <TouchableOpacity onPress={switchToLogin}>
                   <Text style={[styles.footerLink, { color: c.textLink }]}>
