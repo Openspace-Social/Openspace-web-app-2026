@@ -2,6 +2,7 @@ import './src/i18n'; // initialise i18next before any component renders
 import { StatusBar } from 'expo-status-bar';
 import React, { useState, useEffect, useRef } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme as RNDefaultTheme, DarkTheme as RNDarkTheme, type Theme as RNTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,6 +28,10 @@ import {
   ensurePushRegistration,
   flushPendingPushRoute,
 } from './src/push/service';
+
+// Required on web so popup-based OAuth flows can hand the callback URL back to
+// the opener instead of rendering the app inside the popup window.
+WebBrowser.maybeCompleteAuthSession();
 
 // ── react-navigation migration feature flag ──────────────────────────────────
 // Native (iOS/Android): ON — the new navigator is the testbed here. Native

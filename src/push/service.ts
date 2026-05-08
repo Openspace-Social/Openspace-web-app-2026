@@ -3,13 +3,17 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Localization from 'expo-localization';
 import * as Notifications from 'expo-notifications';
-import { api, type DevicePlatform, type PushProvider, type DeviceRegistrationPayload } from '../api/client';
+import { ApiRequestError, api, type DevicePlatform, type PushProvider, type DeviceRegistrationPayload } from '../api/client';
 import { consumePendingPushOpenPayload, openPushRoute, setPendingPushOpenPayload } from './navigation';
 import { getOrCreateLocalDeviceUuid, hasRequestedPushPermission, markPushPermissionRequested } from './localDevice';
 import type { PushOpenPayload, PushRegistrationState } from './types';
 
 let responseSubscription: Notifications.EventSubscription | null = null;
 let receivedSubscription: Notifications.EventSubscription | null = null;
+
+function isUnauthorizedApiError(error: unknown) {
+  return error instanceof ApiRequestError && error.status === 401;
+}
 
 function resolveRouteKind(raw: unknown): PushOpenPayload['routeKind'] {
   if (raw === 'post' || raw === 'profile' || raw === 'community' || raw === 'moderation_tasks') return raw;
@@ -126,20 +130,25 @@ export async function ensurePushRegistration(token: string): Promise<PushRegistr
 
   if (finalStatus !== 'granted') {
     const deviceUuid = await getOrCreateLocalDeviceUuid();
-    await api.registerDeviceInstall(token, {
-      uuid: deviceUuid,
-      platform: Platform.OS as DevicePlatform,
-      push_provider: Platform.OS === 'ios' ? 'apns' : 'fcm',
-      push_token: '',
-      push_enabled: false,
-      permission_status: finalStatus,
-      app_version: Constants.expoConfig?.version,
-      build_number: resolveBuildNumber(),
-      locale: Localization.getLocales?.()[0]?.languageTag || undefined,
-      timezone_name: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      app_environment: resolveAppEnvironment(),
-      name: Device.deviceName || undefined,
-    });
+    try {
+      await api.registerDeviceInstall(token, {
+        uuid: deviceUuid,
+        platform: Platform.OS as DevicePlatform,
+        push_provider: Platform.OS === 'ios' ? 'apns' : 'fcm',
+        push_token: '',
+        push_enabled: false,
+        permission_status: finalStatus,
+        app_version: Constants.expoConfig?.version,
+        build_number: resolveBuildNumber(),
+        locale: Localization.getLocales?.()[0]?.languageTag || undefined,
+        timezone_name: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        app_environment: resolveAppEnvironment(),
+        name: Device.deviceName || undefined,
+      });
+    } catch (error) {
+      if (isUnauthorizedApiError(error)) return null;
+      throw error;
+    }
     return null;
   }
 
@@ -170,7 +179,12 @@ export async function ensurePushRegistration(token: string): Promise<PushRegistr
     app_environment: resolveAppEnvironment(),
   };
 
-  await api.registerDeviceInstall(token, payload);
+  try {
+    await api.registerDeviceInstall(token, payload);
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) return null;
+    throw error;
+  }
   return registrationState;
 }
 

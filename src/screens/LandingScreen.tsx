@@ -64,6 +64,43 @@ interface LandingScreenProps {
 
 type SocialProvider = 'google' | 'apple';
 
+function formatMastodonJobLabel(jobType: FederatedIdentityJob['job_type']) {
+  switch (jobType) {
+    case 'import_follows':
+      return 'Follow import';
+    case 'import_followers':
+      return 'Follower preview';
+    case 'auto_follow_old_account':
+      return 'Auto-follow old account';
+    case 'migration_notice':
+      return 'Migration notice';
+    case 'crosspost_setup':
+      return 'Cross-posting';
+    case 'mirror_posts':
+      return 'Post mirroring';
+    default:
+      return jobType.replace(/_/g, ' ');
+  }
+}
+
+function formatMastodonJobStatus(job: FederatedIdentityJob) {
+  switch (job.status) {
+    case 'queued':
+      return 'Requested and running in the background';
+    case 'running':
+      return 'Working in the background';
+    case 'completed':
+      if (job.job_type === 'crosspost_setup') {
+        return 'Enabled';
+      }
+      return 'Finished';
+    case 'failed':
+      return 'Needs attention';
+    default:
+      return job.status;
+  }
+}
+
 export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const { showToast } = useAppToast();
@@ -1762,7 +1799,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
                 {t('auth.mastodonSetupChecklistDescription', {
-                  defaultValue: 'Verified {{remoteHandle}}. We created @{{username}} on OpenSpace and linked the identities. You can bootstrap a few fediverse steps now, or skip ahead and finish inside settings later.',
+                  defaultValue: 'You are all set. We verified {{remoteHandle}}, created @{{username}} on OpenSpace, and linked the two identities. Everything below is optional and can keep running in the background while you move on.',
                   remoteHandle: mastodonOnboardingRemoteHandle || 'your Mastodon account',
                   username: shareFlowUsername || 'your account',
                 })}
@@ -1771,7 +1808,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
               <View style={[styles.noticeBox, { backgroundColor: c.inputBackground, borderColor: c.inputBorder }]}>
                 <Text style={[styles.noticeText, { color: c.textSecondary }]}>
                   {t('auth.mastodonCreatedIdentity', {
-                    defaultValue: 'Created @{{username}} on OpenSpace.',
+                    defaultValue: 'Your new OpenSpace account: @{{username}}',
                     username: shareFlowUsername || 'your account',
                   })}
                 </Text>
@@ -1783,12 +1820,18 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 {mastodonOnboardingSuggestedUsernames.length > 0 ? (
                   <Text style={[styles.noticeText, { color: c.textMuted, marginTop: 6 }]}>
                     {t('auth.mastodonUsernameSuggestions', {
-                      defaultValue: 'Username suggestions: {{suggestions}}',
+                      defaultValue: 'We reserved your preferred username. If you ever want alternates later, you could also use: {{suggestions}}',
                       suggestions: mastodonOnboardingSuggestedUsernames.join(', '),
                     })}
                   </Text>
                 ) : null}
               </View>
+
+              <Text style={[styles.footerText, { color: c.textMuted, alignSelf: 'stretch', marginTop: -2, marginBottom: 4 }]}>
+                {t('auth.mastodonChecklistOptionalHint', {
+                  defaultValue: 'Optional setup: import people, prepare a migration note, or enable cross-posting. You do not need to wait here.',
+                })}
+              </Text>
 
               <TouchableOpacity
                 style={[styles.socialButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -1871,7 +1914,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                       ]}
                     >
                       <Text style={[styles.noticeText, { color: c.textPrimary }]}>
-                        {job.job_type.replace(/_/g, ' ')} · {job.status}
+                        {formatMastodonJobLabel(job.job_type)}: {formatMastodonJobStatus(job)}
                       </Text>
                       {job.result?.imported_count ? (
                         <Text style={[styles.noticeText, { color: c.textSecondary, marginTop: 4 }]}>
@@ -1907,7 +1950,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 activeOpacity={0.85}
               >
                 <Text style={styles.buttonText}>
-                  {t('auth.mastodonChecklistContinue', { defaultValue: 'Continue to OpenSpace' })}
+                  {t('auth.mastodonChecklistContinue', { defaultValue: 'Enter OpenSpace' })}
                 </Text>
               </TouchableOpacity>
             </>
@@ -2563,11 +2606,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
             ) : authMode === 'mastodonSetupChecklist' ? (
               <>
                 <Text style={[styles.footerText, { color: c.textMuted }]}>
-                  {t('auth.mastodonChecklistFooterHint', { defaultValue: 'You can finish the rest later from Linked Accounts.' })}{' '}
+                  {t('auth.mastodonChecklistFooterHint', { defaultValue: 'These tasks keep working in the background, and you can revisit them later from Linked Accounts.' })}{' '}
                 </Text>
                 <TouchableOpacity onPress={() => setAuthMode('shareProfile')}>
                   <Text style={[styles.footerLink, { color: c.textLink }]}>
-                    {t('auth.linkMastodonSkipCta', { defaultValue: 'Skip for now' })}
+                    {t('auth.linkMastodonSkipCta', { defaultValue: 'Move on for now' })}
                   </Text>
                 </TouchableOpacity>
               </>
