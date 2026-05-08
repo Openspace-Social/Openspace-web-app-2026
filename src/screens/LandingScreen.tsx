@@ -109,7 +109,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify' | 'mastodonLinkAccount' | 'mastodonLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'mastodonChooseFlow' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify' | 'mastodonLinkAccount' | 'mastodonLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -631,7 +631,11 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
     setError('');
     setNotice('');
     setMastodonContinueInput('');
-    setAuthMode('continueMastodon');
+    setMastodonLinkUsernameInput('');
+    setMastodonLinkInstanceInput('');
+    setMastodonLinkCode('');
+    setMastodonLinkToken('');
+    setAuthMode('mastodonChooseFlow');
   }
 
   function getMastodonOnboardingRedirectUri() {
@@ -1513,8 +1517,10 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     ? 'Verify Email Code'
                   : authMode === 'linkMastodon'
                     ? t('auth.linkMastodonTitle', { defaultValue: 'Bring your Mastodon timeline' })
+                  : authMode === 'mastodonChooseFlow'
+                    ? t('auth.mastodonChooseFlowTitle', { defaultValue: 'Continue with Mastodon' })
                   : authMode === 'continueMastodon'
-                    ? t('auth.continueWithMastodonTitle', { defaultValue: 'Continue with Mastodon' })
+                    ? t('auth.continueWithMastodonTitle', { defaultValue: 'Sign in with Mastodon' })
                   : authMode === 'mastodonLinkAccount'
                     ? t('auth.mastodonLinkAccountTitle', { defaultValue: 'Link Mastodon to existing account' })
                   : authMode === 'mastodonLinkVerify'
@@ -1886,6 +1892,55 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                 )}
               </TouchableOpacity>
             </>
+          ) : authMode === 'mastodonChooseFlow' ? (
+            <>
+              <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
+                {t('auth.mastodonChooseFlowIntro', {
+                  defaultValue: 'How would you like to use your Mastodon account with Openspace?',
+                })}
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: c.primary, shadowColor: c.primaryShadow },
+                ]}
+                onPress={() => {
+                  setError('');
+                  setNotice('');
+                  setAuthMode('continueMastodon');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.buttonText}>
+                  {t('auth.mastodonChooseFlowNew', { defaultValue: "I'm new to Openspace" })}
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.footerText, { color: c.textMuted, alignSelf: 'stretch', marginTop: -4, marginBottom: 8 }]}>
+                {t('auth.mastodonChooseFlowNewHint', {
+                  defaultValue: 'Sign in with Mastodon and create a new Openspace account.',
+                })}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
+                onPress={() => {
+                  setError('');
+                  setNotice('');
+                  setAuthMode('mastodonLinkAccount');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
+                  {t('auth.mastodonChooseFlowExisting', { defaultValue: 'I already have an Openspace account' })}
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.footerText, { color: c.textMuted, alignSelf: 'stretch', marginTop: -4 }]}>
+                {t('auth.mastodonChooseFlowExistingHint', {
+                  defaultValue: 'Link your Mastodon to your existing Openspace account. We\'ll send a verification code to your Openspace email.',
+                })}
+              </Text>
+            </>
           ) : authMode === 'continueMastodon' ? (
             <>
               <Text style={[styles.verificationIntro, { color: c.textSecondary }]}>
@@ -1932,24 +1987,6 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                     {t('auth.socialContinueMastodon', { defaultValue: 'Continue with Mastodon' })}
                   </Text>
                 )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.background }]}
-                onPress={() => {
-                  setError('');
-                  setNotice('');
-                  setMastodonLinkInstanceInput(mastodonContinueInput);
-                  setMastodonLinkUsernameInput('');
-                  setMastodonLinkCode('');
-                  setMastodonLinkToken('');
-                  setAuthMode('mastodonLinkAccount');
-                }}
-                disabled={mastodonContinueLoading}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.secondaryActionText, { color: c.textLink }]}>
-                  {t('auth.mastodonLinkInsteadButton', { defaultValue: 'Already have an Openspace account? Link instead' })}
-                </Text>
               </TouchableOpacity>
             </>
           ) : authMode === 'mastodonSetupChecklist' ? (
@@ -2848,7 +2885,7 @@ export default function LandingScreen({ onLogin }: LandingScreenProps) {
                   </Text>
                 </TouchableOpacity>
               </>
-            ) : authMode === 'mastodonLinkAccount' || authMode === 'mastodonLinkVerify' ? (
+            ) : authMode === 'mastodonChooseFlow' || authMode === 'mastodonLinkAccount' || authMode === 'mastodonLinkVerify' ? (
               <>
                 <Text style={[styles.footerText, { color: c.textMuted }]}>
                   {t('auth.changedYourMind', { defaultValue: 'Changed your mind?' })}{' '}
