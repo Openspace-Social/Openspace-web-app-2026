@@ -1371,14 +1371,15 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                       </div>
                     </div>
                   ) : (
-                    // alignSelf:'stretch' is required: listCard inside has
-                    // flexDirection:row with a fixed-width cover (146px) +
-                    // flex:1 meta column. Without an explicit cross-axis
-                    // sizing hint on the wrapper, Yoga falls back to the
-                    // listCard's intrinsic width — 146 — and the meta
-                    // column collapses to nothing. Stretch makes the row
-                    // span the full listWrap width.
-                    <View key={`${activeTab}-${item.id || item.name}`} style={{ alignSelf: 'stretch' }}>
+                    // width:'100%' is required on the wrapper because the
+                    // listCard inside uses flexDirection:row with a
+                    // fixed-width cover (146px) + a flex:1 meta column.
+                    // Without an explicit width on the wrapper, Yoga
+                    // falls back to listCard's intrinsic width (146) and
+                    // the meta column collapses to nothing. (alignSelf:
+                    // 'stretch' alone wasn't enough — Yoga still
+                    // content-sized the wrapper.)
+                    <View key={`${activeTab}-${item.id || item.name}`} style={{ width: '100%' }}>
                       {cardNode}
                     </View>
                   )
@@ -1609,6 +1610,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listCard: {
+    alignSelf: 'stretch',
     borderWidth: 1,
     borderRadius: 14,
     overflow: 'hidden',
