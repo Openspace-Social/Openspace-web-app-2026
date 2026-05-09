@@ -317,7 +317,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
     ENABLE_COMMUNITIES_3_PANEL_TEST &&
     layoutMode === 'three-panel' &&
     width >= 1280;
-  const leftPanelWidth = 308;
+  const leftPanelWidth = 232;
   const rightPanelWidth = 320;
   const threePanelGap = 12;
   const usable = testThreePanelEnabled
@@ -1611,6 +1611,7 @@ const styles = StyleSheet.create({
   },
   listCard: {
     alignSelf: 'stretch',
+    maxWidth: 560,
     borderWidth: 1,
     borderRadius: 14,
     overflow: 'hidden',
