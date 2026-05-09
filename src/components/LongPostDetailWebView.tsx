@@ -36,6 +36,9 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { openExternalLink } from '../utils/openExternalLink';
 import { useInlineMentionRenderer } from '../utils/renderInlineMentions';
+import MentionHashtagInput from './MentionHashtagInput';
+import { MentionPopupOverlay } from './MentionPopupProvider';
+import { useAuth } from '../context/AuthContext';
 import ReactionPickerDrawer from './ReactionPickerDrawer';
 import type { FeedPost, PostComment } from '../api/client';
 
@@ -157,6 +160,7 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
 
   const { height: screenHeight } = useWindowDimensions();
   const renderInline = useInlineMentionRenderer(c);
+  const { token } = useAuth();
 
   // Composer modal (shared shape with the native LP screen).
   type ComposerTarget =
@@ -513,6 +517,7 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
                       comment,
                       isReply: false,
                       c, t, currentUsername,
+                      token: token || undefined,
                       isEditing: !!editingCommentById[comment.id],
                       editDraft: editDraftById[comment.id] ?? '',
                       mutationLoading: !!commentMutationLoadingById[comment.id],
@@ -652,13 +657,15 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
                 );
               })() : null}
 
-              <TextInput
+              <MentionHashtagInput
                 style={[
                   styles.composerInput,
                   { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
                 ]}
                 value={composerDraft}
                 onChangeText={setComposerDraft}
+                token={token || undefined}
+                c={c}
                 placeholder={t('home.commentPlaceholder', { defaultValue: 'Write a comment…' })}
                 placeholderTextColor={c.placeholder}
                 multiline
@@ -689,6 +696,11 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
         </View>
       </Modal>
     </View>
+    {/* Mount the popup overlay INSIDE the Modal so the @mention/#hashtag
+        suggestion list is visible — RN's <Modal> paints in a separate
+        native window and the app-root MentionPopupOverlay would otherwise
+        sit behind it. Same trick PostComposerScreen / HomeScreen use. */}
+    <MentionPopupOverlay />
     </Modal>
   );
 }
@@ -701,6 +713,7 @@ type RenderRowProps = {
   c: any;
   t: (key: string, options?: any) => string;
   currentUsername?: string;
+  token?: string;
   isEditing: boolean;
   editDraft: string;
   mutationLoading: boolean;
@@ -720,7 +733,7 @@ type RenderRowProps = {
 
 function renderCommentRow(p: RenderRowProps) {
   const {
-    comment, isReply, c, t, currentUsername,
+    comment, isReply, c, t, currentUsername, token,
     isEditing, editDraft, mutationLoading, setEditDraft,
     onStartEditing, onCancelEditing, onSaveEdit, onDelete,
     openReplyComposer, openCommentReactionPicker, postId,
@@ -761,10 +774,12 @@ function renderCommentRow(p: RenderRowProps) {
 
         {isEditing ? (
           <View style={styles.editWrap}>
-            <TextInput
+            <MentionHashtagInput
               style={[styles.editInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
               value={editDraft}
               onChangeText={setEditDraft}
+              token={token}
+              c={c}
               placeholder={t('home.commentPlaceholder', { defaultValue: 'Write a comment…' })}
               placeholderTextColor={c.placeholder}
               multiline

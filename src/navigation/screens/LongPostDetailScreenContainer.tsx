@@ -44,6 +44,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useScrollToTop, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useInlineMentionRenderer } from '../../utils/renderInlineMentions';
+import MentionHashtagInput from '../../components/MentionHashtagInput';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -597,6 +598,7 @@ export default function LongPostDetailScreenContainer() {
                       parentCommentId: undefined,
                       c, t,
                       currentUsername,
+                      token: token || undefined,
                       isEditing: !!comments.editingCommentById[comment.id],
                       editDraft: editDraftById[comment.id] ?? '',
                       mutationLoading: !!comments.commentMutationLoadingById[comment.id],
@@ -750,13 +752,15 @@ export default function LongPostDetailScreenContainer() {
                   </View>
                 );
               })() : null}
-              <TextInput
+              <MentionHashtagInput
                 style={[
                   styles.composerInput,
                   { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
                 ]}
                 value={composerDraft}
                 onChangeText={setComposerDraft}
+                token={token || undefined}
+                c={c}
                 placeholder={t('home.commentPlaceholder', { defaultValue: 'Write a comment…' })}
                 placeholderTextColor={c.placeholder}
                 multiline
@@ -805,6 +809,7 @@ type RenderCommentRowProps = {
   c: any;
   t: (key: string, options?: any) => string;
   currentUsername?: string;
+  token?: string;
   isEditing: boolean;
   editDraft: string;
   mutationLoading: boolean;
@@ -824,7 +829,7 @@ type RenderCommentRowProps = {
 
 function renderCommentRow(p: RenderCommentRowProps) {
   const {
-    comment, isReply, c, t, currentUsername,
+    comment, isReply, c, t, currentUsername, token,
     isEditing, editDraft, mutationLoading, setEditDraft,
     onStartEditing, onCancelEditing, onSaveEdit, onDelete,
     openReplyComposer, openCommentReactionPicker, postId,
@@ -867,13 +872,15 @@ function renderCommentRow(p: RenderCommentRowProps) {
 
         {isEditing ? (
           <View style={styles.editWrap}>
-            <TextInput
+            <MentionHashtagInput
               style={[
                 styles.editInput,
                 { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
               ]}
               value={editDraft}
               onChangeText={setEditDraft}
+              token={token}
+              c={c}
               placeholder={t('home.commentPlaceholder', { defaultValue: 'Write a comment…' })}
               placeholderTextColor={c.placeholder}
               multiline
