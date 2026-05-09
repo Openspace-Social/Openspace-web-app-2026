@@ -172,6 +172,7 @@ function CommunityCard({
       <TouchableOpacity
         style={[
           styles.listCard,
+          width ? { width } : null,
           { borderColor: c.border, backgroundColor: c.surface },
         ]}
         activeOpacity={0.9}
@@ -328,6 +329,13 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
     ? (isNarrow
         ? Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)
         : Math.max(220, Math.floor((usable - horizontalGap * (numCols - 1)) / numCols)))
+    : undefined;
+  // List rows get an explicit width too — relying on flex stretch through
+  // the wrapper chain wasn't propagating reliably (rows collapsed to the
+  // 146px cover width on iPad regardless of alignSelf or width:100% hints).
+  // Cap at 560 so rows don't span the entire 1000+ px center column.
+  const listCardWidth = usable > 0
+    ? Math.min(Math.max(280, usable - 16), 560)
     : undefined;
 
   const [loading, setLoading] = useState(true);
@@ -1233,6 +1241,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                     c={c}
                     t={t}
                     mode="list"
+                    width={listCardWidth}
                     onPress={() => handleCommunityCardPress(communityName)}
                     action={
                       activeTab === 'discover' && communityName
@@ -1610,14 +1619,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listCard: {
-    alignSelf: 'stretch',
-    maxWidth: 560,
+    height: 108,
     borderWidth: 1,
     borderRadius: 14,
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'stretch',
-    minHeight: 108,
   },
   listCoverWrap: {
     width: 146,
