@@ -73,10 +73,14 @@ import CommunitiesScreen from './CommunitiesScreen';
 import ManageCommunitiesScreen from './ManageCommunitiesScreen';
 import MutedCommunitiesScreen from './MutedCommunitiesScreen';
 import SettingsScreen from './SettingsScreen';
+import RemoteProfileScreen from './RemoteProfileScreen';
+import RemoteThreadScreen from './RemoteThreadScreen';
+import RemoteCommunityScreen from './RemoteCommunityScreen';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
 import EditProfileDrawer from '../components/EditProfileDrawer';
 import MentionHashtagInput from '../components/MentionHashtagInput';
+import { MentionPopupOverlay } from '../components/MentionPopupProvider';
 import { useAppToast } from '../toast/AppToastContext';
 import {
   ShortPostLinkPreview,
@@ -5953,6 +5957,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const viewingProfileRoute = displayRoute.screen === 'profile' || displayRoute.screen === 'me';
   const viewingCommunitiesRoute = displayRoute.screen === 'communities';
   const viewingCommunityRoute = displayRoute.screen === 'community';
+  const viewingRemoteProfileRoute = displayRoute.screen === 'remote-profile';
+  const viewingRemoteThreadRoute = displayRoute.screen === 'remote-thread';
+  const viewingRemoteCommunityRoute = displayRoute.screen === 'remote-community';
   const viewingHashtagRoute = displayRoute.screen === 'hashtag';
   const viewingBlockedRoute = displayRoute.screen === 'blocked';
   const viewingManageCommunitiesRoute = displayRoute.screen === 'manage-communities';
@@ -6052,6 +6059,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     return undefined;
   }
   const showingMainSearchResults = !viewingProfileRoute &&
+    !viewingRemoteProfileRoute &&
+    !viewingRemoteThreadRoute &&
+    !viewingRemoteCommunityRoute &&
     !viewingCommunitiesRoute &&
     !viewingManageCommunitiesRoute &&
     !viewingCommunityRoute &&
@@ -6068,7 +6078,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     { key: 'reels', label: t('home.profileTabReels') },
     { key: 'more', label: t('home.profileTabMore') },
   ];
-  const showFeedFollowButton = !viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingMutedCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
+  const showFeedFollowButton = !viewingProfileRoute && !viewingRemoteProfileRoute && !viewingRemoteThreadRoute && !viewingRemoteCommunityRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingMutedCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));
   const composerDrawerWidth =
     Platform.OS === 'web'
@@ -8277,6 +8287,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             </Animated.View>
           </TouchableOpacity>
         </TouchableOpacity>
+        {/* Mount the popup overlay INSIDE this Modal — RN's <Modal> paints
+            in a separate native window, so the app-root MentionPopupOverlay
+            is behind it and the @mention/#hashtag suggestion node never
+            appears. Mirroring the same trick PostDetailModal uses. */}
+        <MentionPopupOverlay />
       </Modal>
 
       {String((activePost as any)?.type || '').toUpperCase() === 'LP' ? (
@@ -9573,6 +9588,30 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               />
             ) : null}
 
+            {displayRoute.screen === 'remote-profile' ? (
+              <RemoteProfileScreen
+                token={token}
+                remoteActorId={displayRoute.remoteActorId}
+                onOpenThread={(inboundObjectId) => onNavigate({ screen: 'remote-thread', inboundObjectId })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'remote-thread' ? (
+              <RemoteThreadScreen
+                token={token}
+                inboundObjectId={displayRoute.inboundObjectId}
+                onOpenProfile={(remoteActorId) => onNavigate({ screen: 'remote-profile', remoteActorId })}
+                onOpenPost={(postUuid) => onNavigate({ screen: 'post', postUuid })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'remote-community' ? (
+              <RemoteCommunityScreen
+                token={token}
+                remoteCommunityId={displayRoute.remoteCommunityId}
+              />
+            ) : null}
+
             {viewingCommunityRoute ? (
               <CommunityProfileScreen
                 styles={styles}
@@ -9762,7 +9801,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
               />
             ) : null}
 
-            {!viewingProfileRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
+            {!viewingProfileRoute && !viewingRemoteProfileRoute && !viewingRemoteThreadRoute && !viewingRemoteCommunityRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists' ? (
               activeFeed === 'mastodon' ? (
                 <MastodonFeedScreen
                   c={c}
@@ -10031,6 +10070,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onNavigateProfile={handleNotificationNavigateProfile}
         onNavigatePost={handleNotificationNavigatePost}
         onNavigateCommunity={handleNotificationNavigateCommunity}
+        onNavigateRemoteProfile={(remoteActorId) => {
+          setNotifDrawerOpen(false);
+          onNavigate({ screen: 'remote-profile', remoteActorId });
+        }}
+        onNavigateRemoteThread={(inboundObjectId) => {
+          setNotifDrawerOpen(false);
+          onNavigate({ screen: 'remote-thread', inboundObjectId });
+        }}
         onAcceptConnection={async (username) => {
           await api.confirmConnection(token, username, []);
           if (profileUser?.username === username) {
