@@ -1366,7 +1366,14 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                       </div>
                     </div>
                   ) : (
-                    <View key={`${activeTab}-${item.id || item.name}`}>
+                    // alignSelf:'stretch' is required: listCard inside has
+                    // flexDirection:row with a fixed-width cover (146px) +
+                    // flex:1 meta column. Without an explicit cross-axis
+                    // sizing hint on the wrapper, Yoga falls back to the
+                    // listCard's intrinsic width — 146 — and the meta
+                    // column collapses to nothing. Stretch makes the row
+                    // span the full listWrap width.
+                    <View key={`${activeTab}-${item.id || item.name}`} style={{ alignSelf: 'stretch' }}>
                       {cardNode}
                     </View>
                   )
