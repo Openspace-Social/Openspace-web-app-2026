@@ -236,7 +236,7 @@ function MentionHashtagPlugin({ token }: { token?: string }) {
   const show = (suggestions.length > 0 || loading) && !!pos;
   if (!show || !pos) return null;
 
-  const W = 240, MAX_H = 240, GAP = 6;
+  const W = 240, MAX_H = 240, GAP = 6, MIN_USEFUL_H = 96;
   // visualViewport.height shrinks when the on-screen keyboard opens (iOS
   // Safari / WKWebView). window.innerHeight does NOT, so without this the
   // popup happily anchors below the cursor and renders straight behind the
@@ -246,10 +246,20 @@ function MentionHashtagPlugin({ token }: { token?: string }) {
   const sw = vv?.width  ?? window.innerWidth;
   const sh = vv?.height ?? window.innerHeight;
   const left = Math.max(4, Math.min(pos.x, sw - W - 4));
-  const spaceBelow = Math.max(0, sh - pos.y);
-  const top  = spaceBelow < MAX_H + GAP
-    ? Math.max(4, pos.y - GAP - MAX_H)
+  const spaceBelow = Math.max(0, sh - pos.y - GAP - 4);
+  const spaceAbove = Math.max(0, pos.y - GAP - 4);
+  // Prefer opening below the cursor. Only flip above if below has less
+  // than MIN_USEFUL_H AND above has more — this keeps the popup out of
+  // the formatting toolbar that sits at the top of the WebView, where
+  // it would otherwise overlap awkwardly when the keyboard is open.
+  const openAbove = spaceBelow < MIN_USEFUL_H && spaceAbove > spaceBelow;
+  const top = openAbove
+    ? Math.max(4, pos.y - GAP - Math.min(MAX_H, spaceAbove))
     : pos.y + GAP;
+  // Clamp the popup's height to whatever space is available in the chosen
+  // direction. Internally it's `overflowY: auto` so the user can scroll
+  // through suggestions when the cap is small.
+  const dynamicMaxH = Math.max(MIN_USEFUL_H, Math.min(MAX_H, openAbove ? spaceAbove : spaceBelow));
 
   return ReactDOM.createPortal(
     <div
@@ -257,7 +267,7 @@ function MentionHashtagPlugin({ token }: { token?: string }) {
       onMouseDown={(e) => e.preventDefault()}
       style={{
         position: 'fixed', left, top,
-        width: W, maxHeight: MAX_H,
+        width: W, maxHeight: dynamicMaxH,
         background: '#fff', border: '1px solid #e5e7eb',
         borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
         zIndex: 2147483647, overflowY: 'auto',
