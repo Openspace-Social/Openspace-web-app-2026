@@ -880,7 +880,8 @@ export type NotificationType =
   | 'CJRA' // community join request approved
   | 'PRE'  // post repost
   | 'CPP'  // community post pin
-  | 'MT';  // moderation task
+  | 'MT'   // moderation task
+  | 'FA';  // federated activity
 
 type NotifUser = {
   id?: number;
@@ -957,6 +958,14 @@ export type NotificationContentObject =
         community?: { id?: number; name?: string; avatar?: string; color?: string };
         pinned_by?: NotifUser;
       };
+    }
+  // FA
+  | {
+      interaction_type?: 'reply' | 'mention';
+      remote_actor?: NotifUser;
+      local_post?: NotifPost;
+      preview_text?: string;
+      remote_object_url?: string | null;
     }
   // MT
   | { object_type?: string; community_name?: string; community_title?: string; category_title?: string };
@@ -1678,6 +1687,18 @@ export const api = {
   unreblogFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>
     request<FederatedTimelineStatus>(
       `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/reblog/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  reblogOpenSpacePostOnFederatedAccount: (token: string, linkedAccountId: number, postUuid: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/posts/${encodeURIComponent(postUuid)}/reblog/`,
+      { method: 'POST', headers: { Authorization: `Token ${token}` } },
+    ),
+
+  unreblogOpenSpacePostOnFederatedAccount: (token: string, linkedAccountId: number, postUuid: string) =>
+    request<FederatedTimelineStatus>(
+      `/api/auth/user/federation/link/${linkedAccountId}/posts/${encodeURIComponent(postUuid)}/reblog/`,
       { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
     ),
 

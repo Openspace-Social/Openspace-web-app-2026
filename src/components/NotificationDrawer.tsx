@@ -1197,6 +1197,30 @@ function resolveNotification(
         onPress: onOpenModerationTasks,
       };
     }
+    case 'FA': {
+      const remoteActor = obj?.remote_actor;
+      const localPost = obj?.local_post;
+      const name = remoteActor?.profile?.name || remoteActor?.username || someone;
+      const isReply = obj?.interaction_type === 'reply';
+      return {
+        icon: isReply ? 'comment-outline' : 'at',
+        iconColor: isReply ? '#2563EB' : '#D97706',
+        actor: remoteActor?.username,
+        actorAvatar: remoteActor?.profile?.avatar,
+        body: isReply
+          ? t('home.notificationTypeFederatedReply', {
+              name,
+              defaultValue: '{{name}} replied to your post from the fediverse.',
+            })
+          : t('home.notificationTypeFederatedMention', {
+              name,
+              defaultValue: '{{name}} mentioned you from the fediverse.',
+            }),
+        postThumbnail: localPost?.media_thumbnail || null,
+        postPreviewText: truncate(obj?.preview_text || localPost?.text, 120) || null,
+        onPress: () => localPost?.id && onNavigatePost(localPost.id, localPost.uuid),
+      };
+    }
     default:
       return { icon: 'bell', iconColor: c.primary, actor: undefined, actorAvatar: undefined, body: t('home.notificationTypeGeneric'), postThumbnail: null, postPreviewText: null, onPress: undefined };
   }
