@@ -879,7 +879,12 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
         contentContainerStyle={[s.scrollContent, isNarrow && { paddingHorizontal: 8 }]}
       >
         <View style={[s.contentColumn, { maxWidth: contentWidth }]}>
-          <View style={testThreePanelEnabled ? s.threePanelShell : undefined}>
+          {/* Re-key on layoutMode so toggling Classic ↔ 3-panel forces a
+              fresh Yoga layout pass. Without this, the same center-column
+              View instance retains its measured width from the previous
+              mode, and switching back to 3-panel shows the grid stretched
+              to classic width (cards spilling past the right rail). */}
+          <View key={`communities-shell-${testThreePanelEnabled ? 'three' : 'classic'}`} style={testThreePanelEnabled ? s.threePanelShell : undefined}>
             {testThreePanelEnabled ? (
               <View style={[s.threePanelSide, { width: leftPanelWidth, borderColor: c.border, backgroundColor: c.inputBackground }]}>
                 <Text style={[s.threePanelSideTitle, { color: c.textPrimary }]}>
