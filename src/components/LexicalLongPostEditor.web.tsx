@@ -98,6 +98,22 @@ function MentionHashtagPlugin({ token }: { token?: string }) {
   const triggerRef  = React.useRef<{ char: '@' | '#'; startOffset: number } | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef   = React.useRef('');
+  // Re-render the popup when the visualViewport resizes (mainly: when the
+  // on-screen keyboard opens or closes inside iOS WKWebView). Otherwise the
+  // open-above / open-below decision uses a stale viewport height and the
+  // popup ends up partially behind the keyboard.
+  const [, forceRender]               = React.useState(0);
+  React.useEffect(() => {
+    const vv = (typeof window !== 'undefined') ? window.visualViewport : null;
+    if (!vv) return undefined;
+    const onResize = () => forceRender((n) => n + 1);
+    vv.addEventListener('resize', onResize);
+    vv.addEventListener('scroll', onResize);
+    return () => {
+      vv.removeEventListener('resize', onResize);
+      vv.removeEventListener('scroll', onResize);
+    };
+  }, []);
 
   const clear = React.useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -221,10 +237,16 @@ function MentionHashtagPlugin({ token }: { token?: string }) {
   if (!show || !pos) return null;
 
   const W = 240, MAX_H = 240, GAP = 6;
-  const sw   = window.innerWidth;
-  const sh   = window.innerHeight;
+  // visualViewport.height shrinks when the on-screen keyboard opens (iOS
+  // Safari / WKWebView). window.innerHeight does NOT, so without this the
+  // popup happily anchors below the cursor and renders straight behind the
+  // keyboard — only the top sliver above the keyboard is visible. Same
+  // problem MentionHashtagInput hits on native; same fix.
+  const vv = (typeof window !== 'undefined') ? window.visualViewport : null;
+  const sw = vv?.width  ?? window.innerWidth;
+  const sh = vv?.height ?? window.innerHeight;
   const left = Math.max(4, Math.min(pos.x, sw - W - 4));
-  const spaceBelow = sh - pos.y;
+  const spaceBelow = Math.max(0, sh - pos.y);
   const top  = spaceBelow < MAX_H + GAP
     ? Math.max(4, pos.y - GAP - MAX_H)
     : pos.y + GAP;
