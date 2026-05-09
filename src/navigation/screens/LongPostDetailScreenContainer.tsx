@@ -43,6 +43,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useScrollToTop, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useInlineMentionRenderer } from '../../utils/renderInlineMentions';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -148,6 +149,7 @@ export default function LongPostDetailScreenContainer() {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const c = theme.colors;
+  const renderInline = useInlineMentionRenderer(c);
 
   const postUuid = route.params?.postUuid;
   const focusComment = !!route.params?.focusComment;
@@ -471,14 +473,18 @@ export default function LongPostDetailScreenContainer() {
                       { color: c.textPrimary },
                     ]}
                   >
-                    {block.text}
+                    {renderInline(block.text)}
                   </Text>
                 );
               }
               if (block.type === 'quote') {
                 return (
                   <View key={`lp-quote-${idx}`} style={[styles.quote, { borderLeftColor: c.primary, backgroundColor: c.inputBackground }]}>
-                    <Text style={[styles.quoteText, { color: c.textSecondary }]}>{`"${block.text || ''}"`}</Text>
+                    <Text style={[styles.quoteText, { color: c.textSecondary }]}>
+                      {'"'}
+                      {renderInline(block.text || '')}
+                      {'"'}
+                    </Text>
                   </View>
                 );
               }
@@ -513,7 +519,7 @@ export default function LongPostDetailScreenContainer() {
               }
               return (
                 <Text key={`lp-paragraph-${idx}`} style={[styles.paragraph, { color: c.textPrimary }]}>
-                  {block.text}
+                  {renderInline(block.text)}
                 </Text>
               );
             })}

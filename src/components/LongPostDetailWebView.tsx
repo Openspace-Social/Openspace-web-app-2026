@@ -35,6 +35,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { openExternalLink } from '../utils/openExternalLink';
+import { useInlineMentionRenderer } from '../utils/renderInlineMentions';
 import ReactionPickerDrawer from './ReactionPickerDrawer';
 import type { FeedPost, PostComment } from '../api/client';
 
@@ -155,6 +156,7 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
   } = props;
 
   const { height: screenHeight } = useWindowDimensions();
+  const renderInline = useInlineMentionRenderer(c);
 
   // Composer modal (shared shape with the native LP screen).
   type ComposerTarget =
@@ -395,14 +397,18 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
                       { color: c.textPrimary },
                     ]}
                   >
-                    {block.text}
+                    {renderInline(block.text)}
                   </Text>
                 );
               }
               if (block.type === 'quote') {
                 return (
                   <View key={`lp-quote-${idx}`} style={[styles.quote, { borderLeftColor: c.primary, backgroundColor: c.inputBackground }]}>
-                    <Text style={[styles.quoteText, { color: c.textSecondary }]}>{`"${block.text || ''}"`}</Text>
+                    <Text style={[styles.quoteText, { color: c.textSecondary }]}>
+                      {'"'}
+                      {renderInline(block.text || '')}
+                      {'"'}
+                    </Text>
                   </View>
                 );
               }
@@ -433,7 +439,7 @@ export default function LongPostDetailWebView(props: LongPostDetailWebViewProps)
               }
               return (
                 <Text key={`lp-paragraph-${idx}`} style={[styles.paragraph, { color: c.textPrimary }]}>
-                  {block.text}
+                  {renderInline(block.text)}
                 </Text>
               );
             })}
