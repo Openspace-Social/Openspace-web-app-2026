@@ -41,6 +41,7 @@ import {
   type SearchCommunityResult,
 } from '../api/client';
 import MentionHashtagInput from '../components/MentionHashtagInput';
+import { MentionPopupOverlay } from '../components/MentionPopupProvider';
 import LongPostLexicalEditor, {
   uploadDataUrlAsPostMedia,
   type LongPostLexicalEditorHandle,
@@ -1615,6 +1616,13 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           audienceSummary={audienceSummary}
         />
       </Modal>
+      {/* Mount the popup overlay INSIDE this screen — react-navigation
+          presents PostComposer as fullScreenModal on iOS, which paints in
+          a separate native window. The app-root MentionPopupOverlay is
+          behind it, so the @mention/#hashtag suggestion node never
+          appears here. Mirroring PostDetailModal / HomeScreen composer
+          fixes. */}
+      <MentionPopupOverlay />
     </KeyboardAvoidingView>
   );
 }
