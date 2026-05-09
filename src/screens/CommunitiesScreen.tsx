@@ -333,9 +333,14 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
   // List rows get an explicit width too — relying on flex stretch through
   // the wrapper chain wasn't propagating reliably (rows collapsed to the
   // 146px cover width on iPad regardless of alignSelf or width:100% hints).
-  // Cap at 560 so rows don't span the entire 1000+ px center column.
+  // In 3-panel mode the center column is narrow, so cap at 560 to leave
+  // breathing room. In classic mode (no side rails) let the row fill the
+  // whole content column — capping it would leave a big empty band on the
+  // right of every row.
   const listCardWidth = usable > 0
-    ? Math.min(Math.max(280, usable - 16), 560)
+    ? (testThreePanelEnabled
+        ? Math.min(Math.max(280, usable - 16), 560)
+        : Math.max(280, usable - 16))
     : undefined;
 
   const [loading, setLoading] = useState(true);
