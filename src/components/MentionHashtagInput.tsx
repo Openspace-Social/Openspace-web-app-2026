@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -256,6 +257,24 @@ export default function MentionHashtagInput({
   const [activeTrigger,  setActiveTrigger]  = useState<ActiveTrigger | null>(null);
   const [popupPos,       setPopupPos]       = useState<PopupPos | null>(null);
   const [portalEl,       setPortalEl]       = useState<HTMLDivElement | null>(null);
+  // Track the on-screen keyboard so the open-above / open-below decision
+  // accounts for the area the keyboard occludes. Without this, the popup
+  // computes spaceBelow against the full screen height and happily renders
+  // below the input — straight behind the keyboard, invisible to the user.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) => {
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const containerRef   = useRef<View>(null);
   const textInputRef   = useRef<any>(null);
@@ -459,7 +478,11 @@ export default function MentionHashtagInput({
   const hasSuggestions = suggestions.length > 0 || suggestLoading;
   const showPopup      = hasSuggestions && !!popupPos;
 
-  const spaceBelow = popupPos ? screenH - popupPos.y : 0;
+  // Subtract the on-screen keyboard from the visible space below the input.
+  // Without this, on native the popup would happily anchor below the input
+  // and render straight behind the keyboard, invisible to the user.
+  const visibleBottom = Platform.OS === 'web' ? screenH : screenH - keyboardHeight;
+  const spaceBelow = popupPos ? Math.max(0, visibleBottom - popupPos.y) : 0;
   const openAbove  = !!popupPos && spaceBelow < LIST_MAX_H + GAP && popupPos.spaceAbove > spaceBelow;
 
   const popupLeft = popupPos
