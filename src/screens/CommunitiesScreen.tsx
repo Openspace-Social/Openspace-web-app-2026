@@ -892,7 +892,16 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
               View instance retains its measured width from the previous
               mode, and switching back to 3-panel shows the grid stretched
               to classic width (cards spilling past the right rail). */}
-          <View key={`communities-shell-${testThreePanelEnabled ? 'three' : 'classic'}`} style={testThreePanelEnabled ? s.threePanelShell : undefined}>
+          <View
+            key={`communities-shell-${testThreePanelEnabled ? 'three' : 'classic'}`}
+            style={[
+              testThreePanelEnabled ? s.threePanelShell : undefined,
+              // In 3-panel mode the shell needs an explicit height so the
+              // center column's inner ScrollView can fill the remaining
+              // vertical space and scroll independently of the side rails.
+              testThreePanelEnabled && { height: panelHeight },
+            ]}
+          >
             {testThreePanelEnabled ? (
               <View style={[s.threePanelSide, { width: leftPanelWidth, borderColor: c.border, backgroundColor: c.inputBackground }]}>
                 <Text style={[s.threePanelSideTitle, { color: c.textPrimary }]}>
@@ -1055,7 +1064,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
             </View>
           ) : null}
 
-          {loading || (activeTab === 'discover' && discoverLoading) ? (
+          {(() => { const browseSection = (loading || (activeTab === 'discover' && discoverLoading) ? (
             <View style={s.loadingStateWrap}>
               <ActivityIndicator color={c.primary} size="large" />
               <Text style={[s.loadingStateText, { color: c.textMuted }]}>
@@ -1395,7 +1404,11 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
                 );
               })}
             </View>
-          )}
+          )); return testThreePanelEnabled ? (
+            <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: 16 }} nestedScrollEnabled>
+              {browseSection}
+            </ScrollView>
+          ) : browseSection; })()}
             </View>
             {testThreePanelEnabled ? (
               <View style={[s.threePanelSide, { width: rightPanelWidth, borderColor: c.border, backgroundColor: c.inputBackground }]}>
