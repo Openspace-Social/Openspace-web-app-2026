@@ -82,9 +82,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No version changes to commit."
           else
-            git commit -m "chore(release): bump build numbers from EAS CI
-
-run: ${{ github.run_number }}
-sha:  ${{ github.sha }}"
+            git commit -m "chore(release): bump build numbers from EAS CI (run ${{ github.run_number }}, sha ${{ github.sha }})"
             git push origin HEAD:${{ github.ref_name }}
           fi
