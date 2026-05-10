@@ -24,6 +24,11 @@ on:
         required: true
         default: production
         type: string
+      auto_submit:
+        description: Auto-submit to TestFlight / Play Store after build
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write   # so the runner can commit back the version bumps from autoIncrement
@@ -63,11 +68,21 @@ jobs:
 
       - name: Build iOS (TestFlight)
         if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
-        run: eas build --platform ios --profile "${{ inputs.ios_profile }}" --non-interactive --no-wait
+        run: |
+          AUTO_SUBMIT_FLAG=""
+          if [ "${{ inputs.auto_submit }}" = "true" ]; then
+            AUTO_SUBMIT_FLAG="--auto-submit-with-profile ${{ inputs.ios_profile }}"
+          fi
+          eas build --platform ios --profile "${{ inputs.ios_profile }}" $AUTO_SUBMIT_FLAG --non-interactive --no-wait
 
       - name: Build Android (Play)
         if: ${{ inputs.platform == 'android' || inputs.platform == 'both' }}
-        run: eas build --platform android --profile "${{ inputs.android_profile }}" --non-interactive --no-wait
+        run: |
+          AUTO_SUBMIT_FLAG=""
+          if [ "${{ inputs.auto_submit }}" = "true" ]; then
+            AUTO_SUBMIT_FLAG="--auto-submit-with-profile ${{ inputs.android_profile }}"
+          fi
+          eas build --platform android --profile "${{ inputs.android_profile }}" $AUTO_SUBMIT_FLAG --non-interactive --no-wait
 
       - name: Commit autoIncrement version bumps back to main
         # eas.json uses appVersionSource: local + autoIncrement: true → EAS bumps
@@ -82,6 +97,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No version changes to commit."
           else
-            git commit -m "chore(release): bump build numbers from EAS CI (run ${{ github.run_number }}, sha ${{ github.sha }})"
+            git commit -m "chore(release): bump build numbers from EAS CI (run ${{ github.run_number }}, sha ${{ github.sha }}) [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
           fi
