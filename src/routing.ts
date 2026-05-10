@@ -10,6 +10,9 @@ export type AppRoute =
   | { screen: 'search'; query: string }
   | { screen: 'post'; postUuid: string; feed?: FeedType; focusCommentId?: number; focusParentCommentId?: number }
   | { screen: 'profile'; username: string }
+  | { screen: 'remote-profile'; remoteActorId: number }
+  | { screen: 'remote-thread'; inboundObjectId: number }
+  | { screen: 'remote-community'; remoteCommunityId: number }
   | { screen: 'community'; name: string }
   | { screen: 'hashtag'; name: string }
   | { screen: 'me' }
@@ -72,6 +75,21 @@ export function parsePathToRoute(pathname: string): AppRoute {
     return { screen: 'profile', username: decodeURIComponent(parts[1]) };
   }
 
+  if (parts.length === 3 && parts[0] === 'fediverse' && parts[1] === 'profiles' && parts[2]) {
+    const remoteActorId = Number(parts[2]);
+    if (!Number.isNaN(remoteActorId)) return { screen: 'remote-profile', remoteActorId };
+  }
+
+  if (parts.length === 3 && parts[0] === 'fediverse' && parts[1] === 'threads' && parts[2]) {
+    const inboundObjectId = Number(parts[2]);
+    if (!Number.isNaN(inboundObjectId)) return { screen: 'remote-thread', inboundObjectId };
+  }
+
+  if (parts.length === 3 && parts[0] === 'fediverse' && parts[1] === 'communities' && parts[2]) {
+    const remoteCommunityId = Number(parts[2]);
+    if (!Number.isNaN(remoteCommunityId)) return { screen: 'remote-community', remoteCommunityId };
+  }
+
   if (parts.length === 2 && parts[0] === 'c' && parts[1]) {
     return { screen: 'community', name: decodeURIComponent(parts[1]) };
   }
@@ -95,6 +113,12 @@ export function routeToPath(route: AppRoute): string {
       return `/posts/${route.postUuid}`;
     case 'profile':
       return `/u/${encodeURIComponent(route.username)}`;
+    case 'remote-profile':
+      return `/fediverse/profiles/${route.remoteActorId}`;
+    case 'remote-thread':
+      return `/fediverse/threads/${route.inboundObjectId}`;
+    case 'remote-community':
+      return `/fediverse/communities/${route.remoteCommunityId}`;
     case 'community':
       return `/c/${encodeURIComponent(route.name)}`;
     case 'hashtag':

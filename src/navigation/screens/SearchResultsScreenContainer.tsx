@@ -25,6 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import {
   api,
+  type FederatedDiscoverySearchResult,
   type SearchCommunityResult,
   type SearchHashtagResult,
   type SearchUserResult,
@@ -35,8 +36,13 @@ import type { HomeStackParamList } from '../AppNavigator';
 // API exposes pagination cursors, we ask for the max it allows.
 const PAGE_COUNT = 10;
 
-type Kind = 'people' | 'communities' | 'hashtags';
-type ResultItem = SearchUserResult | SearchCommunityResult | SearchHashtagResult;
+type Kind = 'people' | 'communities' | 'hashtags' | 'fediverse';
+type ResultItem =
+  | SearchUserResult
+  | SearchCommunityResult
+  | SearchHashtagResult
+  | FederatedDiscoverySearchResult['actors'][number]
+  | FederatedDiscoverySearchResult['communities'][number];
 
 export default function SearchResultsScreenContainer() {
   const { token } = useAuth();
@@ -64,6 +70,12 @@ export default function SearchResultsScreenContainer() {
         list = await api.searchUsers(token, query, PAGE_COUNT);
       } else if (kind === 'communities') {
         list = await api.searchCommunities(token, query, PAGE_COUNT);
+      } else if (kind === 'fediverse') {
+        const response = await api.searchFederatedDiscovery(token, query, PAGE_COUNT);
+        list = [
+          ...(response.communities || []),
+          ...(response.actors || []),
+        ];
       } else {
         list = await api.searchHashtags(token, query, PAGE_COUNT);
       }
@@ -83,6 +95,7 @@ export default function SearchResultsScreenContainer() {
     people: t('home.searchTabPeople', { defaultValue: 'People' }),
     communities: t('home.searchTabCommunities', { defaultValue: 'Communities' }),
     hashtags: t('home.searchTabHashtags', { defaultValue: 'Hashtags' }),
+    fediverse: t('home.searchSectionFediverse', { defaultValue: 'Fediverse' }),
   };
 
   if (!token) return null;
@@ -159,6 +172,39 @@ export default function SearchResultsScreenContainer() {
                 <Text style={[styles.rowSub, { color: c.textMuted }]} numberOfLines={1}>
                   {`c/${com.name}`}{typeof com.members_count === 'number' ? ` · ${com.members_count} ${t('home.communityMembersStat', { count: com.members_count, defaultValue: 'members' })}` : ''}
                 </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }
+        if (kind === 'fediverse') {
+          const isCommunity = !!(item as any).handle && String((item as any).handle).startsWith('!');
+          const label = isCommunity
+            ? ((item as any).title || (item as any).handle)
+            : ((item as any).profile?.name || (item as any).handle);
+          const sub = (item as any).handle || (item as any).actor_uri;
+          const subLine = isCommunity && (item as any).is_subscribed
+            ? `${sub} · Saved in OpenSpace`
+            : sub;
+          return (
+            <TouchableOpacity
+              style={[styles.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              onPress={() => (
+                isCommunity
+                  ? navigation.navigate('RemoteCommunity', { remoteCommunityId: (item as any).id })
+                  : navigation.navigate('RemoteProfile', { remoteActorId: (item as any).id })
+              )}
+            >
+              <View style={[styles.avatar, { backgroundColor: c.primary }]}>
+                <MaterialCommunityIcons
+                  name={isCommunity ? 'account-group-outline' : 'account-outline'}
+                  size={20}
+                  color="#fff"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>{label}</Text>
+                <Text style={[styles.rowSub, { color: c.textMuted }]} numberOfLines={1}>{subLine}</Text>
               </View>
             </TouchableOpacity>
           );

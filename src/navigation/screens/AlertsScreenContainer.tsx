@@ -163,6 +163,22 @@ export default function AlertsScreenContainer() {
     });
   }, [navigation]);
 
+  const onNavigateRemoteThread = useCallback((inboundObjectId: number) => {
+    if (!inboundObjectId) return;
+    navigation.navigate('HomeTab', {
+      screen: 'RemoteThread',
+      params: { inboundObjectId },
+    });
+  }, [navigation]);
+
+  const onNavigateRemoteProfile = useCallback((remoteActorId: number) => {
+    if (!remoteActorId) return;
+    navigation.navigate('HomeTab', {
+      screen: 'RemoteProfile',
+      params: { remoteActorId },
+    });
+  }, [navigation]);
+
   const onNavigateCommunity = useCallback((name: string) => {
     if (!name) return;
     navigation.navigate('CommunitiesTab', { screen: 'Community', params: { name } });
@@ -346,6 +362,8 @@ export default function AlertsScreenContainer() {
             onDelete={onDeleteNotification}
             onNavigateProfile={onNavigateProfile}
             onNavigatePost={onNavigatePost}
+            onNavigateRemoteProfile={onNavigateRemoteProfile}
+            onNavigateRemoteThread={onNavigateRemoteThread}
             onNavigateCommunity={onNavigateCommunity}
             onAcceptConnection={onAcceptConnection}
             onDeclineConnection={onDeclineConnection}

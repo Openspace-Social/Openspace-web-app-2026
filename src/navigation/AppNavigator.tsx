@@ -57,6 +57,9 @@ import LongPostDetailScreenContainer from './screens/LongPostDetailScreenContain
 import PublicProfileScreenContainer from './screens/PublicProfileScreenContainer';
 import UserCommunitiesScreenContainer from './screens/UserCommunitiesScreenContainer';
 import UserFollowingsScreenContainer from './screens/UserFollowingsScreenContainer';
+import RemoteProfileScreenContainer from './screens/RemoteProfileScreenContainer';
+import RemoteThreadScreenContainer from './screens/RemoteThreadScreenContainer';
+import RemoteCommunityScreenContainer from './screens/RemoteCommunityScreenContainer';
 
 // ── Param lists ──────────────────────────────────────────────────────────────
 // Describe the shape of every navigation.navigate(screen, params) call. Grow
@@ -116,10 +119,13 @@ export type HomeStackParamList = {
   Community: { name: string };
   Hashtag: { name: string };
   Search: { query: string };
-  SearchResults: { kind: 'people' | 'communities' | 'hashtags'; query: string };
+  SearchResults: { kind: 'people' | 'communities' | 'hashtags' | 'fediverse'; query: string };
   UserCommunities: { username: string };
   UserFollowings: { username: string };
   CommunityMembers: { name: string };
+  RemoteProfile: { remoteActorId: number };
+  RemoteCommunity: { remoteCommunityId: number };
+  RemoteThread: { inboundObjectId: number };
 };
 
 export type CommunitiesStackParamList = {
@@ -256,6 +262,21 @@ function HomeTabStack() {
         name="UserFollowings"
         component={UserFollowingsScreenContainer}
         options={{ title: 'Following' }}
+      />
+      <HomeStack.Screen
+        name="RemoteProfile"
+        component={RemoteProfileScreenContainer}
+        options={{ title: 'Fediverse profile' }}
+      />
+      <HomeStack.Screen
+        name="RemoteCommunity"
+        component={RemoteCommunityScreenContainer}
+        options={{ title: 'Fediverse community' }}
+      />
+      <HomeStack.Screen
+        name="RemoteThread"
+        component={RemoteThreadScreenContainer}
+        options={{ title: 'Fediverse thread' }}
       />
     </HomeStack.Navigator>
   );

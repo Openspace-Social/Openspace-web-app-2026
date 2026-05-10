@@ -37,6 +37,8 @@ type Props = {
   onDeleteFiltered: (ids: number[]) => Promise<void>;
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string, commentId?: number, parentCommentId?: number) => void;
+  onNavigateRemoteProfile?: (remoteActorId: number) => void;
+  onNavigateRemoteThread?: (inboundObjectId: number) => void;
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
@@ -65,6 +67,8 @@ export default function NotificationDrawer({
   onDeleteFiltered,
   onNavigateProfile,
   onNavigatePost,
+  onNavigateRemoteProfile,
+  onNavigateRemoteThread,
   onNavigateCommunity,
   onAcceptConnection,
   onDeclineConnection,
@@ -337,6 +341,8 @@ export default function NotificationDrawer({
                 onDelete={onDeleteNotification}
                 onNavigateProfile={onNavigateProfile}
                 onNavigatePost={onNavigatePost}
+                onNavigateRemoteProfile={onNavigateRemoteProfile}
+                onNavigateRemoteThread={onNavigateRemoteThread}
                 onNavigateCommunity={onNavigateCommunity}
                 onAcceptConnection={onAcceptConnection}
                 onDeclineConnection={onDeclineConnection}
@@ -408,6 +414,8 @@ type RowProps = {
   onDelete: (id: number) => void;
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string, commentId?: number, parentCommentId?: number) => void;
+  onNavigateRemoteProfile?: (remoteActorId: number) => void;
+  onNavigateRemoteThread?: (inboundObjectId: number) => void;
   onNavigateCommunity: (name: string) => void;
   onAcceptConnection: (username: string) => Promise<void>;
   onDeclineConnection: (username: string) => Promise<void>;
@@ -426,6 +434,8 @@ export function NotificationRow({
   onDelete,
   onNavigateProfile,
   onNavigatePost,
+  onNavigateRemoteProfile,
+  onNavigateRemoteThread,
   onNavigateCommunity,
   onAcceptConnection,
   onDeclineConnection,
@@ -437,7 +447,17 @@ export function NotificationRow({
 }: RowProps) {
   const obj = notif.content_object as any;
   const { icon, iconColor, actor, actorAvatar, body, postThumbnail, postPreviewText, onPress } =
-    resolveNotification(notif.notification_type, obj, c, t, onNavigateProfile, onNavigatePost, onNavigateCommunity, onOpenModerationTasks);
+    resolveNotification(
+      notif.notification_type,
+      obj,
+      c,
+      t,
+      onNavigateProfile,
+      onNavigatePost,
+      onNavigateRemoteThread,
+      onNavigateCommunity,
+      onOpenModerationTasks,
+    );
 
   const initial = (actor?.[0] || '?').toUpperCase();
   const isCR = notif.notification_type === 'CR';
@@ -472,6 +492,11 @@ export function NotificationRow({
   const communityActorTypes: NotificationType[] = ['CNP', 'CB', 'CJRA', 'CPP'];
   const onAvatarPress = !actor
     ? undefined
+    : notif.notification_type === 'FA' && obj?.remote_actor?.id && onNavigateRemoteProfile
+      ? () => {
+          if (!notif.read) onMarkRead(notif.id);
+          onNavigateRemoteProfile(obj.remote_actor.id);
+        }
     : userActorTypes.includes(notif.notification_type)
       ? () => {
           if (!notif.read) onMarkRead(notif.id);
@@ -891,6 +916,7 @@ function resolveNotification(
   t: (key: string, options?: any) => string,
   onNavigateProfile: (u: string) => void,
   onNavigatePost: (id: number, uuid?: string, commentId?: number, parentCommentId?: number) => void,
+  onNavigateRemoteThread: ((inboundObjectId: number) => void) | undefined,
   onNavigateCommunity: (name: string) => void,
   onOpenModerationTasks?: () => void,
 ) {
@@ -1218,7 +1244,13 @@ function resolveNotification(
             }),
         postThumbnail: localPost?.media_thumbnail || null,
         postPreviewText: truncate(obj?.preview_text || localPost?.text, 120) || null,
-        onPress: () => localPost?.id && onNavigatePost(localPost.id, localPost.uuid),
+        onPress: () => {
+          if (obj?.inbound_object_id && onNavigateRemoteThread) {
+            onNavigateRemoteThread(obj.inbound_object_id);
+            return;
+          }
+          if (localPost?.id) onNavigatePost(localPost.id, localPost.uuid);
+        },
       };
     }
     default:

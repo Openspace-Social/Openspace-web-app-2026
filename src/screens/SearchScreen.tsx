@@ -24,6 +24,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   api,
+  type FederatedDiscoverySearchResult,
   type SearchCommunityResult,
   type SearchHashtagResult,
   type SearchUserResult,
@@ -40,7 +41,9 @@ type Props = {
   onOpenProfile: (username: string) => void;
   onOpenCommunity: (name: string) => void;
   onOpenHashtag: (name: string) => void;
-  onShowAll: (kind: 'people' | 'communities' | 'hashtags', query: string) => void;
+  onOpenRemoteProfile: (remoteActorId: number) => void;
+  onOpenRemoteCommunity: (remoteCommunityId: number) => void;
+  onShowAll: (kind: 'people' | 'communities' | 'hashtags' | 'fediverse', query: string) => void;
 };
 
 export default function SearchScreen({
@@ -51,6 +54,8 @@ export default function SearchScreen({
   onOpenProfile,
   onOpenCommunity,
   onOpenHashtag,
+  onOpenRemoteProfile,
+  onOpenRemoteCommunity,
   onShowAll,
 }: Props) {
   const s = useMemo(() => makeStyles(c), [c]);
@@ -59,6 +64,8 @@ export default function SearchScreen({
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [communities, setCommunities] = useState<SearchCommunityResult[]>([]);
   const [hashtags, setHashtags] = useState<SearchHashtagResult[]>([]);
+  const [federated, setFederated] = useState<FederatedDiscoverySearchResult | null>(null);
+  const [savedFederatedCommunities, setSavedFederatedCommunities] = useState<FederatedDiscoverySearchResult['communities']>([]);
   const seqRef = useRef(0);
   const inputRef = useRef<TextInput>(null);
 
@@ -67,11 +74,29 @@ export default function SearchScreen({
     return () => clearTimeout(handle);
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await api.getFederatedRemoteCommunitySubscriptions(token);
+        if (!cancelled) {
+          setSavedFederatedCommunities(response.communities || []);
+        }
+      } catch {
+        if (!cancelled) {
+          setSavedFederatedCommunities([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
   // Fetch all three sections in parallel on debounced query change.
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
-      setUsers([]); setCommunities([]); setHashtags([]); setLoading(false);
+      setUsers([]); setCommunities([]); setHashtags([]); setFederated(null); setLoading(false);
       return;
     }
     const seq = ++seqRef.current;
@@ -81,11 +106,13 @@ export default function SearchScreen({
         api.searchUsers(token, trimmed, SECTION_LIMIT),
         api.searchCommunities(token, trimmed, SECTION_LIMIT),
         api.searchHashtags(token, trimmed, SECTION_LIMIT),
+        api.searchFederatedDiscovery(token, trimmed, SECTION_LIMIT),
       ]);
       if (seqRef.current !== seq) return;
       setUsers(results[0].status === 'fulfilled' && Array.isArray(results[0].value) ? results[0].value : []);
       setCommunities(results[1].status === 'fulfilled' && Array.isArray(results[1].value) ? results[1].value : []);
       setHashtags(results[2].status === 'fulfilled' && Array.isArray(results[2].value) ? results[2].value : []);
+      setFederated(results[3].status === 'fulfilled' ? results[3].value : null);
       setLoading(false);
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
@@ -101,7 +128,19 @@ export default function SearchScreen({
     }, 80);
   }, [onClose, onOpenProfile, onOpenCommunity, onOpenHashtag]);
 
-  const handleShowAll = useCallback((kind: 'people' | 'communities' | 'hashtags') => {
+  const handleOpenRemoteProfile = useCallback((remoteActorId: number) => {
+    if (!remoteActorId) return;
+    onClose();
+    setTimeout(() => onOpenRemoteProfile(remoteActorId), 80);
+  }, [onClose, onOpenRemoteProfile]);
+
+  const handleOpenRemoteCommunity = useCallback((remoteCommunityId: number) => {
+    if (!remoteCommunityId) return;
+    onClose();
+    setTimeout(() => onOpenRemoteCommunity(remoteCommunityId), 80);
+  }, [onClose, onOpenRemoteCommunity]);
+
+  const handleShowAll = useCallback((kind: 'people' | 'communities' | 'hashtags' | 'fediverse') => {
     const trimmed = query.trim();
     if (!trimmed) return;
     onClose();
@@ -109,7 +148,8 @@ export default function SearchScreen({
   }, [query, onClose, onShowAll]);
 
   const trimmed = query.trim();
-  const hasResults = users.length + communities.length + hashtags.length > 0;
+  const federatedCount = (federated?.actors?.length || 0) + (federated?.communities?.length || 0);
+  const hasResults = users.length + communities.length + hashtags.length + federatedCount > 0;
 
   return (
     <KeyboardAvoidingView style={[s.root, { backgroundColor: c.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -146,12 +186,42 @@ export default function SearchScreen({
         keyboardShouldPersistTaps="handled"
       >
         {!trimmed ? (
-          <View style={s.placeholderWrap}>
-            <MaterialCommunityIcons name="magnify" size={28} color={c.textMuted} />
-            <Text style={[s.placeholderText, { color: c.textMuted }]}>
-              {t('home.searchPromptStart', { defaultValue: 'Start typing to search.' })}
-            </Text>
-          </View>
+          <>
+            {savedFederatedCommunities.length ? (
+              <Section
+                c={c}
+                title={t('home.savedFediverseCommunities', { defaultValue: 'Saved fediverse communities' })}
+                icon="bookmark-outline"
+              >
+                {savedFederatedCommunities.map((community) => (
+                  <TouchableOpacity
+                    key={`saved-fediverse-community-${community.id}`}
+                    style={[s.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenRemoteCommunity(community.id)}
+                  >
+                    <View style={[s.avatar, { backgroundColor: c.primary }]}>
+                      <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                        {community.title || community.handle}
+                      </Text>
+                      <Text style={[s.rowSub, { color: c.textMuted }]} numberOfLines={1}>
+                        {community.handle}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </Section>
+            ) : null}
+            <View style={s.placeholderWrap}>
+              <MaterialCommunityIcons name="magnify" size={28} color={c.textMuted} />
+              <Text style={[s.placeholderText, { color: c.textMuted }]}>
+                {t('home.searchPromptStart', { defaultValue: 'Start typing to search.' })}
+              </Text>
+            </View>
+          </>
         ) : loading && !hasResults ? (
           <ActivityIndicator color={c.primary} size="small" style={{ marginTop: 30 }} />
         ) : !hasResults ? (
@@ -273,6 +343,58 @@ export default function SearchScreen({
                 ))}
               </Section>
             ) : null}
+
+            {/* Fediverse */}
+            {federatedCount > 0 ? (
+              <Section
+                c={c}
+                title={t('home.searchSectionFediverse', { defaultValue: 'Fediverse' })}
+                icon="earth"
+                onShowAll={() => handleShowAll('fediverse')}
+                showAllLabel={t('home.searchShowAllResults', { defaultValue: 'Show all results' })}
+              >
+                {(federated?.communities || []).map((community) => (
+                  <TouchableOpacity
+                    key={`fediverse-community-${community.id}`}
+                    style={[s.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenRemoteCommunity(community.id)}
+                  >
+                    <View style={[s.avatar, { backgroundColor: c.primary }]}>
+                      <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                        {community.title || community.handle}
+                      </Text>
+                      <Text style={[s.rowSub, { color: c.textMuted }]} numberOfLines={1}>
+                        {community.handle}{community.is_subscribed ? ' · Saved in OpenSpace' : ''}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                {(federated?.actors || []).map((actor) => (
+                  <TouchableOpacity
+                    key={`fediverse-actor-${actor.id}`}
+                    style={[s.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenRemoteProfile(actor.id)}
+                  >
+                    <View style={[s.avatar, { backgroundColor: c.primary }]}>
+                      <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                        {actor.profile?.name || actor.handle}
+                      </Text>
+                      <Text style={[s.rowSub, { color: c.textMuted }]} numberOfLines={1}>
+                        {actor.handle}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </Section>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -291,8 +413,8 @@ function Section({
   c: any;
   title: string;
   icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-  onShowAll: () => void;
-  showAllLabel: string;
+  onShowAll?: () => void;
+  showAllLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -300,9 +422,11 @@ function Section({
       <View style={sectionStyles.header}>
         <MaterialCommunityIcons name={icon} size={18} color={c.textPrimary} />
         <Text style={[sectionStyles.title, { color: c.textPrimary }]}>{title}</Text>
-        <TouchableOpacity onPress={onShowAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={sectionStyles.right}>
-          <Text style={[sectionStyles.showAll, { color: c.primary }]}>{showAllLabel}</Text>
-        </TouchableOpacity>
+        {onShowAll && showAllLabel ? (
+          <TouchableOpacity onPress={onShowAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={sectionStyles.right}>
+            <Text style={[sectionStyles.showAll, { color: c.primary }]}>{showAllLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={{ gap: 8 }}>{children}</View>
     </View>

@@ -237,6 +237,114 @@ export type FederatedIdentityLink = {
   updated_at: string;
   recent_jobs?: FederatedIdentityJob[];
 };
+
+export type FederatedRemoteActor = {
+  id: number;
+  actor_uri: string;
+  preferred_username?: string | null;
+  domain?: string | null;
+  handle?: string;
+  display_name?: string;
+  profile_url?: string | null;
+  inbox_url?: string | null;
+  outbox_url?: string | null;
+  last_fetched_at?: string | null;
+  profile?: {
+    name?: string;
+    avatar?: string | null;
+  } | null;
+};
+
+export type FederatedInboundObject = {
+  id: number;
+  object_uri: string;
+  activity_id?: string | null;
+  object_type?: string;
+  last_activity_type?: string | null;
+  url?: string | null;
+  content_html?: string | null;
+  content_text?: string | null;
+  summary?: string | null;
+  language?: string | null;
+  visibility?: string | null;
+  published_at?: string | null;
+  in_reply_to_uri?: string | null;
+  status?: string;
+  is_deleted?: boolean;
+  actor: FederatedRemoteActor;
+  local_post?: {
+    id?: number;
+    uuid?: string;
+    text?: string;
+    created?: string;
+    creator?: { id?: number; username?: string } | null;
+    media_thumbnail?: string | null;
+  } | null;
+  can_reply?: boolean;
+};
+
+export type FederatedRemoteActorDetail = {
+  actor: FederatedRemoteActor;
+  counts?: {
+    cached_posts?: number;
+    cached_replies?: number;
+    cached_items?: number;
+  };
+  recent_items: FederatedInboundObject[];
+};
+
+export type FederatedRemoteThread = {
+  subject: FederatedInboundObject;
+  ancestors: FederatedInboundObject[];
+  descendants: FederatedInboundObject[];
+  local_context_post?: {
+    id?: number;
+    uuid?: string;
+    text?: string;
+    created?: string;
+    creator?: { id?: number; username?: string } | null;
+    media_thumbnail?: string | null;
+  } | null;
+};
+
+export type FederatedRemoteCommunity = {
+  id: number;
+  actor_uri: string;
+  preferred_username?: string | null;
+  domain?: string | null;
+  handle?: string;
+  title?: string | null;
+  summary?: string | null;
+  profile_url?: string | null;
+  icon_url?: string | null;
+  inbox_url?: string | null;
+  outbox_url?: string | null;
+  last_fetched_at?: string | null;
+  is_subscribed?: boolean;
+};
+
+export type FederatedRemoteCommunityActivityItem = {
+  id?: string | null;
+  activity_id?: string | null;
+  activity_type?: string | null;
+  object_uri?: string | null;
+  url?: string | null;
+  summary?: string | null;
+  content_html?: string | null;
+  published_at?: string | null;
+  attributed_to?: string | null;
+};
+
+export type FederatedDiscoverySearchResult = {
+  query: string;
+  actors: FederatedRemoteActor[];
+  communities: FederatedRemoteCommunity[];
+  resolution?: {
+    kind: 'actor' | 'community';
+    actor?: FederatedRemoteActor;
+    community?: FederatedRemoteCommunity;
+  } | null;
+};
 export type RegisterPayload = {
   email: string;
   password: string;
@@ -962,7 +1070,8 @@ export type NotificationContentObject =
   // FA
   | {
       interaction_type?: 'reply' | 'mention';
-      remote_actor?: NotifUser;
+      remote_actor?: NotifUser & { id?: number; actor_uri?: string; domain?: string };
+      inbound_object_id?: number;
       local_post?: NotifPost;
       preview_text?: string;
       remote_object_url?: string | null;
@@ -1664,6 +1773,92 @@ export const api = {
     request<{ ancestors: FederatedTimelineStatus[]; descendants: FederatedTimelineStatus[] }>(
       `/api/auth/user/federation/link/${linkedAccountId}/statuses/${encodeURIComponent(statusId)}/context/`,
       { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  getFederatedRemoteActorDetail: (token: string, remoteActorId: number) =>
+    request<FederatedRemoteActorDetail>(
+      `/api/auth/user/federation/remote-actors/${remoteActorId}/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  getFederatedRemoteCommunityDetail: (token: string, remoteCommunityId: number) =>
+    request<{ community: FederatedRemoteCommunity }>(
+      `/api/auth/user/federation/remote-communities/${remoteCommunityId}/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  getFederatedRemoteCommunitySubscriptions: (token: string) =>
+    request<{ communities: FederatedRemoteCommunity[] }>(
+      '/api/auth/user/federation/remote-communities/subscriptions/',
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  getFederatedRemoteCommunityActivity: (token: string, remoteCommunityId: number) =>
+    request<{
+      community: FederatedRemoteCommunity;
+      items: FederatedRemoteCommunityActivityItem[];
+      detail?: string;
+    }>(
+      `/api/auth/user/federation/remote-communities/${remoteCommunityId}/activity/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  subscribeToFederatedRemoteCommunity: (token: string, remoteCommunityId: number) =>
+    request<{ community: FederatedRemoteCommunity; subscription: { is_subscribed: boolean } }>(
+      `/api/auth/user/federation/remote-communities/${remoteCommunityId}/subscription/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({}),
+      },
+    ),
+
+  unsubscribeFromFederatedRemoteCommunity: (token: string, remoteCommunityId: number) =>
+    request<{ community: FederatedRemoteCommunity; subscription: { is_subscribed: boolean } }>(
+      `/api/auth/user/federation/remote-communities/${remoteCommunityId}/subscription/`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Token ${token}` },
+      },
+    ),
+
+  searchFederatedDiscovery: (token: string, query: string, count = 8) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('count', String(count));
+    return request<FederatedDiscoverySearchResult>(
+      `/api/auth/user/federation/discovery/search/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+  },
+
+  getFederatedRemoteThread: (token: string, inboundObjectId: number) =>
+    request<FederatedRemoteThread>(
+      `/api/auth/user/federation/inbound-objects/${inboundObjectId}/thread/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  replyToFederatedInboundObject: (
+    token: string,
+    inboundObjectId: number,
+    content: string,
+  ) =>
+    request<{
+      status: string;
+      delivery: {
+        id: number;
+        activity_id?: string;
+        activity_type?: string;
+        target_inbox_url?: string;
+        delivery_status?: string;
+      };
+    }>(
+      `/api/auth/user/federation/inbound-objects/${inboundObjectId}/reply/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({ content }),
+      },
     ),
 
   favouriteFederatedStatus: (token: string, linkedAccountId: number, statusId: string) =>

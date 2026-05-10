@@ -34,7 +34,21 @@ export default function SearchScreenContainer() {
     });
   }, [navigation]);
 
-  const onShowAll = useCallback((kind: 'people' | 'communities' | 'hashtags', query: string) => {
+  const onOpenRemoteProfile = useCallback((remoteActorId: number) => {
+    navigation.navigate('Main', {
+      screen: 'HomeTab',
+      params: { screen: 'RemoteProfile', params: { remoteActorId } },
+    });
+  }, [navigation]);
+
+  const onOpenRemoteCommunity = useCallback((remoteCommunityId: number) => {
+    navigation.navigate('Main', {
+      screen: 'HomeTab',
+      params: { screen: 'RemoteCommunity', params: { remoteCommunityId } },
+    });
+  }, [navigation]);
+
+  const onShowAll = useCallback((kind: 'people' | 'communities' | 'hashtags' | 'fediverse', query: string) => {
     navigation.navigate('Main', {
       screen: 'HomeTab',
       params: { screen: 'SearchResults', params: { kind, query } },
@@ -52,6 +66,8 @@ export default function SearchScreenContainer() {
       onOpenProfile={onOpenProfile}
       onOpenCommunity={onOpenCommunity}
       onOpenHashtag={onOpenHashtag}
+      onOpenRemoteProfile={onOpenRemoteProfile}
+      onOpenRemoteCommunity={onOpenRemoteCommunity}
       onShowAll={onShowAll}
     />
   );
