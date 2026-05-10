@@ -1,0 +1,90 @@
+name: EAS Build (manual)
+
+# Manual trigger only. Pick the platform from the dropdown when running.
+# Bypasses the local Mac entirely — the runner has gigabit upload to EAS.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which platform(s) to build
+        required: true
+        default: both
+        type: choice
+        options:
+          - ios
+          - android
+          - both
+      ios_profile:
+        description: EAS profile for iOS
+        required: true
+        default: testflight
+        type: string
+      android_profile:
+        description: EAS profile for Android
+        required: true
+        default: production
+        type: string
+
+permissions:
+  contents: write   # so the runner can commit back the version bumps from autoIncrement
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use a token that can push back to main (default GITHUB_TOKEN works under permissions: contents: write).
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Verify EAS auth
+        run: eas whoami
+
+      - name: Build iOS (TestFlight)
+        if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
+        run: eas build --platform ios --profile "${{ inputs.ios_profile }}" --non-interactive --no-wait
+
+      - name: Build Android (Play)
+        if: ${{ inputs.platform == 'android' || inputs.platform == 'both' }}
+        run: eas build --platform android --profile "${{ inputs.android_profile }}" --non-interactive --no-wait
+
+      - name: Commit autoIncrement version bumps back to main
+        # eas.json uses appVersionSource: local + autoIncrement: true → EAS bumps
+        # app.json / Info.plist / build.gradle locally during build. In CI those
+        # bumps are ephemeral unless we push them back, otherwise the next build
+        # starts from the same number and races.
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.json ios/OpenspaceSocial/Info.plist android/app/build.gradle 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No version changes to commit."
+          else
+            git commit -m "chore(release): bump build numbers from EAS CI
+
+run: ${{ github.run_number }}
+sha:  ${{ github.sha }}"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
