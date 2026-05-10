@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
 const API_BASE_URL = (
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   process.env.REACT_APP_API_BASE_URL ||
@@ -28,9 +31,24 @@ export class ApiRequestError extends Error {
   }
 }
 
-function extractErrorMessage(data: unknown): string {
+function extractErrorMessage(data: unknown, status?: number): string {
   if (!data) return 'Request failed';
-  if (typeof data === 'string') return data;
+  if (typeof data === 'string') {
+    // Cloudflare/nginx/proxy error pages arrive as HTML. Surfacing the raw
+    // markup in a toast is useless and leaks implementation detail to users —
+    // map them to a clean, status-aware message instead.
+    const trimmed = data.trim();
+    if (trimmed.startsWith('<') || /^<!doctype/i.test(trimmed)) {
+      if (status === 524 || status === 522 || status === 520) {
+        return 'Your post is taking longer than expected. Please try again.';
+      }
+      if (status === 502 || status === 503 || status === 504) {
+        return 'Openspace is having trouble right now. Please try again in a moment.';
+      }
+      return "Couldn't reach Openspace. Please check your connection and try again.";
+    }
+    return data;
+  }
 
   if (typeof data === 'object') {
     const obj = data as Record<string, unknown>;
@@ -125,10 +143,103 @@ async function request<T>(
     : await response.text();
 
   if (!response.ok) {
-    throw new ApiRequestError(extractErrorMessage(data), response.status, data);
+    const message = extractErrorMessage(data, response.status);
+    if (shouldReportClientError(path, response.status, data)) {
+      void reportClientError({
+        status: response.status,
+        method: typeof options.method === 'string' ? options.method : 'GET',
+        url: path,
+        body: data,
+        clientMessage: message,
+        authHeader: extractAuthHeader(providedHeaders),
+      });
+    }
+    throw new ApiRequestError(message, response.status, data);
   }
 
   return data as T;
+}
+
+// ─── Client-side error reporting ────────────────────────────────────────────
+// Fires a fire-and-forget POST to /api/client-errors/ when the API returns an
+// unactionable response — server errors, proxy/CDN HTML pages, timeouts. The
+// goal is operator visibility, not user-facing UX. All failures are swallowed.
+
+const CLIENT_ERROR_REPORT_PATH = '/api/client-errors/';
+const CLIENT_ERROR_BODY_MAX = 8 * 1024;
+
+function shouldReportClientError(path: string, status: number, body: unknown): boolean {
+  // Never recurse: a failure of the report endpoint itself must not generate another report.
+  if (path === CLIENT_ERROR_REPORT_PATH) return false;
+  if (status >= 500) return true;
+  if (status === 408 || status === 429) return true;
+  if (typeof body === 'string') {
+    const trimmed = body.trim();
+    if (trimmed.startsWith('<') || /^<!doctype/i.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function extractAuthHeader(headers: HeadersInit): string | undefined {
+  if (!headers) return undefined;
+  // HeadersInit covers Headers | Record<string,string> | string[][]; the only
+  // shape this codebase actually passes is plain Record<string,string>, so a
+  // direct lookup is enough here.
+  const h = headers as Record<string, string>;
+  return h.Authorization || h.authorization;
+}
+
+function platformLabel(): 'ios' | 'android' | 'web' | 'other' {
+  if (Platform.OS === 'ios') return 'ios';
+  if (Platform.OS === 'android') return 'android';
+  if (Platform.OS === 'web') return 'web';
+  return 'other';
+}
+
+async function reportClientError(params: {
+  status: number;
+  method: string;
+  url: string;
+  body: unknown;
+  clientMessage: string;
+  authHeader?: string;
+}): Promise<void> {
+  let bodyStr: string;
+  if (typeof params.body === 'string') {
+    bodyStr = params.body;
+  } else if (params.body == null) {
+    bodyStr = '';
+  } else {
+    try { bodyStr = JSON.stringify(params.body); } catch { bodyStr = String(params.body); }
+  }
+  if (bodyStr.length > CLIENT_ERROR_BODY_MAX) {
+    bodyStr = bodyStr.slice(0, CLIENT_ERROR_BODY_MAX) + '\n…[truncated]';
+  }
+
+  const payload = {
+    status_code: params.status,
+    method: params.method,
+    url: params.url,
+    response_body: bodyStr,
+    platform: platformLabel(),
+    app_version: Constants.expoConfig?.version,
+    client_message: params.clientMessage,
+  };
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.authHeader) headers.Authorization = params.authHeader;
+
+  // Use raw fetch (not request()) so that, even if the report endpoint fails,
+  // we don't trip the should-report check and recurse.
+  try {
+    await fetch(`${API_BASE_URL}${CLIENT_ERROR_REPORT_PATH}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Best effort. The user already saw their original error; swallowing this is fine.
+  }
 }
 
 export type AuthToken = { token: string };
