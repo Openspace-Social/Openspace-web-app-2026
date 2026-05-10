@@ -636,9 +636,24 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [feedNextMaxId, setFeedNextMaxId] = useState<number | undefined>(undefined);
   const [mastodonFeedNextMaxId, setMastodonFeedNextMaxId] = useState<string | undefined>(undefined);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
-  const [newPostsAvailable, setNewPostsAvailable] = useState(false);
-  // Ref to the newest (highest) post ID currently rendered — used by the new-posts poller
-  const feedNewestIdRef = useRef<number | undefined>(undefined);
+  // Per-feed badge state: which tabs have posts newer than what's loaded.
+  // Mastodon is excluded — it has its own backend and is not polled here.
+  type PolledFeed = Exclude<FeedType, 'mastodon'>;
+  const [feedsWithUpdates, setFeedsWithUpdates] = useState<Record<PolledFeed, boolean>>({
+    home: false,
+    trending: false,
+    public: false,
+    explore: false,
+  });
+  // Per-feed newest (highest) post ID currently rendered — used by the new-posts poller.
+  // We track each feed independently because trending/public/explore IDs progress
+  // independently of the home timeline.
+  const feedNewestIdsRef = useRef<Record<PolledFeed, number | undefined>>({
+    home: undefined,
+    trending: undefined,
+    public: undefined,
+    explore: undefined,
+  });
   // Ref so the interval callback always sees the current feed type
   const activeFeedRef = useRef<FeedType>('home');
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
@@ -1284,53 +1299,50 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     };
   }, [token]);
 
-  // Keep feedNewestIdRef in sync with the highest post ID currently loaded.
-  // We use the max ID across all posts (not just feedPosts[0]) because non-home
-  // feeds (trending, public, explore) are sorted by score/popularity — their top
-  // post is not necessarily the newest by ID. Using feedPosts[0].id on those feeds
-  // caused false-positive "new posts available" banners, since posts already in the
-  // list with higher IDs would be returned by the minId poll.
+  // Keep the active feed's newest-id slot in sync with the highest post ID currently
+  // loaded. Max across all posts (not feedPosts[0]) because trending/public/explore
+  // are sorted by score/popularity, not ID.
   useEffect(() => {
     if (feedPosts.length === 0) return;
+    if (!feedPostsFeed || feedPostsFeed === 'mastodon') return;
     const maxId = feedPosts.reduce((max, p) => (p.id > max ? p.id : max), feedPosts[0].id);
-    if (typeof maxId === 'number') feedNewestIdRef.current = maxId;
-  }, [feedPosts]);
+    if (typeof maxId !== 'number') return;
+    feedNewestIdsRef.current = { ...feedNewestIdsRef.current, [feedPostsFeed]: maxId };
+  }, [feedPosts, feedPostsFeed]);
 
-  // Keep activeFeedRef in sync so the poller always sees the current feed
+  // Keep activeFeedRef in sync so callbacks always see the current feed
   useEffect(() => { activeFeedRef.current = activeFeed; }, [activeFeed]);
 
-  // Track whether the user is currently viewing the main feed (not a profile/community/etc.)
-  const isOnFeedRef = useRef(true);
-  useEffect(() => {
-    isOnFeedRef.current = displayRoute.screen === 'feed';
-  });
-
-  // ── New-posts polling (every 5 minutes, feed view only) ───────────────────
+  // ── New-posts polling (every 5 minutes, polls all 4 backend feeds) ────────
+  // Independent of which tab is active: lets the user see at-a-glance which
+  // feeds have updates via a badge on each tab.
   useEffect(() => {
     if (!token) return;
-    // Reset banner whenever the active feed tab or token changes
-    setNewPostsAvailable(false);
-    feedNewestIdRef.current = undefined;
 
-    const poll = async () => {
-      // Only show the banner when the user is looking at the feed
-      if (!isOnFeedRef.current) return;
-      if (activeFeedRef.current === 'mastodon') return;
-      const newestId = feedNewestIdRef.current;
+    const POLLED_FEEDS: PolledFeed[] = ['home', 'trending', 'public', 'explore'];
+
+    const pollOne = async (feed: PolledFeed) => {
+      const newestId = feedNewestIdsRef.current[feed];
       if (typeof newestId !== 'number') return;
       try {
-        const fresh = await api.getFeed(token, activeFeedRef.current, 3, undefined, newestId);
-        if (fresh.length > 0) setNewPostsAvailable(true);
+        const fresh = await api.getFeed(token, feed, 3, undefined, newestId);
+        // Defensive: trust only posts strictly newer than what we have. Guards
+        // against API endpoints that may not honor min_id (the old bug) and
+        // against trending/public/explore returning already-loaded posts.
+        if (fresh.some((p) => typeof p.id === 'number' && p.id > newestId)) {
+          setFeedsWithUpdates((prev) => (prev[feed] ? prev : { ...prev, [feed]: true }));
+        }
       } catch {
         // silently ignore — non-critical background check
       }
     };
 
-    const timer = setInterval(poll, 5 * 60_000); // 5 minutes
+    const poll = () => { POLLED_FEEDS.forEach((f) => { void pollOne(f); }); };
 
-    // Also check when the browser tab becomes visible again (re-focus after switching tabs)
+    const timer = setInterval(poll, 5 * 60_000);
+
     const onVisible = () => {
-      if (Platform.OS === 'web' && document.visibilityState === 'visible') void poll();
+      if (Platform.OS === 'web' && document.visibilityState === 'visible') poll();
     };
     if (Platform.OS === 'web') document.addEventListener('visibilitychange', onVisible);
 
@@ -1338,7 +1350,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       clearInterval(timer);
       if (Platform.OS === 'web') document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [token, activeFeed]);
+  }, [token]);
 
   useEffect(() => {
     if (menuOpen) {
@@ -2128,7 +2140,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setFeedNextMaxId(undefined);
     setMastodonFeedNextMaxId(undefined);
     setFeedHasMore(false);
-    setNewPostsAvailable(false);
+    if (feed !== 'mastodon') {
+      setFeedsWithUpdates((prev) => (prev[feed] ? { ...prev, [feed]: false } : prev));
+    }
     try {
       if (feed === 'mastodon') {
         const linkedAccount = getPrimaryMastodonAccount();
@@ -6496,6 +6510,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     size={22}
                     color={isActive ? c.primary : c.textMuted}
                   />
+                  {tab.key !== 'mastodon' && feedsWithUpdates[tab.key as PolledFeed] ? (
+                    <View style={[styles.feedTabBadge, { backgroundColor: c.primary, borderColor: c.surface }]} />
+                  ) : null}
                 </Pressable>
               </View>
             );
@@ -6600,11 +6617,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 accessibilityState={{ selected: isActive }}
                 accessibilityLabel={tab.label}
               >
-                <MaterialCommunityIcons
-                  name={tab.icon as any}
-                  size={18}
-                  color={isActive ? c.primary : c.textMuted}
-                />
+                <View>
+                  <MaterialCommunityIcons
+                    name={tab.icon as any}
+                    size={18}
+                    color={isActive ? c.primary : c.textMuted}
+                  />
+                  {tab.key !== 'mastodon' && feedsWithUpdates[tab.key as PolledFeed] ? (
+                    <View style={[styles.feedTabBadge, { backgroundColor: c.primary, borderColor: c.surface }]} />
+                  ) : null}
+                </View>
                 <Text
                   style={{
                     fontSize: 13,
@@ -9420,26 +9442,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
         {/* ── Main feed ─────────────────────────────────────────── */}
         <View style={{ flex: 1, position: 'relative' }}>
-          {/* New posts banner — stays visible while loading to show progress */}
-          {(newPostsAvailable || feedRefreshing) && !feedLoading && displayRoute.screen === 'feed' ? (
-            <TouchableOpacity
-              activeOpacity={feedRefreshing ? 1 : 0.9}
-              onPress={feedRefreshing ? undefined : handleRefreshFeed}
-              style={[styles.newPostsBanner, { backgroundColor: c.primary }]}
-            >
-              {feedRefreshing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <MaterialCommunityIcons name="arrow-up" size={14} color="#fff" />
-              )}
-              <Text style={styles.newPostsBannerText}>
-                {feedRefreshing
-                  ? t('home.newPostsBannerLoading', { defaultValue: 'Loading…' })
-                  : t('home.newPostsBanner', { defaultValue: 'New posts available' })}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
         <ScrollView
           ref={mainScrollRef}
           style={{ flex: 1 }}
@@ -13348,27 +13350,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingBottom: 2,
   },
-  newPostsBanner: {
+  feedTabBadge: {
     position: 'absolute',
-    top: 12,
-    alignSelf: 'center',
-    zIndex: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  newPostsBannerText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
+    top: -2,
+    right: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
   },
   sidebarProfileRow: {
     flexDirection: 'row',
