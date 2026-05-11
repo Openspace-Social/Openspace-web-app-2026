@@ -1501,7 +1501,11 @@ export const api = {
     }).then((u) => ({
       ...u,
       profile: u.profile
-        ? { ...u.profile, avatar: normalizeMediaUrl(u.profile.avatar) }
+        ? {
+            ...u.profile,
+            avatar: normalizeMediaUrl(u.profile.avatar),
+            cover: normalizeMediaUrl(u.profile.cover),
+          }
         : u.profile,
     })),
 
