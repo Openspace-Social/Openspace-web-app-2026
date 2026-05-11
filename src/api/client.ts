@@ -1495,9 +1495,9 @@ export const api = {
     }
   },
 
-  getUserProfile: (token: string, username: string) =>
+  getUserProfile: (token: string | null, username: string) =>
     request<UserProfile>(`/api/auth/users/${encodeURIComponent(username)}/`, {
-      headers: { Authorization: `Token ${token}` },
+      headers: token ? { Authorization: `Token ${token}` } : undefined,
     }).then((u) => ({
       ...u,
       profile: u.profile
@@ -2238,7 +2238,7 @@ export const api = {
     }).then((posts) => posts.map((post) => normalizePostPayload(post)));
   },
 
-  getUserPosts: (token: string, username: string, count = 10, maxId?: number) => {
+  getUserPosts: (token: string | null, username: string, count = 10, maxId?: number) => {
     const params = new URLSearchParams();
     params.set('username', username);
     params.set('count', String(count));
@@ -2246,7 +2246,7 @@ export const api = {
       params.set('max_id', String(maxId));
     }
     return request<FeedPost[]>(`/api/posts/?${params.toString()}`, {
-      headers: { Authorization: `Token ${token}` },
+      headers: token ? { Authorization: `Token ${token}` } : undefined,
     }).then((posts) => posts.map((post) => normalizePostPayload(post)));
   },
 

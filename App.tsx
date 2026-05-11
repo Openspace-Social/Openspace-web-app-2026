@@ -11,6 +11,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import LandingScreen from './src/screens/LandingScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import PublicPostScreen from './src/screens/PublicPostScreen';
+import PublicProfileLandingScreen from './src/screens/PublicProfileLandingScreen';
 import CookieConsentBanner from './src/components/CookieConsentBanner';
 import { AppRoute, defaultAuthedRoute, isLegalDrawerRoute, parsePathToRoute, routeToPath } from './src/routing';
 import { AppToastProvider } from './src/toast/AppToastContext';
@@ -43,7 +44,7 @@ const USE_NEW_NAVIGATOR = Platform.OS !== 'web';
 
 // Routes that should be accessible without authentication.
 function isPublicRoute(r: AppRoute): boolean {
-  return r.screen === 'post' || isLegalDrawerRoute(r);
+  return r.screen === 'post' || r.screen === 'profile' || isLegalDrawerRoute(r);
 }
 
 function Root() {
@@ -183,6 +184,18 @@ function Root() {
       return (
         <PublicPostScreen
           postUuid={route.postUuid}
+          onLoginPress={() => {
+            postLoginRoute.current = route;
+            navigate({ screen: 'landing' }, true);
+          }}
+        />
+      );
+    }
+
+    if (route.screen === 'profile') {
+      return (
+        <PublicProfileLandingScreen
+          username={route.username}
           onLoginPress={() => {
             postLoginRoute.current = route;
             navigate({ screen: 'landing' }, true);
