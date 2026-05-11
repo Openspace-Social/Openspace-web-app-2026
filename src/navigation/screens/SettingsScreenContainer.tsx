@@ -33,6 +33,7 @@ export default function SettingsScreenContainer() {
   const [hasUsablePassword, setHasUsablePassword] = useState<boolean>(true);
   const [requiresCurrentPassword, setRequiresCurrentPassword] = useState<boolean>(true);
   const [autoPlayMedia, setAutoPlayMedia] = useState<boolean>(false);
+  const [federationSummary, setFederationSummary] = useState<any>(null);
 
   // Load user data + persisted autoplay preference on mount.
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function SettingsScreenContainer() {
         setCurrentEmail(user?.email ?? undefined);
         setHasUsablePassword(user?.has_usable_password !== false);
         setRequiresCurrentPassword(user?.requires_current_password !== false);
+        setFederationSummary(user?.federation_summary ?? null);
       } catch {
         // Leave defaults — Settings still renders, just without populated fields.
       }
@@ -129,6 +131,7 @@ export default function SettingsScreenContainer() {
       hasUsablePassword={hasUsablePassword}
       requiresCurrentPassword={requiresCurrentPassword}
       autoPlayMedia={autoPlayMedia}
+      federationSummary={federationSummary}
       onToggleAutoPlayMedia={toggleAutoPlayMedia}
       onOpenLinkedAccounts={handleOpenLinkedAccounts}
       onOpenBlockedUsers={handleOpenBlockedUsers}

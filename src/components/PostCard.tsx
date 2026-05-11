@@ -924,6 +924,44 @@ function PostCard({
     return { previewBlocks: blocks, previewWasTruncated: truncated };
   }, [longPostTextOnlyBlocks]);
   const visibleLongPostBlocks = previewBlocks;
+  const federationAttribution = post.federation_attribution;
+  const federationReachLabel = React.useMemo(() => {
+    if (!federationAttribution) return null;
+    const remoteFollowersCount = Math.max(0, federationAttribution.remote_followers_count || 0);
+    const sentCount = Math.max(0, federationAttribution.sent_deliveries_count || 0);
+    const queuedCount = Math.max(0, federationAttribution.queued_deliveries_count || 0);
+    const failedCount = Math.max(0, federationAttribution.failed_deliveries_count || 0);
+    if (sentCount > 0) {
+      return {
+        icon: 'earth',
+        color: c.primary,
+        text: t('home.federationDistributed', {
+          defaultValue: `Distributed to ${remoteFollowersCount} remote follower${remoteFollowersCount === 1 ? '' : 's'}`,
+          count: remoteFollowersCount,
+        }),
+      };
+    }
+    if (queuedCount > 0) {
+      return {
+        icon: 'send-clock-outline',
+        color: c.textSecondary,
+        text: t('home.federationQueued', {
+          defaultValue: `Sending to ${remoteFollowersCount} remote follower${remoteFollowersCount === 1 ? '' : 's'}`,
+          count: remoteFollowersCount,
+        }),
+      };
+    }
+    if (failedCount > 0) {
+      return {
+        icon: 'alert-circle-outline',
+        color: c.warning ?? '#d97706',
+        text: t('home.federationFailed', {
+          defaultValue: 'Fediverse delivery needs attention',
+        }),
+      };
+    }
+    return null;
+  }, [c.primary, c.textSecondary, c.warning, federationAttribution, t]);
   // "See more" surfaces when there's anything the card couldn't show:
   // hidden text blocks, truncated paragraph text, or non-text blocks
   // (images, embeds, tables) — tapping always opens the dedicated LP
@@ -3018,6 +3056,39 @@ function PostCard({
           <MaterialCommunityIcons name="share-variant-outline" size={22} color={c.textSecondary} />
         </TouchableOpacity>
       </View>
+
+      {federationReachLabel ? (
+        <View
+          style={{
+            marginTop: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.surface,
+          }}
+        >
+          <MaterialCommunityIcons
+            name={federationReachLabel.icon as any}
+            size={16}
+            color={federationReachLabel.color}
+          />
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 12,
+              fontWeight: '600',
+              color: c.textSecondary,
+            }}
+          >
+            {federationReachLabel.text}
+          </Text>
+        </View>
+      ) : null}
 
       {commentBoxPostIds[post.id] ? (
         <View style={[styles.commentsBox, { borderTopColor: c.border }]}> 

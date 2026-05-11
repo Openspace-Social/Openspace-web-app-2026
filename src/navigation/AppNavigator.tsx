@@ -23,6 +23,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, type LinkingOptions } from '@react-navigation/native';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import CustomTabBar from './CustomTabBar';
 import FeedHeader from './FeedHeader';
@@ -282,26 +284,38 @@ function HomeTabStack() {
   );
 }
 
-function ProfileMePlaceholder() {
-  // Lets us jump to all the migrated Profile-tab screens while MyProfile
-  // itself is still a placeholder. Goes away when MyProfileScreen is migrated.
-  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'Me'>>();
-  return (
-    <Placeholder
-      title="My profile"
-      subtitle="New navigator shell — pending migration"
-      actions={[
-        { label: 'Followers', onPress: () => navigation.navigate('Followers') },
-        { label: 'Following', onPress: () => navigation.navigate('Following') },
-        { label: 'Blocked', onPress: () => navigation.navigate('Blocked') },
-        { label: 'Circles', onPress: () => navigation.navigate('Circles') },
-        { label: 'Lists', onPress: () => navigation.navigate('Lists') },
-        { label: 'Settings', onPress: () => navigation.navigate('Settings') },
-        { label: 'Manage communities', onPress: () => navigation.navigate('ManageCommunities') },
-        { label: 'Muted communities', onPress: () => navigation.navigate('MutedCommunities') },
-      ]}
-    />
-  );
+function ProfileMeScreen() {
+  const { token } = useAuth();
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const [username, setUsername] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    if (!token) return () => { active = false; };
+    (async () => {
+      try {
+        const me: any = await api.getAuthenticatedUser(token);
+        if (active) setUsername(me?.username || null);
+      } catch {
+        if (active) setUsername(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  if (!username) {
+    return (
+      <Placeholder
+        title="My profile"
+        subtitle="Loading your profile"
+      />
+    );
+  }
+
+  return <PublicProfileScreenContainer usernameOverride={username} />;
 }
 
 function CommunitiesTabStack() {
@@ -351,7 +365,7 @@ function ProfileTabStack() {
         name="Me"
         options={{ header: () => <FeedHeader /> }}
       >
-        {() => <ProfileMePlaceholder />}
+        {() => <ProfileMeScreen />}
       </ProfileStack.Screen>
       <ProfileStack.Screen
         name="Profile"

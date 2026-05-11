@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { api, FollowingUserResult } from '../api/client';
+import { api, FederationRemoteFollower, FollowingUserResult } from '../api/client';
 import { useAppToast } from '../toast/AppToastContext';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -49,7 +49,9 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [people, setPeople] = useState<FollowingUserResult[]>([]);
+  const [remoteFollowers, setRemoteFollowers] = useState<FederationRemoteFollower[]>([]);
   const [loading, setLoading] = useState(true);
+  const [remoteFollowersLoading, setRemoteFollowersLoading] = useState(mode === 'followers');
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
@@ -92,6 +94,29 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
   }, [token, mode, pageSize, t]);
 
   useEffect(() => { void loadInitial(); }, [loadInitial]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (mode !== 'followers') {
+      setRemoteFollowers([]);
+      setRemoteFollowersLoading(false);
+      return;
+    }
+    setRemoteFollowersLoading(true);
+    void (async () => {
+      try {
+        const data = await api.getFederationRemoteFollowers(token);
+        if (!cancelled) setRemoteFollowers(data);
+      } catch {
+        if (!cancelled) setRemoteFollowers([]);
+      } finally {
+        if (!cancelled) setRemoteFollowersLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, token]);
 
   // ── Load more ─────────────────────────────────────────────────────────────
   async function loadMore() {
@@ -325,6 +350,54 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
             ) : null}
       </View>
 
+      {isFollowers ? (
+        <View style={[s.remoteSection, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+          <View style={s.remoteSectionHeader}>
+            <View style={s.remoteSectionTitleRow}>
+              <MaterialCommunityIcons name="satellite-uplink" size={18} color={c.primary} />
+              <Text style={[s.remoteSectionTitle, { color: c.textPrimary }]}>
+                {t('followers.remoteTitle', { defaultValue: 'Fediverse followers' })}
+              </Text>
+            </View>
+            <Text style={[s.remoteSectionCount, { color: c.textMuted }]}>
+              {remoteFollowers.length}
+            </Text>
+          </View>
+          <Text style={[s.remoteSectionBody, { color: c.textMuted }]}>
+            {t('followers.remoteDescription', {
+              defaultValue: 'People following you from Mastodon and compatible apps show up here so you can see your audience beyond OpenSpace.',
+            })}
+          </Text>
+          {remoteFollowersLoading ? (
+            <View style={s.remoteSectionLoading}>
+              <ActivityIndicator size="small" color={c.primary} />
+            </View>
+          ) : remoteFollowers.length > 0 ? (
+            <View style={s.remoteFollowersWrap}>
+              {remoteFollowers.map((follower) => (
+                <View
+                  key={`remote-follower-${follower.id}-${follower.actor_uri}`}
+                  style={[s.remoteFollowerChip, { backgroundColor: c.surface, borderColor: c.border }]}
+                >
+                  <Text style={[s.remoteFollowerHandle, { color: c.textPrimary }]} numberOfLines={1}>
+                    {follower.handle}
+                  </Text>
+                  <Text style={[s.remoteFollowerDomain, { color: c.textMuted }]} numberOfLines={1}>
+                    {follower.domain}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={[s.remoteSectionEmpty, { color: c.textMuted }]}>
+              {t('followers.remoteEmpty', {
+                defaultValue: 'No fediverse followers yet, but this section will light up as remote follows arrive.',
+              })}
+            </Text>
+          )}
+        </View>
+      ) : null}
+
       {/* Body */}
       {loading ? (
         <ActivityIndicator color={c.primary} size="large" style={{ marginTop: 48 }} />
@@ -445,6 +518,68 @@ function useStyles(c: any) {
       marginBottom: 8,
     },
     searchInput: { flex: 1, fontSize: 14, padding: 0 },
+    remoteSection: {
+      borderWidth: 1,
+      borderRadius: 12,
+      marginHorizontal: 12,
+      marginBottom: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      gap: 10,
+    },
+    remoteSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    remoteSectionTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexShrink: 1,
+    },
+    remoteSectionTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    remoteSectionCount: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    remoteSectionBody: {
+      fontSize: 13,
+      lineHeight: 19,
+    },
+    remoteSectionLoading: {
+      alignItems: 'flex-start',
+      paddingTop: 4,
+    },
+    remoteSectionEmpty: {
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    remoteFollowersWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    remoteFollowerChip: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      minWidth: 140,
+      maxWidth: '100%',
+    },
+    remoteFollowerHandle: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    remoteFollowerDomain: {
+      fontSize: 11,
+      marginTop: 2,
+    },
     centreBox: {
       flex: 1,
       alignItems: 'center',

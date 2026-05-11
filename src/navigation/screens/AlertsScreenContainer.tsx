@@ -33,7 +33,7 @@ import { useNotifications } from '../../context/NotificationsContext';
 
 const FILTER_KEYS: NotificationFilterKey[] = [
   'all', 'unread', 'comments', 'replies', 'connections',
-  'follows', 'communities', 'mentions', 'reactions', 'reposts', 'moderation',
+  'follows', 'communities', 'mentions', 'reactions', 'reposts', 'fediverse', 'moderation',
 ];
 
 export default function AlertsScreenContainer() {
@@ -235,6 +235,7 @@ export default function AlertsScreenContainer() {
       mentions: t('home.notificationFilterMentions', { defaultValue: 'Mentions' }),
       reactions: t('home.notificationFilterReactions', { defaultValue: 'Reactions' }),
       reposts: t('home.notificationFilterReposts', { defaultValue: 'Reposts' }),
+      fediverse: t('home.notificationFilterFediverse', { defaultValue: 'Fediverse' }),
       moderation: t('home.notificationFilterModeration', { defaultValue: 'Moderation' }),
     };
     return map[key];

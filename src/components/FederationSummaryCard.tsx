@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import type { FederationSummary } from '../api/client';
@@ -39,6 +39,23 @@ function Metric({ c, label, value }: MetricProps) {
   );
 }
 
+function activityIconName(type?: string) {
+  switch (type) {
+    case 'follow':
+      return 'account-plus-outline';
+    case 'reply':
+      return 'comment-outline';
+    case 'mention':
+      return 'at';
+    case 'like':
+      return 'heart-outline';
+    case 'announce':
+      return 'repeat-variant';
+    default:
+      return 'access-point-network';
+  }
+}
+
 export default function FederationSummaryCard({
   c,
   t,
@@ -47,6 +64,9 @@ export default function FederationSummaryCard({
   compact = false,
 }: Props) {
   if (!summary) return null;
+
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 700;
 
   const primaryMessage = summary.is_discoverable
     ? t('federation.discoverableStatus', {
@@ -66,6 +86,7 @@ export default function FederationSummaryCard({
       });
 
   const actorUri = summary.actor_uri?.trim();
+  const recentActivity = Array.isArray(summary.recent_activity) ? summary.recent_activity.slice(0, 4) : [];
 
   return (
     <View
@@ -79,7 +100,14 @@ export default function FederationSummaryCard({
         gap: 16,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <View
+        style={{
+          flexDirection: isNarrow ? 'column' : 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
         <View style={{ flex: 1, gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View
@@ -110,7 +138,15 @@ export default function FederationSummaryCard({
             {secondaryMessage}
           </Text>
         </View>
-        <View style={{ alignItems: 'flex-end', gap: 8 }}>
+        <View
+          style={{
+            width: isNarrow ? '100%' : undefined,
+            flexDirection: isNarrow ? 'row' : 'column',
+            flexWrap: 'wrap',
+            alignItems: isNarrow ? 'flex-start' : 'flex-end',
+            gap: 8,
+          }}
+        >
           <View
             style={{
               borderRadius: 999,
@@ -190,6 +226,60 @@ export default function FederationSummaryCard({
           </Pressable>
         ) : null}
       </View>
+
+      {recentActivity.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: c.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            {t('federation.recentActivityHeadline', { defaultValue: 'Recent fediverse activity' })}
+          </Text>
+          <View style={{ gap: 10 }}>
+            {recentActivity.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  borderRadius: 16,
+                  backgroundColor: c.surface,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                }}
+              >
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: `${c.primary}12`,
+                  }}
+                >
+                  <MaterialCommunityIcons name={activityIconName(item.type) as any} size={16} color={c.primary} />
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 18 }}>
+                    {item.headline || t('federation.activityFallback', { defaultValue: 'Fediverse activity' })}
+                  </Text>
+                  {item.actor?.handle ? (
+                    <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                      {item.actor.handle}
+                    </Text>
+                  ) : null}
+                  {item.detail ? (
+                    <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>
+                      {item.detail}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

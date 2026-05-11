@@ -103,6 +103,7 @@ export default function NotificationDrawer({
       { key: 'mentions' as const, label: t('home.notificationFilterMentions', { defaultValue: 'Mentions' }) },
       { key: 'reactions' as const, label: t('home.notificationFilterReactions', { defaultValue: 'Reactions' }) },
       { key: 'reposts' as const, label: t('home.notificationFilterReposts', { defaultValue: 'Reposts' }) },
+      { key: 'fediverse' as const, label: t('home.notificationFilterFediverse', { defaultValue: 'Fediverse' }) },
       { key: 'moderation' as const, label: t('home.notificationFilterModeration', { defaultValue: 'Moderation' }) },
     ],
     [t]
@@ -386,6 +387,7 @@ export type NotificationFilterKey =
   | 'mentions'
   | 'reactions'
   | 'reposts'
+  | 'fediverse'
   | 'moderation';
 
 export function matchesNotificationFilter(notif: AppNotification, filter: NotificationFilterKey) {
@@ -400,6 +402,7 @@ export function matchesNotificationFilter(notif: AppNotification, filter: Notifi
   if (filter === 'mentions') return type === 'PUM' || type === 'PCUM';
   if (filter === 'reactions') return type === 'PR' || type === 'PCRA';
   if (filter === 'reposts') return type === 'PRE';
+  if (filter === 'fediverse') return type === 'FA';
   if (filter === 'moderation') return type.startsWith('M') || type === 'CB';
   return true;
 }
@@ -1227,10 +1230,20 @@ function resolveNotification(
       const remoteActor = obj?.remote_actor;
       const localPost = obj?.local_post;
       const name = remoteActor?.profile?.name || remoteActor?.username || someone;
-      const isReply = obj?.interaction_type === 'reply';
+      const interactionType = obj?.interaction_type;
+      const isReply = interactionType === 'reply';
+      const isMention = interactionType === 'mention';
+      const isLike = interactionType === 'like';
+      const isAnnounce = interactionType === 'announce';
       return {
-        icon: isReply ? 'comment-outline' : 'at',
-        iconColor: isReply ? '#2563EB' : '#D97706',
+        icon: isReply
+          ? 'comment-outline'
+          : isLike
+            ? 'heart-outline'
+            : isAnnounce
+              ? 'repeat-variant'
+              : 'at',
+        iconColor: isReply ? '#2563EB' : isLike ? '#EC4899' : isAnnounce ? '#10B981' : '#D97706',
         actor: remoteActor?.username,
         actorAvatar: remoteActor?.profile?.avatar,
         body: isReply
@@ -1238,10 +1251,20 @@ function resolveNotification(
               name,
               defaultValue: '{{name}} replied to your post from the fediverse.',
             })
-          : t('home.notificationTypeFederatedMention', {
-              name,
-              defaultValue: '{{name}} mentioned you from the fediverse.',
-            }),
+          : isMention
+            ? t('home.notificationTypeFederatedMention', {
+                name,
+                defaultValue: '{{name}} mentioned you from the fediverse.',
+              })
+            : isLike
+              ? t('home.notificationTypeFederatedLike', {
+                  name,
+                  defaultValue: '{{name}} liked your post from the fediverse.',
+                })
+              : t('home.notificationTypeFederatedBoost', {
+                  name,
+                  defaultValue: '{{name}} boosted your post from the fediverse.',
+                }),
         postThumbnail: localPost?.media_thumbnail || null,
         postPreviewText: truncate(obj?.preview_text || localPost?.text, 120) || null,
         onPress: () => {

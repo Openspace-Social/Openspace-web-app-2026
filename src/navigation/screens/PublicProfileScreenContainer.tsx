@@ -50,10 +50,11 @@ import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import ReactionListDrawer from '../../components/ReactionListDrawer';
 import { ThemedScrollView } from '../../components/ThemedFlatList';
 import EditProfileModal from '../../components/EditProfileModal';
+import FederationSummaryCard from '../../components/FederationSummaryCard';
 import UserBadge from '../../components/UserBadge';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
-import { api, type FeedPost, type PostComment } from '../../api/client';
+import { api, type FeedPost, type FederationSummary, type PostComment } from '../../api/client';
 import type { HomeStackParamList } from '../AppNavigator';
 
 type PublicUser = {
@@ -89,6 +90,7 @@ type PublicUser = {
   is_subscribed?: boolean;
   is_blocked?: boolean;
   connected_circles?: Array<{ id: number; name?: string; color?: string }> | null;
+  federation_summary?: FederationSummary | null;
 };
 
 type CommunityLite = {
@@ -118,7 +120,7 @@ function resolveImageUri(value?: string | { url?: string } | null): string | und
   return undefined;
 }
 
-export default function PublicProfileScreenContainer() {
+export default function PublicProfileScreenContainer({ usernameOverride }: { usernameOverride?: string } = {}) {
   const { token } = useAuth();
   const { theme } = useTheme();
   const { t } = useTranslation();
@@ -126,7 +128,7 @@ export default function PublicProfileScreenContainer() {
   const { showToast } = useAppToast();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<HomeStackParamList, 'Profile'>>();
-  const username = route.params?.username;
+  const username = usernameOverride ?? route.params?.username;
   const insets = useSafeAreaInsets();
 
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -868,6 +870,17 @@ export default function PublicProfileScreenContainer() {
           <View style={styles.locationRow}>
             <MaterialCommunityIcons name="map-marker-outline" size={14} color={c.textMuted} />
             <Text style={[styles.locationText, { color: c.textMuted }]}>{user.profile.location}</Text>
+          </View>
+        ) : null}
+        {user?.federation_summary ? (
+          <View style={styles.federationCardWrap}>
+            <FederationSummaryCard
+              c={c}
+              t={t}
+              summary={user.federation_summary}
+              isOwnProfile={isOwnProfile}
+              compact
+            />
           </View>
         ) : null}
 
@@ -1660,6 +1673,7 @@ const styles = StyleSheet.create({
   bio: { fontSize: 14, lineHeight: 20, paddingHorizontal: 14, marginTop: 12 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, marginTop: 8 },
   locationText: { fontSize: 13 },
+  federationCardWrap: { paddingHorizontal: 14, marginTop: 14 },
 
   sectionCard: {
     marginHorizontal: 12,

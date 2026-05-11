@@ -713,6 +713,13 @@ export type FeedPost = {
   links?: Array<{ url?: string; title?: string; image?: string; description?: string; site_name?: string }>;
   reposts_count?: number;
   user_has_reposted?: boolean;
+  federation_attribution?: {
+    remote_followers_count: number;
+    sent_deliveries_count: number;
+    queued_deliveries_count: number;
+    failed_deliveries_count: number;
+    is_distributed: boolean;
+  } | null;
   shared_post?: {
     id?: number;
     uuid?: string;
@@ -916,6 +923,29 @@ export type FederationSummary = {
   outbound_deliveries_sent_count: number;
   recent_inbound_interactions_count: number;
   recent_inbound_window_days: number;
+  recent_activity?: Array<{
+    id: string;
+    type?: 'follow' | 'reply' | 'mention' | 'like' | 'announce' | string;
+    created?: string | null;
+    headline?: string | null;
+    detail?: string | null;
+    post_uuid?: string | null;
+    actor?: {
+      id?: number | null;
+      handle?: string | null;
+      username?: string | null;
+      domain?: string | null;
+    } | null;
+  }>;
+};
+
+export type FederationRemoteFollower = {
+  id?: number | null;
+  actor_uri?: string | null;
+  preferred_username?: string | null;
+  domain?: string | null;
+  handle?: string | null;
+  followed_at?: string | null;
 };
 
 export type CommunityOwner = {
@@ -1101,7 +1131,7 @@ export type NotificationContentObject =
     }
   // FA
   | {
-      interaction_type?: 'reply' | 'mention';
+      interaction_type?: 'reply' | 'mention' | 'like' | 'announce';
       remote_actor?: NotifUser & { id?: number; actor_uri?: string; domain?: string };
       inbound_object_id?: number;
       local_post?: NotifPost;
@@ -3180,6 +3210,11 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }).then((users) => normalizeFollowingUserList(users));
   },
+
+  getFederationRemoteFollowers: (token: string) =>
+    request<FederationRemoteFollower[]>('/api/auth/user/federation/remote-followers/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
 
   searchCommunities: (token: string, query: string, count = 10) => {
     const params = new URLSearchParams();
