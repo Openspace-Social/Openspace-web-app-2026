@@ -24,10 +24,15 @@ on:
         required: true
         default: production
         type: string
-      auto_submit:
-        description: Auto-submit to TestFlight / Play Store after build
+      auto_submit_ios:
+        description: Auto-submit iOS build to TestFlight
         required: true
         default: true
+        type: boolean
+      auto_submit_android:
+        description: Auto-submit Android build to Play Store (requires Google Play service account credentials on EAS)
+        required: true
+        default: false
         type: boolean
 
 permissions:
@@ -70,7 +75,7 @@ jobs:
         if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
         run: |
           AUTO_SUBMIT_FLAG=""
-          if [ "${{ inputs.auto_submit }}" = "true" ]; then
+          if [ "${{ inputs.auto_submit_ios }}" = "true" ]; then
             AUTO_SUBMIT_FLAG="--auto-submit-with-profile ${{ inputs.ios_profile }}"
           fi
           eas build --platform ios --profile "${{ inputs.ios_profile }}" $AUTO_SUBMIT_FLAG --non-interactive --no-wait
@@ -79,7 +84,7 @@ jobs:
         if: ${{ inputs.platform == 'android' || inputs.platform == 'both' }}
         run: |
           AUTO_SUBMIT_FLAG=""
-          if [ "${{ inputs.auto_submit }}" = "true" ]; then
+          if [ "${{ inputs.auto_submit_android }}" = "true" ]; then
             AUTO_SUBMIT_FLAG="--auto-submit-with-profile ${{ inputs.android_profile }}"
           fi
           eas build --platform android --profile "${{ inputs.android_profile }}" $AUTO_SUBMIT_FLAG --non-interactive --no-wait
