@@ -27,6 +27,7 @@ import {
   UpdateAuthenticatedUserMediaPayload,
   UpdateAuthenticatedUserPayload
 } from '../api/client';
+import FederationSummaryCard from '../components/FederationSummaryCard';
 import ProfileActionsMenu from '../components/ProfileActionsMenu';
 import UserBadge from '../components/UserBadge';
 
@@ -69,7 +70,7 @@ type Props = {
   onUpdateProfile: (payload: UpdateAuthenticatedUserPayload) => Promise<void>;
   onUpdateProfileMedia: (payload: UpdateAuthenticatedUserMediaPayload) => Promise<void>;
   onNotice: (message: string) => void;
-  onOpenEditProfile: () => void;
+  onOpenEditProfile?: () => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
   isOwnProfile?: boolean;
   isProfileLoading?: boolean;
@@ -1451,6 +1452,13 @@ export default function MyProfileScreen({
           </TouchableOpacity>
         ) : null}
       </View>
+
+      <FederationSummaryCard
+        c={c}
+        t={t}
+        summary={user?.federation_summary}
+        isOwnProfile={isOwnProfile}
+      />
 
       <View style={[styles.profileTabsRow, { borderTopColor: c.border }]}>
         <Text style={[styles.profileTabText, { color: c.textSecondary }]}>

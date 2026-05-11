@@ -9767,6 +9767,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 hasUsablePassword={resolvedHasUsablePassword || passwordInitializedOverride}
                 requiresCurrentPassword={effectiveRequiresCurrentPassword}
                 autoPlayMedia={autoPlayMedia}
+                federationSummary={user?.federation_summary}
                 onToggleAutoPlayMedia={() => {
                   void handleToggleAutoPlayMedia();
                 }}

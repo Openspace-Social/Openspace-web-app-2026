@@ -18,8 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import LanguagePicker from '../components/LanguagePicker';
+import FederationSummaryCard from '../components/FederationSummaryCard';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
-import type { UserNotificationSettings } from '../api/client';
+import type { FederationSummary, UserNotificationSettings } from '../api/client';
 import { api } from '../api/client';
 
 type Props = {
@@ -30,6 +31,7 @@ type Props = {
   hasUsablePassword?: boolean;
   requiresCurrentPassword?: boolean;
   autoPlayMedia: boolean;
+  federationSummary?: FederationSummary | null;
   onToggleAutoPlayMedia: () => void;
   onOpenLinkedAccounts: () => void;
   onOpenBlockedUsers: () => void;
@@ -73,6 +75,7 @@ export default function SettingsScreen({
   hasUsablePassword = true,
   requiresCurrentPassword = hasUsablePassword,
   autoPlayMedia,
+  federationSummary,
   onToggleAutoPlayMedia,
   onOpenLinkedAccounts,
   onOpenBlockedUsers,
@@ -531,6 +534,14 @@ export default function SettingsScreen({
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        <FederationSummaryCard
+          c={c}
+          t={t}
+          summary={federationSummary}
+          isOwnProfile
+          compact
+        />
+
         <SettingsItem
           c={c}
           icon="email-edit-outline"

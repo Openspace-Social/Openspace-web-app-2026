@@ -900,6 +900,22 @@ export type UserProfile = {
   is_followed?: boolean;
   date_joined?: string;
   visibility?: string;
+  federation_summary?: FederationSummary;
+};
+
+export type FederationSummary = {
+  is_enabled: boolean;
+  is_discoverable: boolean;
+  can_receive_inbound: boolean;
+  can_send_outbound: boolean;
+  can_reach_remote_followers: boolean;
+  has_remote_audience: boolean;
+  actor_uri?: string | null;
+  fediverse_handle: string;
+  remote_followers_count: number;
+  outbound_deliveries_sent_count: number;
+  recent_inbound_interactions_count: number;
+  recent_inbound_window_days: number;
 };
 
 export type CommunityOwner = {
