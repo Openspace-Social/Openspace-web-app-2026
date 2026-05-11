@@ -1243,7 +1243,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
         throw new Error(t('auth.socialInProgress', { defaultValue: 'A sign-in is already in progress.' }));
       }
       if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE || code === 'PLAY_SERVICES_NOT_AVAILABLE') {
-        throw new Error(t('auth.socialPlayServicesMissing', { defaultValue: 'Google Play services are required.' }));
+        throw new Error(t('auth.socialPlayServicesMissing', { defaultValue: 'Google Sign-In is unavailable on this device.' }));
       }
       throw e;
     }

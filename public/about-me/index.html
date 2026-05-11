@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index, follow" />
+    <title>About the creator — Openspace.Social</title>
+    <meta
+      name="description"
+      content="The story behind Openspace.Social and the person building it."
+    />
+    <link rel="icon" href="/favicon.ico" />
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --surface: #ffffff;
+        --border: #e2e8f0;
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --max: 720px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        font-size: 17px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .container {
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: 48px 24px 96px;
+      }
+      .back {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 14px;
+        margin-bottom: 24px;
+      }
+      .back:hover {
+        color: var(--primary);
+      }
+      .hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 32px 0 24px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 40px;
+      }
+      .avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 48px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        overflow: hidden;
+      }
+      .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      h1 {
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0 0 8px;
+        letter-spacing: -0.02em;
+      }
+      .tagline {
+        color: var(--text-muted);
+        font-size: 17px;
+        margin: 0 0 16px;
+      }
+      .social-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 14px;
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .social-link:hover {
+        color: var(--primary);
+        border-color: var(--primary);
+      }
+      .social-link svg {
+        width: 14px;
+        height: 14px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 40px 0 12px;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      ul {
+        margin: 0 0 16px;
+        padding-left: 24px;
+        color: var(--text);
+      }
+      li {
+        margin-bottom: 4px;
+      }
+      .mission {
+        margin-top: 24px;
+        padding: 20px 24px;
+        background: var(--surface);
+        border-left: 3px solid var(--primary);
+        border-radius: 4px;
+        font-weight: 500;
+        color: var(--text);
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        margin-top: 16px;
+      }
+      .support {
+        margin-top: 56px;
+        padding: 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      .support h2 {
+        margin-top: 0;
+      }
+      .support p {
+        color: var(--text-muted);
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--primary);
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 15px;
+        margin-top: 8px;
+        transition: background 0.15s;
+      }
+      .btn:hover {
+        background: var(--primary-hover);
+      }
+      footer {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 14px;
+      }
+      footer a {
+        color: var(--text-muted);
+        text-decoration: none;
+      }
+      footer a:hover {
+        color: var(--primary);
+      }
+      @media (max-width: 480px) {
+        .container {
+          padding: 24px 20px 64px;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        .avatar {
+          width: 96px;
+          height: 96px;
+          font-size: 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <a class="back" href="/">&larr; openspace.social</a>
+
+      <section class="hero">
+        <div class="avatar">
+          <img src="/about-me/avatar.jpg" alt="Massimo Raimondi" />
+        </div>
+        <h1>Massimo Raimondi</h1>
+        <p class="tagline">Operator of Openspace.Social</p>
+        <a
+          class="social-link"
+          href="https://www.linkedin.com/in/massimo-raimondi-57737118/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z" />
+          </svg>
+          Connect on LinkedIn
+        </a>
+      </section>
+
+      <section>
+        <h2>Why I built Openspace</h2>
+        <p>I created Openspace.Social because I believe social media lost its way.</p>
+        <p>
+          The internet was once a place where people gathered around shared interests, built communities, made friends, and discovered ideas organically. Over time, many platforms shifted toward maximizing engagement at any cost by replacing real connection with algorithms, outrage, ads, tracking, and endless attempts to capture attention.
+        </p>
+        <p>Openspace was built as an alternative.</p>
+      </section>
+
+      <section>
+        <h2>An open network, not a walled garden</h2>
+        <p>
+          At its core, Openspace is a decentralized social network built on the Fediverse. An open network that connects independent platforms together through ActivityPub. That means your identity, your audience, and your conversations are not locked into a single company&rsquo;s ecosystem. You can connect with people across Mastodon and other compatible networks while still having a home that respects your privacy and autonomy.
+        </p>
+        <p>
+          I&rsquo;ve always been fascinated by community building, not just growing platforms, but understanding how people connect, collaborate, and create culture together online. Openspace is the result of that passion. It&rsquo;s designed to feel more human, more intentional, and more community-driven than traditional social platforms.
+        </p>
+      </section>
+
+      <section>
+        <h2>Built around user control</h2>
+        <p>
+          The goal was never simply to launch &ldquo;another social app.&rdquo; The goal was to create a space where people have more control:
+        </p>
+        <ul>
+          <li>control over their feeds,</li>
+          <li>control over their data,</li>
+          <li>control over how they interact online,</li>
+          <li>and ultimately, control over the communities they build.</li>
+        </ul>
+        <p>That&rsquo;s why Openspace has:</p>
+        <ul>
+          <li>no ads,</li>
+          <li>no invasive tracking,</li>
+          <li>no algorithm manipulating what people should see,</li>
+          <li>and features like Build Your Own Algorithm (BYOA), Circles, Lists, and Fediverse integration that put users back in charge of their experience.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Technology that serves people</h2>
+        <p>
+          I believe social platforms carry a responsibility beyond growth metrics. They shape conversations, relationships, mental health, culture, and how communities form. Openspace is built around the idea that technology should strengthen people and communities and not to exploit them.
+        </p>
+        <p>More than anything, I wanted to build a place that feels hopeful again.</p>
+        <p>
+          A place for creators, hobbyists, friend groups, independent communities, and people who miss when the internet felt open and social. A place where meaningful interaction matters more than virality, and where users are treated as participants instead of products.
+        </p>
+        <p>Openspace is still evolving, but the mission remains simple:</p>
+        <p class="mission">
+          Build a healthier, more open social experience &mdash; powered by communities, connected through the Fediverse, and owned by the people who use it.
+        </p>
+      </section>
+
+      <section class="support">
+        <h2>Support development</h2>
+        <p>
+          Openspace is built and maintained by one person, in spare hours, with no investors and no ads. If the project resonates with you and you'd like to help keep it running, you can chip in below — it's optional, never required, and goes directly toward hosting, tooling, and the time it takes to keep building.
+        </p>
+        <a
+          class="btn"
+          href="https://buymeacoffee.com/openspace.social"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Buy me a coffee &rarr;
+        </a>
+      </section>
+
+      <footer>
+        <p>
+          <a href="/">Back to Openspace.Social</a>
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

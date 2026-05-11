@@ -151,7 +151,7 @@ export async function nativeSocialIdToken(
     ) {
       throw new Error(
         t('auth.socialPlayServicesMissing', {
-          defaultValue: 'Google Play services are required.',
+          defaultValue: 'Google Sign-In is unavailable on this device.',
         }),
       );
     }

@@ -213,16 +213,16 @@ export default function ProfileMenuDrawer({
       },
     },
     {
-      icon: 'coffee-outline',
-      label: t('home.sideMenuDonate', { defaultValue: 'Donate' }),
+      icon: 'account-circle-outline',
+      label: t('home.sideMenuAboutCreator', { defaultValue: 'About the creator' }),
       onPress: () => {
-        const url = 'https://buymeacoffee.com/openspace.social';
+        const url = 'https://openspace.social/about-me';
         onClose();
         setTimeout(() => {
           Linking.openURL(url).catch(() => {
             showToast(
-              t('home.donateLinkFailed', {
-                defaultValue: 'Could not open the donation page.',
+              t('home.aboutCreatorLinkFailed', {
+                defaultValue: 'Could not open the page.',
               }),
               { type: 'error' },
             );
