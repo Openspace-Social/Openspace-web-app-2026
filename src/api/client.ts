@@ -193,6 +193,7 @@ export type MastodonOnboardingStartPayload = {
   frontend_redirect_uri?: string;
   flow?: 'onboarding' | 'link_existing';
   existing_username?: string;
+  federation_referral_token?: string;
 };
 export type MastodonOnboardingStartResult = {
   redirectUrl: string;
@@ -369,6 +370,22 @@ export type RegisterPayload = {
   token?: string;
   is_of_legal_age?: boolean;
   are_guidelines_accepted?: boolean;
+  federation_referral_token?: string;
+};
+
+export type FederationVisitorAttributionPayload = {
+  visitor_token?: string;
+  source_kind: 'profile' | 'post';
+  route_path?: string;
+  target_username?: string;
+  target_post_uuid?: string;
+  referrer_url?: string;
+};
+
+export type FederationVisitorAttributionResult = {
+  visitor_token: string;
+  source_kind: 'profile' | 'post';
+  visit_count: number;
 };
 
 export type UpdateAuthenticatedUserPayload = {
@@ -1687,16 +1704,29 @@ export const api = {
       body: JSON.stringify({ code }),
     }),
 
-  socialAuthGoogle: (idToken: string) =>
+  socialAuthGoogle: (idToken: string, federationReferralToken?: string) =>
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/google/', {
       method: 'POST',
-      body: JSON.stringify({ id_token: idToken }),
+      body: JSON.stringify({
+        id_token: idToken,
+        ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
+      }),
     }),
 
-  socialAuthApple: (idToken: string, allowCreate = false) =>
+  socialAuthApple: (idToken: string, allowCreate = false, federationReferralToken?: string) =>
     request<AuthToken & { username: string; is_new_user: boolean }>('/api/auth/social/apple/', {
       method: 'POST',
-      body: JSON.stringify({ id_token: idToken, allow_create: allowCreate }),
+      body: JSON.stringify({
+        id_token: idToken,
+        allow_create: allowCreate,
+        ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
+      }),
+    }),
+
+  trackFederationVisitorAttribution: (payload: FederationVisitorAttributionPayload) =>
+    request<FederationVisitorAttributionResult>('/api/auth/federation/visitor-attribution/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 
   requestAppleSocialLinkCode: (idToken: string, username: string) =>

@@ -31,6 +31,12 @@ import { useAppToast } from '../toast/AppToastContext';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 import { AppleSignInCancelled, webAppleSignIn } from '../utils/webAppleAuth';
 import { WebForm } from '../utils/WebForm';
+import {
+  clearFederationVisitorAttribution,
+  loadFederationVisitorAttribution,
+  setFederationVisitorPreferredAuthMode,
+  type FederationPreferredAuthMode,
+} from '../utils/federationAttribution';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -156,6 +162,8 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
   const [mastodonLinkToken, setMastodonLinkToken] = useState('');
   const [mastodonLinkUsernameDisplay, setMastodonLinkUsernameDisplay] = useState('');
   const [mastodonLinkCode, setMastodonLinkCode] = useState('');
+  const [federationReferralToken, setFederationReferralToken] = useState('');
+  const [federationVisitorMode, setFederationVisitorMode] = useState<FederationPreferredAuthMode | null>(null);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [socialLoadingProvider, setSocialLoadingProvider] = useState<SocialProvider | null>(null);
@@ -267,6 +275,24 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
     setError('');
   }, [error, showToast]);
 
+  useEffect(() => {
+    let cancelled = false;
+    loadFederationVisitorAttribution()
+      .then((context) => {
+        if (cancelled || !context?.visitorToken) return;
+        setFederationReferralToken(context.visitorToken);
+        setFederationVisitorMode(context.preferredAuthMode || 'signup');
+        setAuthMode((currentMode) => {
+          if (currentMode !== 'login') return currentMode;
+          return context.preferredAuthMode === 'mastodon' ? 'mastodonChooseFlow' : 'signup';
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const shortFooterLabel = (key: typeof headerLinks[number]) => {
     switch (key) {
       case 'aboutUs': return 'About';
@@ -303,6 +329,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
     setLoading(true);
     try {
       const { token } = await api.login(username.trim(), password);
+      void clearFederationVisitorAttribution();
       onLogin?.(token);
     } catch (e: any) {
       setError(e.message || t('auth.errorLoginFailed'));
@@ -339,6 +366,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
         name: signupUsername.trim(),
         is_of_legal_age: true,
         are_guidelines_accepted: true,
+        ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
       });
       setVerificationToken(token);
       setVerificationEmail(signupEmail.trim());
@@ -565,6 +593,8 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
 
   function switchToSignup() {
     setAuthMode('signup');
+    setFederationVisitorMode('signup');
+    void setFederationVisitorPreferredAuthMode('signup');
     setError('');
     setNotice('');
   }
@@ -593,6 +623,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
       setError(t('auth.errorShareSessionMissing'));
       return;
     }
+    void clearFederationVisitorAttribution();
     onLogin?.(shareFlowToken);
   }
 
@@ -671,6 +702,8 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
   function switchToContinueMastodon() {
     setError('');
     setNotice('');
+    setFederationVisitorMode('mastodon');
+    void setFederationVisitorPreferredAuthMode('mastodon');
     setMastodonContinueInput('');
     setMastodonLinkUsernameInput('');
     setMastodonLinkInstanceInput('');
@@ -752,6 +785,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
       const started = await api.startMastodonOnboarding({
         handleOrInstance,
         frontend_redirect_uri: frontendRedirectUri,
+        ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
       });
       const authResult = await WebBrowser.openAuthSessionAsync(started.redirectUrl, frontendRedirectUri);
       if (authResult.type !== 'success' || !authResult.url) {
@@ -763,6 +797,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
       }
       const callback = parseMastodonOnboardingCallback(authResult.url, frontendRedirectUri);
       if (!callback.isNewUser) {
+        void clearFederationVisitorAttribution();
         onLogin?.(callback.token);
         return;
       }
@@ -850,6 +885,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
         frontend_redirect_uri: frontendRedirectUri,
         flow: 'link_existing',
         existing_username: username,
+        ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
       });
       const authResult = await WebBrowser.openAuthSessionAsync(started.redirectUrl, frontendRedirectUri);
       if (authResult.type !== 'success' || !authResult.url) {
@@ -1431,8 +1467,8 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
       idToken = await openSocialPopup(provider);
       debugSocial('api-submit', { provider, idTokenLength: idToken.length });
       const response = provider === 'google'
-        ? await api.socialAuthGoogle(idToken)
-        : await api.socialAuthApple(idToken);
+        ? await api.socialAuthGoogle(idToken, federationReferralToken || undefined)
+        : await api.socialAuthApple(idToken, false, federationReferralToken || undefined);
       debugSocial('api-success', {
         provider,
         username: response.username,
@@ -1443,6 +1479,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
         setSocialUsername(response.username || '');
         setAuthMode('socialUsername');
       } else {
+        void clearFederationVisitorAttribution();
         onLogin?.(response.token);
       }
     } catch (e: any) {
@@ -1599,6 +1636,75 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
             >
               <Text style={[styles.noticeText, { color: c.textSecondary }]}>
                 {notice}
+              </Text>
+            </View>
+          )}
+
+          {!!federationReferralToken && (
+            <View
+              style={[
+                styles.fediverseVisitorCard,
+                { backgroundColor: c.inputBackground, borderColor: c.border },
+              ]}
+            >
+              <View style={styles.fediverseVisitorHeader}>
+                <View style={[styles.fediverseVisitorIconWrap, { backgroundColor: `${c.primary}18` }]}>
+                  <MaterialCommunityIcons name="earth-arrow-right" size={18} color={c.primary} />
+                </View>
+                <View style={styles.fediverseVisitorHeaderText}>
+                  <Text style={[styles.fediverseVisitorTitle, { color: c.textPrimary }]}>
+                    {t('auth.fediverseVisitorTitle', { defaultValue: 'Coming from Mastodon or the fediverse?' })}
+                  </Text>
+                  <Text style={[styles.fediverseVisitorBody, { color: c.textSecondary }]}>
+                    {t('auth.fediverseVisitorBody', {
+                      defaultValue: 'Bring your Mastodon identity, keep your audience, and cross-post instead of starting over.',
+                    })}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.fediverseVisitorPills}>
+                {[
+                  t('auth.fediverseVisitorPillOne', { defaultValue: 'Bring your Mastodon identity' }),
+                  t('auth.fediverseVisitorPillTwo', { defaultValue: 'Keep your audience' }),
+                  t('auth.fediverseVisitorPillThree', { defaultValue: 'Cross-post instead of starting over' }),
+                ].map((pill) => (
+                  <View key={pill} style={[styles.fediverseVisitorPill, { borderColor: c.border, backgroundColor: c.surface }]}>
+                    <Text style={[styles.fediverseVisitorPillText, { color: c.textSecondary }]}>{pill}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.fediverseVisitorActions}>
+                <TouchableOpacity
+                  style={[styles.fediversePrimaryButton, { backgroundColor: c.primary }]}
+                  onPress={() => {
+                    setFederationVisitorMode('signup');
+                    void setFederationVisitorPreferredAuthMode('signup');
+                    setAuthMode('signup');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.fediversePrimaryButtonText}>
+                    {t('auth.fediverseVisitorPrimaryCta', { defaultValue: 'Join OpenSpace directly' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.fediverseSecondaryButton, { borderColor: c.border, backgroundColor: c.surface }]}
+                  onPress={() => {
+                    setFederationVisitorMode('mastodon');
+                    void setFederationVisitorPreferredAuthMode('mastodon');
+                    setAuthMode('mastodonChooseFlow');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.fediverseSecondaryButtonText, { color: c.textLink }]}>
+                    {t('auth.fediverseVisitorSecondaryCta', { defaultValue: 'Continue with Mastodon' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.fediverseVisitorHint, { color: c.textMuted }]}>
+                {federationVisitorMode === 'mastodon'
+                  ? t('auth.fediverseVisitorHintMastodon', { defaultValue: 'We will help you connect your Mastodon identity without losing momentum.' })
+                  : t('auth.fediverseVisitorHintSignup', { defaultValue: 'Use email, Google, Apple, or Mastodon to get started. Your fediverse visit will still be tracked.' })}
               </Text>
             </View>
           )}
@@ -3231,6 +3337,81 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     fontSize: 14,
+  },
+  fediverseVisitorCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  fediverseVisitorHeader: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  fediverseVisitorIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fediverseVisitorHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+  fediverseVisitorTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  fediverseVisitorBody: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  fediverseVisitorPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fediverseVisitorPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  fediverseVisitorPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fediverseVisitorActions: {
+    gap: 10,
+  },
+  fediversePrimaryButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  fediversePrimaryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  fediverseSecondaryButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  fediverseSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  fediverseVisitorHint: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   verificationIntro: {
     fontSize: 14,

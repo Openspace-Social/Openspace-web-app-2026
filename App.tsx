@@ -20,6 +20,7 @@ import { MentionPopupProvider } from './src/components/MentionPopupProvider';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider, type AuthContextValue } from './src/context/AuthContext';
 import { navigationRef, markNavigationReady } from './src/navigation/navigationRef';
+import { setFederationVisitorPreferredAuthMode, type FederationPreferredAuthMode } from './src/utils/federationAttribution';
 import {
   attachPushNotificationListeners,
   configurePushChannels,
@@ -184,8 +185,9 @@ function Root() {
       return (
         <PublicPostScreen
           postUuid={route.postUuid}
-          onLoginPress={() => {
+          onLoginPress={(preferredAuthMode?: FederationPreferredAuthMode) => {
             postLoginRoute.current = route;
+            if (preferredAuthMode) void setFederationVisitorPreferredAuthMode(preferredAuthMode);
             navigate({ screen: 'landing' }, true);
           }}
         />
@@ -196,8 +198,9 @@ function Root() {
       return (
         <PublicProfileLandingScreen
           username={route.username}
-          onLoginPress={() => {
+          onLoginPress={(preferredAuthMode?: FederationPreferredAuthMode) => {
             postLoginRoute.current = route;
+            if (preferredAuthMode) void setFederationVisitorPreferredAuthMode(preferredAuthMode);
             navigate({ screen: 'landing' }, true);
           }}
         />

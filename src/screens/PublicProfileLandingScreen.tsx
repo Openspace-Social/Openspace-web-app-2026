@@ -17,12 +17,16 @@ import { api, FeedPost, UserProfile } from '../api/client';
 import FederationSummaryCard from '../components/FederationSummaryCard';
 import { useTheme } from '../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
+import {
+  trackFederationVisitorProfileVisit,
+  type FederationPreferredAuthMode,
+} from '../utils/federationAttribution';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 
 type Props = {
   username: string;
-  onLoginPress: () => void;
+  onLoginPress: (preferredAuthMode?: FederationPreferredAuthMode) => void;
 };
 
 export default function PublicProfileLandingScreen({ username, onLoginPress }: Props) {
@@ -37,6 +41,13 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void trackFederationVisitorProfileVisit(
+      username,
+      typeof window !== 'undefined' && window.location ? window.location.pathname : `/u/${username}`
+    );
+  }, [username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +110,7 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
         </View>
         <TouchableOpacity
           style={[styles.signInButton, { backgroundColor: c.primary }]}
-          onPress={onLoginPress}
+          onPress={() => onLoginPress()}
           activeOpacity={0.85}
         >
           <Text style={styles.signInButtonText}>{t('auth.signIn', { defaultValue: 'Sign In' })}</Text>
@@ -181,18 +192,18 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
 
               <View style={[styles.heroRail, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                 <Text style={[styles.heroRailTitle, { color: c.textPrimary }]}>
-                  {t('publicProfile.joinRailTitle', { defaultValue: 'Step into the same network' })}
+                  {t('publicProfile.joinRailTitle', { defaultValue: 'Join OpenSpace to participate directly' })}
                 </Text>
                 <Text style={[styles.heroRailBody, { color: c.textSecondary }]}>
                   {t('publicProfile.joinRailBody', {
-                    defaultValue: 'Follow people, reply to public posts, and grow alongside Mastodon-connected communities from one profile.',
+                    defaultValue: 'Bring your Mastodon identity, keep your audience, and cross-post instead of starting over.',
                   })}
                 </Text>
                 <View style={styles.heroRailList}>
                   {[
-                    t('publicProfile.railPointOne', { defaultValue: 'See who already follows this profile from the fediverse' }),
-                    t('publicProfile.railPointTwo', { defaultValue: 'Join conversations instead of only observing them' }),
-                    t('publicProfile.railPointThree', { defaultValue: 'Build your own public profile that travels beyond OpenSpace' }),
+                    t('publicProfile.railPointOne', { defaultValue: 'Follow, reply, and post from an OpenSpace profile that already reaches the fediverse' }),
+                    t('publicProfile.railPointTwo', { defaultValue: 'Keep your Mastodon audience in view while building your OpenSpace presence' }),
+                    t('publicProfile.railPointThree', { defaultValue: 'Cross-post instead of starting from zero on a new network' }),
                   ].map((point) => (
                     <View key={point} style={styles.heroRailItem}>
                       <View style={[styles.heroRailDot, { backgroundColor: c.primary }]} />
@@ -202,16 +213,25 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
                 </View>
                 <TouchableOpacity
                   style={[styles.primaryCta, styles.primaryCtaFull, { backgroundColor: c.primary }]}
-                  onPress={onLoginPress}
+                  onPress={() => onLoginPress('signup')}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.primaryCtaText}>
-                    {t('publicProfile.joinCta', { defaultValue: 'Join OpenSpace' })}
+                    {t('publicProfile.joinCta', { defaultValue: 'Join OpenSpace to follow, post, and participate directly' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.secondaryCta, { borderColor: c.border, backgroundColor: c.background }]}
+                  onPress={() => onLoginPress('mastodon')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.secondaryCtaText, { color: c.textLink }]}>
+                    {t('publicProfile.secondaryJoinCta', { defaultValue: 'Bring your Mastodon identity' })}
                   </Text>
                 </TouchableOpacity>
                 <Text style={[styles.ctaHint, { color: c.textMuted }]}>
                   {t('publicProfile.joinHint', {
-                    defaultValue: 'Sign in to follow, reply, and connect directly.',
+                    defaultValue: 'Keep your audience, cross-post when you want to, and participate from one place.',
                   })}
                 </Text>
               </View>
@@ -405,6 +425,16 @@ const styles = StyleSheet.create({
   primaryCta: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 12 },
   primaryCtaFull: { alignSelf: 'stretch', alignItems: 'center' },
   primaryCtaText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  secondaryCta: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  secondaryCtaText: { fontSize: 14, fontWeight: '700' },
   ctaHint: { fontSize: 14, lineHeight: 20 },
   metricRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 22, paddingBottom: 22 },
   metricCard: {

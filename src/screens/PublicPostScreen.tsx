@@ -12,10 +12,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, FeedPost } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
+import {
+  trackFederationVisitorPostVisit,
+  type FederationPreferredAuthMode,
+} from '../utils/federationAttribution';
 
 interface Props {
   postUuid: string;
-  onLoginPress: () => void;
+  onLoginPress: (preferredAuthMode?: FederationPreferredAuthMode) => void;
 }
 
 export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
@@ -26,6 +30,13 @@ export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
   const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void trackFederationVisitorPostVisit(
+      postUuid,
+      typeof window !== 'undefined' && window.location ? window.location.pathname : `/posts/${postUuid}`
+    );
+  }, [postUuid]);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +91,7 @@ export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
         </View>
         <TouchableOpacity
           style={[styles.signInButton, { backgroundColor: c.primary }]}
-          onPress={onLoginPress}
+          onPress={() => onLoginPress()}
           activeOpacity={0.85}
         >
           <Text style={styles.signInButtonText}>
@@ -102,7 +113,7 @@ export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
           </Text>
           <TouchableOpacity
             style={[styles.signInButton, { backgroundColor: c.primary, marginTop: 20 }]}
-            onPress={onLoginPress}
+            onPress={() => onLoginPress()}
             activeOpacity={0.85}
           >
             <Text style={styles.signInButtonText}>
@@ -197,24 +208,38 @@ export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
             <MaterialCommunityIcons name="account-circle-outline" size={36} color={c.primary} />
             <Text style={[styles.ctaTitle, { color: c.textPrimary }]}>
               {t('home.publicPostCtaTitle', {
-                defaultValue: 'Join the conversation',
+                defaultValue: 'Join OpenSpace to follow, post, and participate directly',
               })}
             </Text>
             <Text style={[styles.ctaBody, { color: c.textSecondary }]}>
               {t('home.publicPostCtaBody', {
                 defaultValue:
-                  'Sign in to react, comment, and connect with the community.',
+                  'Bring your Mastodon identity, keep your audience, and cross-post instead of starting over.',
               })}
             </Text>
             <TouchableOpacity
               style={[styles.ctaButton, { backgroundColor: c.primary }]}
-              onPress={onLoginPress}
+              onPress={() => onLoginPress('signup')}
               activeOpacity={0.85}
             >
               <Text style={styles.ctaButtonText}>
-                {t('auth.signIn', { defaultValue: 'Sign In' })}
+                {t('home.publicPostPrimaryCta', { defaultValue: 'Join OpenSpace' })}
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ctaSecondaryButton, { borderColor: c.border, backgroundColor: c.background }]}
+              onPress={() => onLoginPress('mastodon')}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.ctaSecondaryButtonText, { color: c.textLink }]}>
+                {t('home.publicPostSecondaryCta', { defaultValue: 'Bring your Mastodon identity' })}
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.ctaHint, { color: c.textMuted }]}>
+              {t('home.publicPostCtaHint', {
+                defaultValue: 'Keep your audience in view while joining the conversation directly on OpenSpace.',
+              })}
+            </Text>
           </View>
         </ScrollView>
       )}
@@ -384,5 +409,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 14,
+  },
+  ctaSecondaryButton: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  ctaSecondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  ctaHint: {
+    marginTop: 12,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 });
