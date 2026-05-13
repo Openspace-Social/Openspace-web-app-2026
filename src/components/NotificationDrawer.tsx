@@ -457,6 +457,7 @@ export function NotificationRow({
       t,
       onNavigateProfile,
       onNavigatePost,
+      onNavigateRemoteProfile,
       onNavigateRemoteThread,
       onNavigateCommunity,
       onOpenModerationTasks,
@@ -919,6 +920,7 @@ function resolveNotification(
   t: (key: string, options?: any) => string,
   onNavigateProfile: (u: string) => void,
   onNavigatePost: (id: number, uuid?: string, commentId?: number, parentCommentId?: number) => void,
+  onNavigateRemoteProfile: ((remoteActorId: number) => void) | undefined,
   onNavigateRemoteThread: ((inboundObjectId: number) => void) | undefined,
   onNavigateCommunity: (name: string) => void,
   onOpenModerationTasks?: () => void,
@@ -1231,22 +1233,38 @@ function resolveNotification(
       const localPost = obj?.local_post;
       const name = remoteActor?.profile?.name || remoteActor?.username || someone;
       const interactionType = obj?.interaction_type;
+      const isFollow = interactionType === 'follow';
+      const isUnfollow = interactionType === 'unfollow';
       const isReply = interactionType === 'reply';
       const isMention = interactionType === 'mention';
       const isLike = interactionType === 'like';
       const isAnnounce = interactionType === 'announce';
       return {
-        icon: isReply
+        icon: isFollow
+          ? 'account-plus-outline'
+          : isUnfollow
+            ? 'account-minus-outline'
+          : isReply
           ? 'comment-outline'
           : isLike
             ? 'heart-outline'
             : isAnnounce
               ? 'repeat-variant'
               : 'at',
-        iconColor: isReply ? '#2563EB' : isLike ? '#EC4899' : isAnnounce ? '#10B981' : '#D97706',
+        iconColor: isFollow ? '#7C3AED' : isUnfollow ? '#6B7280' : isReply ? '#2563EB' : isLike ? '#EC4899' : isAnnounce ? '#10B981' : '#D97706',
         actor: remoteActor?.username,
         actorAvatar: remoteActor?.profile?.avatar,
-        body: isReply
+        body: isFollow
+          ? t('home.notificationTypeFederatedFollow', {
+              name,
+              defaultValue: '{{name}} followed you from the fediverse.',
+            })
+          : isUnfollow
+            ? t('home.notificationTypeFederatedUnfollow', {
+                name,
+                defaultValue: '{{name}} unfollowed from the fediverse.',
+              })
+          : isReply
           ? t('home.notificationTypeFederatedReply', {
               name,
               defaultValue: '{{name}} replied to your post from the fediverse.',
@@ -1263,11 +1281,15 @@ function resolveNotification(
                 })
               : t('home.notificationTypeFederatedBoost', {
                   name,
-                  defaultValue: '{{name}} boosted your post from the fediverse.',
+                defaultValue: '{{name}} boosted your post from the fediverse.',
                 }),
         postThumbnail: localPost?.media_thumbnail || null,
         postPreviewText: truncate(obj?.preview_text || localPost?.text, 120) || null,
         onPress: () => {
+          if (remoteActor?.id && onNavigateRemoteProfile && (isFollow || isUnfollow)) {
+            onNavigateRemoteProfile(remoteActor.id);
+            return;
+          }
           if (obj?.inbound_object_id && onNavigateRemoteThread) {
             onNavigateRemoteThread(obj.inbound_object_id);
             return;

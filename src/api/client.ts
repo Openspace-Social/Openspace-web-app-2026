@@ -404,6 +404,8 @@ export type UserNotificationSettings = {
   post_user_mention_push_notifications: boolean;
   follow_in_app_notifications: boolean;
   follow_push_notifications: boolean;
+  federated_activity_in_app_notifications: boolean;
+  federated_activity_push_notifications: boolean;
   follow_request_in_app_notifications: boolean;
   follow_request_push_notifications: boolean;
   follow_request_approved_in_app_notifications: boolean;
@@ -925,7 +927,7 @@ export type FederationSummary = {
   recent_inbound_window_days: number;
   recent_activity?: Array<{
     id: string;
-    type?: 'follow' | 'reply' | 'mention' | 'like' | 'announce' | string;
+    type?: 'follow' | 'unfollow' | 'reply' | 'mention' | 'like' | 'announce' | string;
     created?: string | null;
     headline?: string | null;
     detail?: string | null;
@@ -1131,7 +1133,7 @@ export type NotificationContentObject =
     }
   // FA
   | {
-      interaction_type?: 'reply' | 'mention' | 'like' | 'announce';
+      interaction_type?: 'follow' | 'unfollow' | 'reply' | 'mention' | 'like' | 'announce';
       remote_actor?: NotifUser & { id?: number; actor_uri?: string; domain?: string };
       inbound_object_id?: number;
       local_post?: NotifPost;

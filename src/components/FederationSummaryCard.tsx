@@ -43,6 +43,8 @@ function activityIconName(type?: string) {
   switch (type) {
     case 'follow':
       return 'account-plus-outline';
+    case 'unfollow':
+      return 'account-minus-outline';
     case 'reply':
       return 'comment-outline';
     case 'mention':
@@ -233,50 +235,56 @@ export default function FederationSummaryCard({
             {t('federation.recentActivityHeadline', { defaultValue: 'Recent fediverse activity' })}
           </Text>
           <View style={{ gap: 10 }}>
-            {recentActivity.map((item) => (
-              <View
-                key={item.id}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 11,
-                  borderRadius: 16,
-                  backgroundColor: c.surface,
-                  borderWidth: 1,
-                  borderColor: c.border,
-                }}
-              >
+            {recentActivity.map((item) => {
+              const actorHandle = item.actor?.handle?.trim();
+              const detailText = item.detail?.trim();
+              const showDetail = !!detailText && detailText !== actorHandle;
+
+              return (
                 <View
+                  key={item.id}
                   style={{
-                    width: 32,
-                    height: 32,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 11,
                     borderRadius: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: `${c.primary}12`,
+                    backgroundColor: c.surface,
+                    borderWidth: 1,
+                    borderColor: c.border,
                   }}
                 >
-                  <MaterialCommunityIcons name={activityIconName(item.type) as any} size={16} color={c.primary} />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 18 }}>
-                    {item.headline || t('federation.activityFallback', { defaultValue: 'Fediverse activity' })}
-                  </Text>
-                  {item.actor?.handle ? (
-                    <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
-                      {item.actor.handle}
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: `${c.primary}12`,
+                    }}
+                  >
+                    <MaterialCommunityIcons name={activityIconName(item.type) as any} size={16} color={c.primary} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700', lineHeight: 18 }}>
+                      {item.headline || t('federation.activityFallback', { defaultValue: 'Fediverse activity' })}
                     </Text>
-                  ) : null}
-                  {item.detail ? (
-                    <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>
-                      {item.detail}
-                    </Text>
-                  ) : null}
+                    {actorHandle ? (
+                      <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                        {actorHandle}
+                      </Text>
+                    ) : null}
+                    {showDetail ? (
+                      <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>
+                        {detailText}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
       ) : null}

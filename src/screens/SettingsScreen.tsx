@@ -205,6 +205,14 @@ export default function SettingsScreen({
           pushKey: 'follow_push_notifications',
         },
         {
+          labelKey: 'settings.notifFederatedActivity',
+          labelDefault: 'Fediverse activity',
+          descriptionKey: 'settings.notifFederatedActivityDesc',
+          descriptionDefault: 'Remote follows, unfollows, replies, likes, and boosts from Mastodon and compatible apps.',
+          inAppKey: 'federated_activity_in_app_notifications',
+          pushKey: 'federated_activity_push_notifications',
+        },
+        {
           labelKey: 'settings.notifFollowRequest',
           labelDefault: 'Follow request',
           descriptionKey: 'settings.notifFollowRequestDesc',
