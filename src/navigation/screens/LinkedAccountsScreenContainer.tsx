@@ -585,6 +585,7 @@ export default function LinkedAccountsScreenContainer() {
               const importFollowersBusy = jobBusyKey === `${identity.id}:import-followers`;
               const autoFollowBusy = jobBusyKey === `${identity.id}:auto-follow-old-account`;
               const migrationNoticeBusy = jobBusyKey === `${identity.id}:migration-notice`;
+              const refreshVerificationBusy = jobBusyKey === `${identity.id}:refresh-verification`;
 
               return (
                 <View key={`federated-identity-${identity.id}`} style={[styles.identityCard, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -636,9 +637,53 @@ export default function LinkedAccountsScreenContainer() {
                     <Text style={[styles.stepBody, { color: c.textSecondary }]}>
                       Verified identities reduce migration risk and make it clear that your OpenSpace account is additive, not a replacement forced on you.
                     </Text>
+                    <View style={styles.verificationList}>
+                      <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
+                        1. In Mastodon, open Settings {'>'} Account {'>'} Account aliases.
+                      </Text>
+                      <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
+                        2. Add your OpenSpace actor {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as an alias.
+                      </Text>
+                      <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
+                        3. Save on Mastodon, then come back here and run the verification check again.
+                      </Text>
+                    </View>
                     <Text style={[styles.stepMeta, { color: c.textMuted }]}>
                       Linked on {formatDate(identity.verified_at) || 'Unknown date'}
                     </Text>
+                    <Text style={[styles.stepMeta, { color: c.textMuted }]}>
+                      Last alias check {formatDate(identity.remote_alias_last_checked_at) || 'not yet run'}
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      disabled={!!jobBusyKey}
+                      onPress={() =>
+                        void handleRunIdentityJob(
+                          identity.id,
+                          'refresh-verification',
+                          async () => {
+                            const refreshed = await api.refreshFederatedIdentityVerification(token!, identity.id);
+                            updateIdentityState(refreshed);
+                            return {
+                              id: refreshed.id,
+                              identity_link: refreshed.id,
+                              job_type: 'crosspost_setup',
+                              status: 'completed',
+                              created_at: refreshed.updated_at,
+                              updated_at: refreshed.updated_at,
+                            } as FederatedIdentityJob;
+                          },
+                          'Checked Mastodon again for your OpenSpace alias.',
+                        )
+                      }
+                      style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                    >
+                      {refreshVerificationBusy ? (
+                        <ActivityIndicator size="small" color={c.primary} />
+                      ) : (
+                        <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Check verification again</Text>
+                      )}
+                    </TouchableOpacity>
                   </View>
 
                   <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
@@ -1128,6 +1173,13 @@ const styles = StyleSheet.create({
   stepBody: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  verificationList: {
+    gap: 6,
+  },
+  verificationItem: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   stepMeta: {
     fontSize: 12,

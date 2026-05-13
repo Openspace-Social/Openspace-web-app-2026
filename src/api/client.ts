@@ -239,6 +239,8 @@ export type FederatedIdentityLink = {
   user: number;
   linked_account_id?: number | null;
   local_actor_id?: number | null;
+  local_actor_uri?: string | null;
+  local_actor_handle?: string | null;
   remote_handle: string;
   remote_account_id: string;
   remote_actor_url: string;
@@ -246,6 +248,8 @@ export type FederatedIdentityLink = {
   remote_username: string;
   scopes: string;
   verified_at?: string | null;
+  remote_alias_verified_at?: string | null;
+  remote_alias_last_checked_at?: string | null;
   link_status: 'pending' | 'verified' | 'revoked';
   crosspost_openbook_to_mastodon: boolean;
   crosspost_mastodon_to_openbook: boolean;
@@ -1828,6 +1832,12 @@ export const api = {
 
   createFederatedMigrationNotice: (token: string, identityId: number) =>
     request<FederatedIdentityJob>(`/api/users/me/federated-identities/${identityId}/migration-notice`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  refreshFederatedIdentityVerification: (token: string, identityId: number) =>
+    request<FederatedIdentityLink>(`/api/users/me/federated-identities/${identityId}/refresh-verification`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
