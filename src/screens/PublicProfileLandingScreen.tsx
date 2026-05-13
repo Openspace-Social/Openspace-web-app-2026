@@ -157,40 +157,59 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
 
             <View style={[styles.heroBody, isTablet ? styles.heroBodyWide : null]}>
               <View style={[styles.heroIntro, isWide ? styles.heroIntroWide : null]}>
-                <View style={[styles.avatarWrap, { borderColor: c.surface }]}>
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
-                  ) : (
-                    <Image source={DEFAULT_PROFILE_AVATAR} style={styles.avatarImage} resizeMode="cover" />
-                  )}
+                <View style={[styles.heroIdentity, isWide ? styles.heroIdentityWide : null]}>
+                  <View style={[styles.avatarWrap, { borderColor: c.surface }]}>
+                    {avatarUri ? (
+                      <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+                    ) : (
+                      <Image source={DEFAULT_PROFILE_AVATAR} style={styles.avatarImage} resizeMode="cover" />
+                    )}
+                  </View>
+
+                  <View style={[styles.heroText, isWide ? styles.heroTextWide : null]}>
+                    <Text style={[styles.eyebrow, { color: c.primary }]}>
+                      {t('publicProfile.eyebrow', { defaultValue: 'Public profile on OpenSpace' })}
+                    </Text>
+                    <Text style={[styles.displayName, { color: c.textPrimary }]}>{displayName}</Text>
+                    <Text style={[styles.username, { color: c.textMuted }]}>@{profile.username || username}</Text>
+                    {location ? (
+                      <Text style={[styles.metaText, { color: c.textMuted }]}>{location}</Text>
+                    ) : null}
+                    <Text style={[styles.valueLine, { color: c.textSecondary }]}>
+                      {t('publicProfile.valueLine', {
+                        defaultValue: 'Discover public posts, see fediverse reach, and join the conversation directly on OpenSpace.',
+                      })}
+                    </Text>
+                    {bio ? (
+                      <Text style={[styles.bioText, { color: c.textSecondary }]}>{bio}</Text>
+                    ) : null}
+                    {url ? (
+                      <TouchableOpacity onPress={() => Linking.openURL(url)} activeOpacity={0.8}>
+                        <Text style={[styles.linkText, { color: c.primary }]}>{url}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 </View>
 
-                <View style={styles.heroText}>
-                  <Text style={[styles.eyebrow, { color: c.primary }]}>
-                    {t('publicProfile.eyebrow', { defaultValue: 'Public profile on OpenSpace' })}
+                <View style={[styles.heroSocialProof, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                  <Text style={[styles.heroSocialProofTitle, { color: c.textPrimary }]}>
+                    {t('publicProfile.socialProofTitle', { defaultValue: 'Already live beyond OpenSpace' })}
                   </Text>
-                  <Text style={[styles.displayName, { color: c.textPrimary }]}>{displayName}</Text>
-                  <Text style={[styles.username, { color: c.textMuted }]}>@{profile.username || username}</Text>
-                  {location ? (
-                    <Text style={[styles.metaText, { color: c.textMuted }]}>{location}</Text>
-                  ) : null}
-                  <Text style={[styles.valueLine, { color: c.textSecondary }]}>
-                    {t('publicProfile.valueLine', {
-                      defaultValue: 'Discover public posts, see fediverse reach, and join the conversation directly on OpenSpace.',
+                  <Text style={[styles.heroSocialProofBody, { color: c.textSecondary }]}>
+                    {t('publicProfile.socialProofBody', {
+                      defaultValue: 'This profile is publicly reachable, discoverable across the fediverse, and gives visitors a richer home for identity, posts, and communities.',
                     })}
                   </Text>
-                  {bio ? (
-                    <Text style={[styles.bioText, { color: c.textSecondary }]}>{bio}</Text>
-                  ) : null}
-                  {url ? (
-                    <TouchableOpacity onPress={() => Linking.openURL(url)} activeOpacity={0.8}>
-                      <Text style={[styles.linkText, { color: c.primary }]}>{url}</Text>
-                    </TouchableOpacity>
-                  ) : null}
                 </View>
               </View>
 
-              <View style={[styles.heroRail, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <View
+                style={[
+                  styles.heroRail,
+                  isWide ? styles.heroRailWide : null,
+                  { backgroundColor: c.inputBackground, borderColor: c.border },
+                ]}
+              >
                 <Text style={[styles.heroRailTitle, { color: c.textPrimary }]}>
                   {t('publicProfile.joinRailTitle', { defaultValue: 'Join OpenSpace to participate directly' })}
                 </Text>
@@ -384,10 +403,13 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: { fontSize: 12, fontWeight: '800' },
   heroBody: { padding: 22, gap: 20 },
-  heroBodyWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  heroIntro: { gap: 18 },
-  heroIntroWide: { flex: 1, paddingRight: 8 },
-  heroText: { gap: 8 },
+  heroBodyWide: { flexDirection: 'row', alignItems: 'stretch', gap: 24 },
+  heroIntro: { gap: 18, minWidth: 0 },
+  heroIntroWide: { flex: 1, minWidth: 0 },
+  heroIdentity: { gap: 18, minWidth: 0 },
+  heroIdentityWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
+  heroText: { gap: 8, minWidth: 0 },
+  heroTextWide: { flex: 1, minWidth: 0, paddingTop: 6 },
   avatarWrap: {
     width: 116,
     height: 116,
@@ -409,12 +431,28 @@ const styles = StyleSheet.create({
   valueLine: { fontSize: 17, lineHeight: 25, maxWidth: 680 },
   bioText: { fontSize: 15, lineHeight: 23, maxWidth: 720 },
   linkText: { fontSize: 14, fontWeight: '700' },
+  heroSocialProof: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  heroSocialProofTitle: { fontSize: 15, fontWeight: '800' },
+  heroSocialProofBody: { fontSize: 14, lineHeight: 21 },
   heroRail: {
     borderWidth: 1,
     borderRadius: 24,
     padding: 18,
     gap: 12,
     width: '100%',
+  },
+  heroRailWide: {
+    width: 390,
+    minWidth: 390,
+    flexShrink: 0,
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
   },
   heroRailTitle: { fontSize: 20, fontWeight: '800', lineHeight: 26 },
   heroRailBody: { fontSize: 14, lineHeight: 21 },
