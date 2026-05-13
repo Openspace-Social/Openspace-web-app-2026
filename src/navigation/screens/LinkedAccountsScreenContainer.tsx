@@ -86,9 +86,16 @@ export default function LinkedAccountsScreenContainer() {
     return new Map(entries);
   }, [federatedLinkedAccounts]);
 
+  const activeFederatedIdentities = useMemo(
+    () => federatedIdentities.filter((identity) => identity.link_status !== 'revoked'),
+    [federatedIdentities],
+  );
+
+  const archivedFederatedIdentityCount = federatedIdentities.length - activeFederatedIdentities.length;
+
   const activeMigrationIdentity = useMemo(
-    () => federatedIdentities.find((identity) => identity.id === activeMigrationIdentityId) || null,
-    [activeMigrationIdentityId, federatedIdentities],
+    () => activeFederatedIdentities.find((identity) => identity.id === activeMigrationIdentityId) || null,
+    [activeMigrationIdentityId, activeFederatedIdentities],
   );
 
   const load = useCallback(async () => {
@@ -379,7 +386,7 @@ export default function LinkedAccountsScreenContainer() {
     [load, showToast, t],
   );
 
-  const hasMigrationWorkspace = federatedIdentities.length > 0;
+  const hasMigrationWorkspace = activeFederatedIdentities.length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -588,7 +595,7 @@ export default function LinkedAccountsScreenContainer() {
                   Open a dedicated workspace for each linked Mastodon identity when you are ready to import your graph or manage migration settings.
                 </Text>
                 <View style={styles.workspacePreviewList}>
-                  {federatedIdentities.map((identity) => {
+                  {activeFederatedIdentities.map((identity) => {
                     const linkedAccount = identity.linked_account_id ? linkedAccountById.get(identity.linked_account_id) : null;
                     const readiness = identity.migration_readiness;
                     const isReady = !!readiness?.can_claim_move;
@@ -638,6 +645,11 @@ export default function LinkedAccountsScreenContainer() {
                     );
                   })}
                 </View>
+                {archivedFederatedIdentityCount > 0 ? (
+                  <Text style={[styles.archivedNote, { color: c.textMuted }]}>
+                    {archivedFederatedIdentityCount} archived Mastodon {archivedFederatedIdentityCount === 1 ? 'identity is' : 'identities are'} hidden from this workspace.
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View style={[styles.emptyMigrationCard, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -1193,6 +1205,10 @@ const styles = StyleSheet.create({
   workspacePreviewAction: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  archivedNote: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   sectionCard: {
     borderWidth: 1,
