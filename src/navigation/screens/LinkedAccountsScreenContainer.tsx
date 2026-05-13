@@ -499,7 +499,7 @@ export default function LinkedAccountsScreenContainer() {
 
             <View style={[styles.sectionCard, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={styles.sectionHeaderInline}>
-                <View>
+                <View style={styles.sectionHeaderText}>
                   <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Connect Mastodon</Text>
                   <Text style={[styles.sectionBody, { color: c.textMuted }]}>
                     Enter a Mastodon instance or handle to start linking the account you want to migrate with.
@@ -1204,6 +1204,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  sectionHeaderText: {
+    flex: 1,
+    minWidth: 0,
   },
   sectionTitle: {
     fontSize: 20,
