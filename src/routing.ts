@@ -39,6 +39,14 @@ export function defaultAuthedRoute(): AppRoute {
 export function parsePathToRoute(pathname: string): AppRoute {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   const parts = path.split('/').filter(Boolean);
+  const reservedTopLevelRoutes = new Set([
+    'home', 'trending', 'public', 'explore', 'mastodon',
+    'me', 'communities', 'circles', 'lists', 'followers', 'following', 'blocked',
+    'manage-communities', 'muted-communities', 'settings',
+    'about', 'privacy', 'terms', 'guidelines',
+    'posts', 'p', 'search', 'u', 'fediverse', 'c', 'h',
+    'api', 'health', 'nodeinfo', '.well-known', 'users',
+  ]);
 
   if (path === '/') return { screen: 'landing' };
 
@@ -67,12 +75,20 @@ export function parsePathToRoute(pathname: string): AppRoute {
     return { screen: 'post', postUuid: parts[1] };
   }
 
+  if (parts.length === 2 && parts[0] === 'p' && parts[1]) {
+    return { screen: 'post', postUuid: parts[1] };
+  }
+
   if (parts.length === 2 && parts[0] === 'search' && parts[1]) {
     return { screen: 'search', query: decodeURIComponent(parts[1]) };
   }
 
   if (parts.length === 2 && parts[0] === 'u' && parts[1]) {
     return { screen: 'profile', username: decodeURIComponent(parts[1]) };
+  }
+
+  if (parts.length === 1 && parts[0] && !reservedTopLevelRoutes.has(parts[0])) {
+    return { screen: 'profile', username: decodeURIComponent(parts[0]) };
   }
 
   if (parts.length === 3 && parts[0] === 'fediverse' && parts[1] === 'profiles' && parts[2]) {
@@ -110,7 +126,7 @@ export function routeToPath(route: AppRoute): string {
     case 'search':
       return `/search/${encodeURIComponent(route.query)}`;
     case 'post':
-      return `/posts/${route.postUuid}`;
+      return `/p/${route.postUuid}`;
     case 'profile':
       return `/u/${encodeURIComponent(route.username)}`;
     case 'remote-profile':

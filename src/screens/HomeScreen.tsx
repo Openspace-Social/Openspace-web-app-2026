@@ -3885,7 +3885,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       Platform.OS === 'web' && typeof window !== 'undefined'
         ? window.location.origin
         : (process.env.EXPO_PUBLIC_WEB_BASE_URL || 'https://staging.openspace.social');
-    const shareUrl = `${webBase.replace(/\/+$/, '')}/posts/${post.uuid || post.id}`;
+    const shareUrl = `${webBase.replace(/\/+$/, '')}/p/${post.uuid || post.id}`;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {

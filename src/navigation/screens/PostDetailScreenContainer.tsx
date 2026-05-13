@@ -199,7 +199,7 @@ export default function PostDetailScreenContainer() {
     async (target: FeedPost) => {
       const uuid = (target as any)?.uuid;
       if (!uuid) return;
-      const url = `https://openspace.social/posts/${uuid}`;
+      const url = `https://openspace.social/p/${uuid}`;
       try {
         const { Share } = await import('react-native');
         await Share.share({ url, message: url });

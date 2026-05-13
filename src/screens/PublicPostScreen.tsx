@@ -34,7 +34,7 @@ export default function PublicPostScreen({ postUuid, onLoginPress }: Props) {
   useEffect(() => {
     void trackFederationVisitorPostVisit(
       postUuid,
-      typeof window !== 'undefined' && window.location ? window.location.pathname : `/posts/${postUuid}`
+      typeof window !== 'undefined' && window.location ? window.location.pathname : `/p/${postUuid}`
     );
   }, [postUuid]);
 
