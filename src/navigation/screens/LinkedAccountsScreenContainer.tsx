@@ -1,22 +1,29 @@
-/**
- * LinkedAccountsScreenContainer — manage social-auth identities.
- *
- * Mirrors HomeScreen's web flow (handleLinkProvider / handleUnlinkProvider)
- * but uses the native Google + Apple SDKs (via `nativeSocialIdToken`) to
- * obtain an id_token, then exchanges it with the same backend endpoints
- * the web app uses. Per-provider loading state keeps the rest of the list
- * tappable while one provider is busy.
- */
-
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
+
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAppToast } from '../../toast/AppToastContext';
-import { api, type FederatedIdentityLink, type FederatedLinkedAccount, type SocialIdentity, type SocialProvider } from '../../api/client';
+import {
+  api,
+  type FederatedIdentityJob,
+  type FederatedIdentityLink,
+  type FederatedLinkedAccount,
+  type SocialIdentity,
+  type SocialProvider,
+} from '../../api/client';
 import { nativeSocialIdToken } from '../../utils/nativeSocialAuth';
 
 const PROVIDERS: SocialProvider[] = ['google', 'apple'];
@@ -29,6 +36,30 @@ function providerIcon(provider: SocialProvider): React.ComponentProps<typeof Mat
   return provider === 'google' ? 'google' : 'apple';
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString();
+}
+
+function jobTitle(job: FederatedIdentityJob) {
+  switch (job.job_type) {
+    case 'import_follows':
+      return 'Imported follows';
+    case 'import_followers':
+      return 'Imported followers';
+    case 'crosspost_setup':
+      return 'Updated posting behavior';
+    case 'migration_notice':
+      return 'Prepared migration notice';
+    case 'auto_follow_old_account':
+      return 'Followed old Mastodon account';
+    default:
+      return job.job_type.replace(/_/g, ' ');
+  }
+}
+
 export default function LinkedAccountsScreenContainer() {
   const { token } = useAuth();
   const { theme } = useTheme();
@@ -39,12 +70,20 @@ export default function LinkedAccountsScreenContainer() {
   const [identities, setIdentities] = useState<SocialIdentity[]>([]);
   const [federatedLinkedAccounts, setFederatedLinkedAccounts] = useState<FederatedLinkedAccount[]>([]);
   const [federatedIdentities, setFederatedIdentities] = useState<FederatedIdentityLink[]>([]);
+  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [providerBusy, setProviderBusy] = useState<SocialProvider | null>(null);
   const [mastodonIdentifierInput, setMastodonIdentifierInput] = useState('');
   const [mastodonLinkLoading, setMastodonLinkLoading] = useState(false);
   const [mastodonUnlinkId, setMastodonUnlinkId] = useState<number | null>(null);
+  const [settingsBusyId, setSettingsBusyId] = useState<number | null>(null);
+  const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
+
+  const linkedAccountById = useMemo(() => {
+    const entries = federatedLinkedAccounts.map((account) => [account.id, account] as const);
+    return new Map(entries);
+  }, [federatedLinkedAccounts]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -56,9 +95,20 @@ export default function LinkedAccountsScreenContainer() {
         api.getFederatedLinkedAccounts(token),
         api.getFederatedIdentities(token),
       ]);
-      setIdentities(Array.isArray(socialList) ? socialList : []);
-      setFederatedLinkedAccounts(Array.isArray(federatedList) ? federatedList : []);
-      setFederatedIdentities(Array.isArray(identityList) ? identityList : []);
+      const nextSocialList = Array.isArray(socialList) ? socialList : [];
+      const nextFederatedList = Array.isArray(federatedList) ? federatedList : [];
+      const nextIdentityList = Array.isArray(identityList) ? identityList : [];
+      setIdentities(nextSocialList);
+      setFederatedLinkedAccounts(nextFederatedList);
+      setFederatedIdentities(nextIdentityList);
+      setNoteDrafts((current) => {
+        const nextDrafts: Record<number, string> = {};
+        nextIdentityList.forEach((identity) => {
+          nextDrafts[identity.id] =
+            current[identity.id] !== undefined ? current[identity.id] : (identity.profile_note || '');
+        });
+        return nextDrafts;
+      });
     } catch (e: any) {
       setError(e?.message || t('home.linkedAccountsLoadFailed', { defaultValue: 'Could not load linked accounts.' }));
     } finally {
@@ -72,8 +122,6 @@ export default function LinkedAccountsScreenContainer() {
 
   const getIdentity = (provider: SocialProvider) =>
     identities.find((i) => i.provider === provider) || null;
-
-  const getProviderName = (provider: SocialProvider) => providerLabel(provider);
 
   function getMastodonRedirectUri() {
     return Platform.OS === 'web'
@@ -114,7 +162,16 @@ export default function LinkedAccountsScreenContainer() {
     return { code, state };
   }
 
-  // ── Link / Unlink handlers ─────────────────────────────────────────────
+  const updateIdentityState = useCallback((nextIdentity: FederatedIdentityLink) => {
+    setFederatedIdentities((current) =>
+      current.map((identity) => (identity.id === nextIdentity.id ? nextIdentity : identity)),
+    );
+    setNoteDrafts((current) => ({
+      ...current,
+      [nextIdentity.id]: nextIdentity.profile_note || '',
+    }));
+  }, []);
+
   const handleLink = useCallback(
     async (provider: SocialProvider) => {
       if (!token || providerBusy) return;
@@ -126,17 +183,13 @@ export default function LinkedAccountsScreenContainer() {
         showToast(
           message ||
             t('home.linkSuccess', {
-              provider: getProviderName(provider),
-              defaultValue: `${getProviderName(provider)} connected.`,
+              provider: providerLabel(provider),
+              defaultValue: `${providerLabel(provider)} connected.`,
             }),
           { type: 'success' },
         );
       } catch (e: any) {
         const raw = String(e?.message || '').toLowerCase();
-        // Same heuristics as HomeScreen — backend errors aren't perfectly
-        // typed so we sniff the message text for the common "this email is
-        // already linked elsewhere" failure mode and surface a friendlier
-        // message instead of the raw backend string.
         const friendlyAlreadyLinked =
           raw.includes('invalid token') ||
           raw.includes('already linked') ||
@@ -144,27 +197,25 @@ export default function LinkedAccountsScreenContainer() {
           raw.includes('email already') ||
           raw.includes('already exists');
         const cancelled = raw.includes(t('auth.socialCancelled', { defaultValue: 'cancelled' }).toLowerCase());
-        if (cancelled) {
-          // Quiet cancellation — no toast.
-          return;
+        if (!cancelled) {
+          showToast(
+            friendlyAlreadyLinked
+              ? t('home.linkEmailAlreadyLinked', {
+                  defaultValue: 'Email already linked to an Openspace account.',
+                })
+              : e?.message ||
+                  t('home.linkFailed', {
+                    provider: providerLabel(provider),
+                    defaultValue: `Could not link ${providerLabel(provider)}.`,
+                  }),
+            { type: 'error' },
+          );
         }
-        showToast(
-          friendlyAlreadyLinked
-            ? t('home.linkEmailAlreadyLinked', {
-                defaultValue: 'Email already linked to an Openspace account.',
-              })
-            : e?.message ||
-                t('home.linkFailed', {
-                  provider: getProviderName(provider),
-                  defaultValue: `Could not link ${getProviderName(provider)}.`,
-                }),
-          { type: 'error' },
-        );
       } finally {
         setProviderBusy(null);
       }
     },
-    [token, providerBusy, t, load, showToast],
+    [load, providerBusy, showToast, t, token],
   );
 
   const handleUnlink = useCallback(
@@ -177,8 +228,8 @@ export default function LinkedAccountsScreenContainer() {
         showToast(
           message ||
             t('home.unlinkSuccess', {
-              provider: getProviderName(provider),
-              defaultValue: `${getProviderName(provider)} disconnected.`,
+              provider: providerLabel(provider),
+              defaultValue: `${providerLabel(provider)} disconnected.`,
             }),
           { type: 'success' },
         );
@@ -186,8 +237,8 @@ export default function LinkedAccountsScreenContainer() {
         showToast(
           e?.message ||
             t('home.unlinkFailed', {
-              provider: getProviderName(provider),
-              defaultValue: `Could not disconnect ${getProviderName(provider)}.`,
+              provider: providerLabel(provider),
+              defaultValue: `Could not disconnect ${providerLabel(provider)}.`,
             }),
           { type: 'error' },
         );
@@ -195,7 +246,7 @@ export default function LinkedAccountsScreenContainer() {
         setProviderBusy(null);
       }
     },
-    [token, providerBusy, t, load, showToast],
+    [load, providerBusy, showToast, t, token],
   );
 
   const handleLinkMastodon = useCallback(async () => {
@@ -277,14 +328,92 @@ export default function LinkedAccountsScreenContainer() {
     }
   }, [load, mastodonLinkLoading, mastodonUnlinkId, showToast, t, token]);
 
+  const handleSaveIdentitySettings = useCallback(
+    async (
+      identityId: number,
+      payload: {
+        crosspost_openbook_to_mastodon?: boolean;
+        crosspost_mastodon_to_openbook?: boolean;
+        profile_note?: string | null;
+      },
+      successMessage: string,
+    ) => {
+      if (!token) return;
+      setSettingsBusyId(identityId);
+      try {
+        const result = await api.updateFederatedCrosspostSettings(token, identityId, payload);
+        updateIdentityState(result.identity);
+        showToast(successMessage, { type: 'success' });
+      } catch (e: any) {
+        showToast(e?.message || t('home.mastodonSettingsFailed', { defaultValue: 'Could not update Mastodon settings.' }), {
+          type: 'error',
+        });
+      } finally {
+        setSettingsBusyId(null);
+      }
+    },
+    [showToast, t, token, updateIdentityState],
+  );
+
+  const handleRunIdentityJob = useCallback(
+    async (identityId: number, key: string, runner: () => Promise<FederatedIdentityJob>, successMessage: string) => {
+      setJobBusyKey(`${identityId}:${key}`);
+      try {
+        await runner();
+        await load();
+        showToast(successMessage, { type: 'success' });
+      } catch (e: any) {
+        showToast(e?.message || t('home.mastodonJobFailed', { defaultValue: 'Could not complete this migration step.' }), {
+          type: 'error',
+        });
+      } finally {
+        setJobBusyKey(null);
+      }
+    },
+    [load, showToast, t],
+  );
+
+  const hasMigrationWorkspace = federatedIdentities.length > 0;
+
   return (
-    <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.container}
-    >
+    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.container}>
+      <View style={[styles.heroCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <View style={styles.heroHeader}>
+          <View style={[styles.heroIcon, { backgroundColor: `${c.primary}16` }]}>
+            <MaterialCommunityIcons name="mastodon" size={22} color={c.primary} />
+          </View>
+          <View style={styles.heroTextWrap}>
+            <Text style={[styles.heroEyebrow, { color: c.primary }]}>Phase 4</Text>
+            <Text style={[styles.heroTitle, { color: c.textPrimary }]}>
+              {t('home.federationMigrationTitle', {
+                defaultValue: 'Make your Mastodon identity feel at home on OpenSpace',
+              })}
+            </Text>
+            <Text style={[styles.heroBody, { color: c.textSecondary }]}>
+              {t('home.federationMigrationBody', {
+                defaultValue:
+                  'Link your fediverse identity, import your graph, choose how you want to publish, and transition at your own pace instead of starting from zero.',
+              })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.heroPills}>
+          {[
+            'Verify identity',
+            'Import follows',
+            'Choose posting behavior',
+            'Keep your audience',
+          ].map((label) => (
+            <View key={label} style={[styles.heroPill, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+              <Text style={[styles.heroPillText, { color: c.textPrimary }]}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
       <Text style={[styles.subtitle, { color: c.textMuted }]}>
         {t('home.linkedAccountsDescription', {
-          defaultValue: 'Connect or disconnect the providers you use to sign in.',
+          defaultValue: 'Connect sign-in providers and manage the fediverse identities you want to bring with you.',
         })}
       </Text>
 
@@ -296,87 +425,77 @@ export default function LinkedAccountsScreenContainer() {
         <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
       ) : (
         <View style={styles.list}>
-          {PROVIDERS.map((provider) => {
-            const identity = getIdentity(provider);
-            const isLinked = !!identity;
-            const isBusy = providerBusy === provider;
-            return (
-              <View
-                key={provider}
-                style={[styles.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-              >
-                <MaterialCommunityIcons
-                  name={providerIcon(provider)}
-                  size={22}
-                  color={provider === 'google' ? '#DB4437' : c.textPrimary}
-                />
-                <View style={styles.meta}>
-                  <Text style={[styles.providerName, { color: c.textPrimary }]}>
-                    {providerLabel(provider)}
-                  </Text>
-                  <Text style={[styles.providerStatus, { color: c.textMuted }]}>
-                    {isLinked
-                      ? identity?.email
-                        ? t('home.linkedStatusWithEmail', {
-                            email: identity.email,
-                            defaultValue: `Connected as ${identity.email}`,
-                          })
-                        : t('home.linkedStatusConnected', { defaultValue: 'Connected' })
-                      : t('home.linkedStatusNotConnected', { defaultValue: 'Not connected' })}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  disabled={isBusy || !!providerBusy}
-                  onPress={() => (isLinked ? handleUnlink(provider) : handleLink(provider))}
-                  style={[
-                    styles.actionButton,
-                    {
-                      borderColor: isLinked ? c.errorText ?? '#ef4444' : c.primary,
-                      backgroundColor: isLinked
-                        ? `${c.errorText ?? '#ef4444'}1A`
-                        : `${c.primary}1A`,
-                      opacity: isBusy || (!!providerBusy && !isBusy) ? 0.6 : 1,
-                    },
-                  ]}
-                >
-                  {isBusy ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={isLinked ? c.errorText ?? '#ef4444' : c.primary}
+          <View style={[styles.sectionCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Sign-in providers</Text>
+            <Text style={[styles.sectionBody, { color: c.textMuted }]}>
+              Connect the identity providers you use to log in so OpenSpace stays easy to access while you migrate.
+            </Text>
+            <View style={styles.providerList}>
+              {PROVIDERS.map((provider) => {
+                const identity = getIdentity(provider);
+                const isLinked = !!identity;
+                const isBusy = providerBusy === provider;
+                return (
+                  <View
+                    key={provider}
+                    style={[styles.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                  >
+                    <MaterialCommunityIcons
+                      name={providerIcon(provider)}
+                      size={22}
+                      color={provider === 'google' ? '#DB4437' : c.textPrimary}
                     />
-                  ) : (
-                    <Text
+                    <View style={styles.meta}>
+                      <Text style={[styles.providerName, { color: c.textPrimary }]}>{providerLabel(provider)}</Text>
+                      <Text style={[styles.providerStatus, { color: c.textMuted }]}>
+                        {isLinked
+                          ? identity?.email
+                            ? t('home.linkedStatusWithEmail', {
+                                email: identity.email,
+                                defaultValue: `Connected as ${identity.email}`,
+                              })
+                            : t('home.linkedStatusConnected', { defaultValue: 'Connected' })
+                          : t('home.linkedStatusNotConnected', { defaultValue: 'Not connected' })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      disabled={isBusy || !!providerBusy}
+                      onPress={() => (isLinked ? handleUnlink(provider) : handleLink(provider))}
                       style={[
-                        styles.actionButtonText,
-                        { color: isLinked ? c.errorText ?? '#ef4444' : c.primary },
+                        styles.actionButton,
+                        {
+                          borderColor: isLinked ? c.errorText ?? '#ef4444' : c.primary,
+                          backgroundColor: isLinked ? `${c.errorText ?? '#ef4444'}1A` : `${c.primary}1A`,
+                          opacity: isBusy || (!!providerBusy && !isBusy) ? 0.6 : 1,
+                        },
                       ]}
                     >
-                      {isLinked
-                        ? t('home.unlinkAction', { defaultValue: 'Disconnect' })
-                        : t('home.linkAction', { defaultValue: 'Connect' })}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+                      {isBusy ? (
+                        <ActivityIndicator size="small" color={isLinked ? c.errorText ?? '#ef4444' : c.primary} />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.actionButtonText,
+                            { color: isLinked ? c.errorText ?? '#ef4444' : c.primary },
+                          ]}
+                        >
+                          {isLinked ? 'Disconnect' : 'Connect'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
-          <View style={[styles.mastodonSection, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
-            <View style={styles.mastodonSectionHeader}>
-              <MaterialCommunityIcons name="mastodon" size={22} color="#6364FF" />
-              <View style={styles.meta}>
-                <Text style={[styles.providerName, { color: c.textPrimary }]}>Mastodon</Text>
-                <Text style={[styles.providerStatus, { color: c.textMuted }]}>
-                  {federatedLinkedAccounts.length > 0
-                    ? t('home.mastodonLinkedCount', {
-                        count: federatedLinkedAccounts.length,
-                        defaultValue:
-                          federatedLinkedAccounts.length === 1
-                            ? '1 Mastodon account connected'
-                            : `${federatedLinkedAccounts.length} Mastodon accounts connected`,
-                      })
-                    : t('home.linkedStatusNotConnected', { defaultValue: 'Not connected' })}
+          <View style={[styles.sectionCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View style={styles.sectionHeaderInline}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Connect Mastodon</Text>
+                <Text style={[styles.sectionBody, { color: c.textMuted }]}>
+                  Enter a Mastodon instance or handle to start linking the account you want to migrate with.
                 </Text>
               </View>
             </View>
@@ -388,7 +507,7 @@ export default function LinkedAccountsScreenContainer() {
                   return (
                     <View
                       key={`mastodon-linked-account-${account.id}`}
-                      style={[styles.mastodonAccountRow, { borderColor: c.border }]}
+                      style={[styles.mastodonAccountRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
                     >
                       <View style={styles.meta}>
                         <Text style={[styles.providerName, { color: c.textPrimary }]}>
@@ -414,9 +533,7 @@ export default function LinkedAccountsScreenContainer() {
                         {isBusy ? (
                           <ActivityIndicator size="small" color={c.errorText ?? '#ef4444'} />
                         ) : (
-                          <Text style={[styles.actionButtonText, { color: c.errorText ?? '#ef4444' }]}>
-                            {t('home.unlinkAction', { defaultValue: 'Disconnect' })}
-                          </Text>
+                          <Text style={[styles.actionButtonText, { color: c.errorText ?? '#ef4444' }]}>Disconnect</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -425,20 +542,13 @@ export default function LinkedAccountsScreenContainer() {
               </View>
             ) : null}
 
-            <Text style={[styles.mastodonBody, { color: c.textMuted }]}>
-              {t('home.mastodonConnectBody', {
-                defaultValue: 'Enter a Mastodon instance URL or @name@instance to connect it to your OpenSpace account.',
-              })}
-            </Text>
             <TextInput
               value={mastodonIdentifierInput}
               onChangeText={setMastodonIdentifierInput}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
-              placeholder={t('home.mastodonConnectPlaceholder', {
-                defaultValue: '@name@mastodon.social or mastodon.social',
-              })}
+              placeholder="@name@mastodon.social or mastodon.social"
               placeholderTextColor={c.textMuted}
               editable={!mastodonLinkLoading && mastodonUnlinkId == null}
               style={[
@@ -446,7 +556,7 @@ export default function LinkedAccountsScreenContainer() {
                 {
                   color: c.textPrimary,
                   borderColor: c.border,
-                  backgroundColor: c.background,
+                  backgroundColor: c.inputBackground,
                 },
               ]}
             />
@@ -459,12 +569,311 @@ export default function LinkedAccountsScreenContainer() {
               {mastodonLinkLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.mastodonButtonText}>
-                  {t('home.linkAction', { defaultValue: 'Connect' })}
-                </Text>
+                <Text style={styles.mastodonButtonText}>Connect Mastodon</Text>
               )}
             </TouchableOpacity>
           </View>
+
+          {hasMigrationWorkspace ? (
+            federatedIdentities.map((identity) => {
+              const linkedAccount = identity.linked_account_id ? linkedAccountById.get(identity.linked_account_id) : null;
+              const readiness = identity.migration_readiness;
+              const isSettingsBusy = settingsBusyId === identity.id;
+              const noteDraft = noteDrafts[identity.id] ?? identity.profile_note ?? '';
+              const importFollowsBusy = jobBusyKey === `${identity.id}:import-follows`;
+              const importFollowersBusy = jobBusyKey === `${identity.id}:import-followers`;
+              const autoFollowBusy = jobBusyKey === `${identity.id}:auto-follow-old-account`;
+              const migrationNoticeBusy = jobBusyKey === `${identity.id}:migration-notice`;
+
+              return (
+                <View key={`federated-identity-${identity.id}`} style={[styles.identityCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  <View style={styles.identityHeader}>
+                    <View style={styles.identityHeaderText}>
+                      <Text style={[styles.identityHandle, { color: c.textPrimary }]}>{identity.remote_handle}</Text>
+                      <Text style={[styles.identitySubhead, { color: c.textMuted }]}>
+                        {linkedAccount?.instance_domain || identity.remote_instance_url.replace(/^https?:\/\//, '')}
+                      </Text>
+                    </View>
+                    <View style={styles.identityBadges}>
+                      <View style={[styles.badge, { backgroundColor: `${c.primary}16`, borderColor: `${c.primary}33` }]}>
+                        <Text style={[styles.badgeText, { color: c.primary }]}>
+                          {identity.link_status === 'verified' ? 'Verified' : identity.link_status}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.badge,
+                          {
+                            backgroundColor: readiness?.remote_alias_verified ? '#DCFCE7' : `${c.border}55`,
+                            borderColor: readiness?.remote_alias_verified ? '#86EFAC' : c.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.badgeText, { color: readiness?.remote_alias_verified ? '#166534' : c.textMuted }]}>
+                          {readiness?.remote_alias_verified ? 'Alias verified' : 'Alias pending'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.identityBody, { color: c.textSecondary }]}>
+                    {readiness?.note ||
+                      'This linked Mastodon identity can be used to import your graph, control cross-posting, and move gradually into OpenSpace.'}
+                  </Text>
+
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>1. Verify identity</Text>
+                    <Text style={[styles.stepBody, { color: c.textSecondary }]}>
+                      Verified identities reduce migration risk and make it clear that your OpenSpace account is additive, not a replacement forced on you.
+                    </Text>
+                    <Text style={[styles.stepMeta, { color: c.textMuted }]}>
+                      Linked on {formatDate(identity.verified_at) || 'Unknown date'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>2. Import your graph</Text>
+                    <Text style={[styles.stepBody, { color: c.textSecondary }]}>
+                      Bring your network over gradually so OpenSpace feels like an expansion of your audience, not a risky reset.
+                    </Text>
+                    <View style={styles.actionGrid}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={!!jobBusyKey}
+                        onPress={() =>
+                          void handleRunIdentityJob(
+                            identity.id,
+                            'import-follows',
+                            () => api.importFederatedIdentityFollows(token!, identity.id),
+                            'Started importing the people you follow on Mastodon.',
+                          )
+                        }
+                        style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        {importFollowsBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Import follows</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={!!jobBusyKey}
+                        onPress={() =>
+                          void handleRunIdentityJob(
+                            identity.id,
+                            'import-followers',
+                            () => api.importFederatedIdentityFollowers(token!, identity.id),
+                            'Started importing your Mastodon followers.',
+                          )
+                        }
+                        style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        {importFollowersBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Import followers</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={!!jobBusyKey}
+                        onPress={() =>
+                          void handleRunIdentityJob(
+                            identity.id,
+                            'auto-follow-old-account',
+                            () => api.autoFollowFederatedOldAccount(token!, identity.id),
+                            'Queued a follow back to your old Mastodon account.',
+                          )
+                        }
+                        style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        {autoFollowBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Follow old account</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>3. Choose posting behavior</Text>
+                    <Text style={[styles.stepBody, { color: c.textSecondary }]}>
+                      Decide how OpenSpace and Mastodon should work together while you transition.
+                    </Text>
+                    <View style={styles.toggleList}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={isSettingsBusy}
+                        onPress={() =>
+                          void handleSaveIdentitySettings(
+                            identity.id,
+                            { crosspost_openbook_to_mastodon: !identity.crosspost_openbook_to_mastodon },
+                            !identity.crosspost_openbook_to_mastodon
+                              ? 'OpenSpace posts will now cross-post to Mastodon.'
+                              : 'OpenSpace cross-posting to Mastodon is now off.',
+                          )
+                        }
+                        style={[styles.toggleRow, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        <View style={styles.toggleTextWrap}>
+                          <Text style={[styles.toggleTitle, { color: c.textPrimary }]}>Cross-post OpenSpace to Mastodon</Text>
+                          <Text style={[styles.toggleBody, { color: c.textMuted }]}>Share your OpenSpace posts outward while you keep building here.</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.togglePill,
+                            {
+                              backgroundColor: identity.crosspost_openbook_to_mastodon ? c.primary : `${c.border}88`,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.togglePillText}>{identity.crosspost_openbook_to_mastodon ? 'On' : 'Off'}</Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={isSettingsBusy}
+                        onPress={() =>
+                          void handleSaveIdentitySettings(
+                            identity.id,
+                            { crosspost_mastodon_to_openbook: !identity.crosspost_mastodon_to_openbook },
+                            !identity.crosspost_mastodon_to_openbook
+                              ? 'Mastodon mirroring into OpenSpace is now on.'
+                              : 'Mastodon mirroring into OpenSpace is now off.',
+                          )
+                        }
+                        style={[styles.toggleRow, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        <View style={styles.toggleTextWrap}>
+                          <Text style={[styles.toggleTitle, { color: c.textPrimary }]}>Mirror Mastodon content into OpenSpace</Text>
+                          <Text style={[styles.toggleBody, { color: c.textMuted }]}>Keep selected activity visible in OpenSpace while you transition your audience.</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.togglePill,
+                            {
+                              backgroundColor: identity.crosspost_mastodon_to_openbook ? c.primary : `${c.border}88`,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.togglePillText}>{identity.crosspost_mastodon_to_openbook ? 'On' : 'Off'}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>4. Customize your federated note</Text>
+                    <Text style={[styles.stepBody, { color: c.textSecondary }]}>
+                      Give visitors a clear explanation of how this OpenSpace account relates to your Mastodon identity.
+                    </Text>
+                    <TextInput
+                      multiline
+                      value={noteDraft}
+                      onChangeText={(value) => setNoteDrafts((current) => ({ ...current, [identity.id]: value }))}
+                      editable={!isSettingsBusy}
+                      placeholder="Verified linked Mastodon identity, migration note, or cross-post guidance"
+                      placeholderTextColor={c.textMuted}
+                      style={[
+                        styles.noteInput,
+                        {
+                          color: c.textPrimary,
+                          borderColor: c.border,
+                          backgroundColor: c.surface,
+                        },
+                      ]}
+                    />
+                    <View style={styles.stepActions}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={isSettingsBusy}
+                        onPress={() =>
+                          void handleSaveIdentitySettings(
+                            identity.id,
+                            { profile_note: noteDraft.trim() || null },
+                            'Updated your fediverse profile note.',
+                          )
+                        }
+                        style={[styles.primaryAction, { backgroundColor: c.primary, opacity: isSettingsBusy ? 0.6 : 1 }]}
+                      >
+                        {isSettingsBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryActionText}>Save note</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={!!jobBusyKey}
+                        onPress={() =>
+                          void handleRunIdentityJob(
+                            identity.id,
+                            'migration-notice',
+                            () => api.createFederatedMigrationNotice(token!, identity.id),
+                            'Queued a migration notice job for this identity.',
+                          )
+                        }
+                        style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                      >
+                        {migrationNoticeBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Prepare migration notice</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>Recent migration activity</Text>
+                    {identity.recent_jobs && identity.recent_jobs.length > 0 ? (
+                      <View style={styles.jobList}>
+                        {identity.recent_jobs.map((job) => (
+                          <View key={`job-${job.id}`} style={[styles.jobRow, { borderColor: c.border }]}>
+                            <View style={styles.jobMeta}>
+                              <Text style={[styles.jobTitle, { color: c.textPrimary }]}>{jobTitle(job)}</Text>
+                              <Text style={[styles.jobSubtitle, { color: c.textMuted }]}>
+                                {formatDate(job.updated_at) || 'Recently updated'}
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.badge,
+                                {
+                                  backgroundColor:
+                                    job.status === 'completed'
+                                      ? '#DCFCE7'
+                                      : job.status === 'failed'
+                                        ? '#FEE2E2'
+                                        : `${c.primary}16`,
+                                  borderColor:
+                                    job.status === 'completed'
+                                      ? '#86EFAC'
+                                      : job.status === 'failed'
+                                        ? '#FCA5A5'
+                                        : `${c.primary}33`,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  {
+                                    color:
+                                      job.status === 'completed'
+                                        ? '#166534'
+                                        : job.status === 'failed'
+                                          ? '#991B1B'
+                                          : c.primary,
+                                  },
+                                ]}
+                              >
+                                {job.status}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[styles.stepBody, { color: c.textMuted }]}>
+                        No migration jobs have run for this identity yet.
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <View style={[styles.emptyMigrationCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Your migration workspace will appear here</Text>
+              <Text style={[styles.sectionBody, { color: c.textMuted }]}>
+                Once you connect a Mastodon identity, OpenSpace will show your import tools, posting toggles, and transition guidance in one place.
+              </Text>
+            </View>
+          )}
         </View>
       )}
     </ScrollView>
@@ -475,7 +884,56 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     paddingBottom: 120,
-    gap: 12,
+    gap: 14,
+  },
+  heroCard: {
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 18,
+    gap: 14,
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  heroIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTextWrap: { flex: 1, gap: 6 },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    lineHeight: 32,
+  },
+  heroBody: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  heroPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  heroPillText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   subtitle: {
     fontSize: 14,
@@ -491,6 +949,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   list: {
+    gap: 12,
+  },
+  sectionCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
+  sectionHeaderInline: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 26,
+  },
+  sectionBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  providerList: {
     gap: 10,
   },
   row: {
@@ -499,7 +981,7 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 12,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   meta: { flex: 1 },
   providerName: {
@@ -524,17 +1006,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  mastodonSection: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 12,
-  },
-  mastodonSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   mastodonAccountsList: {
     gap: 10,
   },
@@ -543,23 +1014,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
-  },
-  mastodonBody: {
-    fontSize: 13,
-    lineHeight: 18,
   },
   mastodonInput: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
   },
   mastodonButton: {
-    minHeight: 46,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -568,5 +1035,171 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  identityCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
+  identityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  identityHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+  identityHandle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  identitySubhead: {
+    fontSize: 13,
+  },
+  identityBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  badge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  identityBody: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  stepCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+  },
+  stepTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  stepBody: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  stepMeta: {
+    fontSize: 12,
+  },
+  actionGrid: {
+    gap: 10,
+  },
+  secondaryAction: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  toggleList: {
+    gap: 10,
+  },
+  toggleRow: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleTextWrap: {
+    flex: 1,
+    gap: 4,
+  },
+  toggleTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  toggleBody: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  togglePill: {
+    minWidth: 48,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  togglePillText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderRadius: 14,
+    minHeight: 92,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  stepActions: {
+    gap: 10,
+  },
+  primaryAction: {
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  primaryActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  jobList: {
+    gap: 10,
+  },
+  jobRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  jobMeta: {
+    flex: 1,
+    gap: 3,
+  },
+  jobTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  jobSubtitle: {
+    fontSize: 12,
+  },
+  emptyMigrationCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 8,
   },
 });

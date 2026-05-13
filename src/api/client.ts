@@ -253,6 +253,12 @@ export type FederatedIdentityLink = {
   created_at: string;
   updated_at: string;
   recent_jobs?: FederatedIdentityJob[];
+  migration_readiness?: {
+    remote_alias_verified: boolean;
+    can_claim_move: boolean;
+    state: 'migration_ready' | 'linked_identity_only';
+    note: string;
+  };
 };
 
 export type FederatedRemoteActor = {
@@ -1805,7 +1811,11 @@ export const api = {
   updateFederatedCrosspostSettings: (
     token: string,
     identityId: number,
-    payload: { crosspost_openbook_to_mastodon?: boolean; crosspost_mastodon_to_openbook?: boolean }
+    payload: {
+      crosspost_openbook_to_mastodon?: boolean;
+      crosspost_mastodon_to_openbook?: boolean;
+      profile_note?: string | null;
+    }
   ) =>
     request<{ identity: FederatedIdentityLink; job: FederatedIdentityJob }>(
       `/api/users/me/federated-identities/${identityId}/crosspost-settings`,
