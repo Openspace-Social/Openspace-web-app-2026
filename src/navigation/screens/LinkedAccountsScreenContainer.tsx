@@ -578,6 +578,7 @@ export default function LinkedAccountsScreenContainer() {
             federatedIdentities.map((identity) => {
               const linkedAccount = identity.linked_account_id ? linkedAccountById.get(identity.linked_account_id) : null;
               const readiness = identity.migration_readiness;
+              const actionsUnlocked = identity.link_status === 'verified';
               const isSettingsBusy = settingsBusyId === identity.id;
               const noteDraft = noteDrafts[identity.id] ?? identity.profile_note ?? '';
               const importFollowsBusy = jobBusyKey === `${identity.id}:import-follows`;
@@ -621,6 +622,15 @@ export default function LinkedAccountsScreenContainer() {
                       'This linked Mastodon identity can be used to import your graph, control cross-posting, and move gradually into OpenSpace.'}
                   </Text>
 
+                  {!actionsUnlocked ? (
+                    <View style={[styles.lockNotice, { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' }]}>
+                      <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#C2410C" />
+                      <Text style={[styles.lockNoticeText, { color: '#9A3412' }]}>
+                        This identity is linked, but migration actions stay locked until the verification step is complete.
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                     <Text style={[styles.stepTitle, { color: c.textPrimary }]}>1. Verify identity</Text>
                     <Text style={[styles.stepBody, { color: c.textSecondary }]}>
@@ -639,7 +649,7 @@ export default function LinkedAccountsScreenContainer() {
                     <View style={styles.actionGrid}>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={!!jobBusyKey}
+                        disabled={!!jobBusyKey || !actionsUnlocked}
                         onPress={() =>
                           void handleRunIdentityJob(
                             identity.id,
@@ -654,7 +664,7 @@ export default function LinkedAccountsScreenContainer() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={!!jobBusyKey}
+                        disabled={!!jobBusyKey || !actionsUnlocked}
                         onPress={() =>
                           void handleRunIdentityJob(
                             identity.id,
@@ -669,7 +679,7 @@ export default function LinkedAccountsScreenContainer() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={!!jobBusyKey}
+                        disabled={!!jobBusyKey || !actionsUnlocked}
                         onPress={() =>
                           void handleRunIdentityJob(
                             identity.id,
@@ -693,7 +703,7 @@ export default function LinkedAccountsScreenContainer() {
                     <View style={styles.toggleList}>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={isSettingsBusy}
+                        disabled={isSettingsBusy || !actionsUnlocked}
                         onPress={() =>
                           void handleSaveIdentitySettings(
                             identity.id,
@@ -703,7 +713,10 @@ export default function LinkedAccountsScreenContainer() {
                               : 'OpenSpace cross-posting to Mastodon is now off.',
                           )
                         }
-                        style={[styles.toggleRow, { borderColor: c.border, backgroundColor: c.surface }]}
+                        style={[
+                          styles.toggleRow,
+                          { borderColor: c.border, backgroundColor: c.surface, opacity: actionsUnlocked ? 1 : 0.55 },
+                        ]}
                       >
                         <View style={styles.toggleTextWrap}>
                           <Text style={[styles.toggleTitle, { color: c.textPrimary }]}>Cross-post OpenSpace to Mastodon</Text>
@@ -723,7 +736,7 @@ export default function LinkedAccountsScreenContainer() {
 
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={isSettingsBusy}
+                        disabled={isSettingsBusy || !actionsUnlocked}
                         onPress={() =>
                           void handleSaveIdentitySettings(
                             identity.id,
@@ -733,7 +746,10 @@ export default function LinkedAccountsScreenContainer() {
                               : 'Mastodon mirroring into OpenSpace is now off.',
                           )
                         }
-                        style={[styles.toggleRow, { borderColor: c.border, backgroundColor: c.surface }]}
+                        style={[
+                          styles.toggleRow,
+                          { borderColor: c.border, backgroundColor: c.surface, opacity: actionsUnlocked ? 1 : 0.55 },
+                        ]}
                       >
                         <View style={styles.toggleTextWrap}>
                           <Text style={[styles.toggleTitle, { color: c.textPrimary }]}>Mirror Mastodon content into OpenSpace</Text>
@@ -762,7 +778,7 @@ export default function LinkedAccountsScreenContainer() {
                       multiline
                       value={noteDraft}
                       onChangeText={(value) => setNoteDrafts((current) => ({ ...current, [identity.id]: value }))}
-                      editable={!isSettingsBusy}
+                      editable={!isSettingsBusy && actionsUnlocked}
                       placeholder="Verified linked Mastodon identity, migration note, or cross-post guidance"
                       placeholderTextColor={c.textMuted}
                       style={[
@@ -777,7 +793,7 @@ export default function LinkedAccountsScreenContainer() {
                     <View style={styles.stepActions}>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={isSettingsBusy}
+                        disabled={isSettingsBusy || !actionsUnlocked}
                         onPress={() =>
                           void handleSaveIdentitySettings(
                             identity.id,
@@ -785,13 +801,13 @@ export default function LinkedAccountsScreenContainer() {
                             'Updated your fediverse profile note.',
                           )
                         }
-                        style={[styles.primaryAction, { backgroundColor: c.primary, opacity: isSettingsBusy ? 0.6 : 1 }]}
+                        style={[styles.primaryAction, { backgroundColor: c.primary, opacity: isSettingsBusy || !actionsUnlocked ? 0.6 : 1 }]}
                       >
                         {isSettingsBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryActionText}>Save note</Text>}
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.85}
-                        disabled={!!jobBusyKey}
+                        disabled={!!jobBusyKey || !actionsUnlocked}
                         onPress={() =>
                           void handleRunIdentityJob(
                             identity.id,
@@ -800,7 +816,10 @@ export default function LinkedAccountsScreenContainer() {
                             'Queued a migration notice job for this identity.',
                           )
                         }
-                        style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                        style={[
+                          styles.secondaryAction,
+                          { borderColor: c.border, backgroundColor: c.surface, opacity: actionsUnlocked ? 1 : 0.55 },
+                        ]}
                       >
                         {migrationNoticeBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Prepare migration notice</Text>}
                       </TouchableOpacity>
@@ -1080,6 +1099,21 @@ const styles = StyleSheet.create({
   identityBody: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  lockNotice: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  lockNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   stepCard: {
     borderWidth: 1,
