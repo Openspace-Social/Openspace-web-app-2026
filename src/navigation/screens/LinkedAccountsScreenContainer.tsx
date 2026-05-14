@@ -80,6 +80,7 @@ export default function LinkedAccountsScreenContainer() {
   const [settingsBusyId, setSettingsBusyId] = useState<number | null>(null);
   const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
   const [activeMigrationIdentityId, setActiveMigrationIdentityId] = useState<number | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const linkedAccountById = useMemo(() => {
     const entries = federatedLinkedAccounts.map((account) => [account.id, account] as const);
@@ -356,16 +357,17 @@ export default function LinkedAccountsScreenContainer() {
       try {
         const result = await api.updateFederatedCrosspostSettings(token, identityId, payload);
         updateIdentityState(result.identity);
-        showToast(successMessage, { type: 'success' });
+        setWorkspaceNotice({ type: 'success', message: successMessage });
       } catch (e: any) {
-        showToast(e?.message || t('home.mastodonSettingsFailed', { defaultValue: 'Could not update Mastodon settings.' }), {
+        setWorkspaceNotice({
           type: 'error',
+          message: e?.message || t('home.mastodonSettingsFailed', { defaultValue: 'Could not update Mastodon settings.' }),
         });
       } finally {
         setSettingsBusyId(null);
       }
     },
-    [showToast, t, token, updateIdentityState],
+    [t, token, updateIdentityState],
   );
 
   const handleRunIdentityJob = useCallback(
@@ -374,16 +376,17 @@ export default function LinkedAccountsScreenContainer() {
       try {
         await runner();
         await load();
-        showToast(successMessage, { type: 'success' });
+        setWorkspaceNotice({ type: 'success', message: successMessage });
       } catch (e: any) {
-        showToast(e?.message || t('home.mastodonJobFailed', { defaultValue: 'Could not complete this migration step.' }), {
+        setWorkspaceNotice({
           type: 'error',
+          message: e?.message || t('home.mastodonJobFailed', { defaultValue: 'Could not complete this migration step.' }),
         });
       } finally {
         setJobBusyKey(null);
       }
     },
-    [load, showToast, t],
+    [load, t],
   );
 
   const hasMigrationWorkspace = activeFederatedIdentities.length > 0;
@@ -697,6 +700,31 @@ export default function LinkedAccountsScreenContainer() {
                     </View>
 
                     <View style={[styles.identityCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      {workspaceNotice ? (
+                        <View
+                          style={[
+                            styles.workspaceNotice,
+                            workspaceNotice.type === 'error'
+                              ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
+                              : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name={workspaceNotice.type === 'error' ? 'alert-circle-outline' : 'check-circle-outline'}
+                            size={18}
+                            color={workspaceNotice.type === 'error' ? '#B91C1C' : '#047857'}
+                          />
+                          <Text
+                            style={[
+                              styles.workspaceNoticeText,
+                              { color: workspaceNotice.type === 'error' ? '#991B1B' : '#065F46' },
+                            ]}
+                          >
+                            {workspaceNotice.message}
+                          </Text>
+                        </View>
+                      ) : null}
+
                       <View style={styles.identityHeader}>
                         <View style={styles.identityHeaderText}>
                           <Text style={[styles.identityHandle, { color: c.textPrimary }]}>{identity.remote_handle}</Text>
@@ -753,7 +781,7 @@ export default function LinkedAccountsScreenContainer() {
                         2. Find Moving from a different account and click create an account alias.
                       </Text>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        3. Enter your OpenSpace profile {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as the alias, save it, then come back here and run the verification check again.
+                        3. Enter this OpenSpace identity {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as the alias, save it, then come back here and run the verification check again.
                       </Text>
                     </View>
                     <Text style={[styles.stepMeta, { color: c.textMuted }]}>
@@ -1304,6 +1332,21 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     gap: 12,
+  },
+  workspaceNotice: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  workspaceNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   identityHeader: {
     flexDirection: 'row',
