@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -81,6 +81,7 @@ export default function LinkedAccountsScreenContainer() {
   const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
   const [activeMigrationIdentityId, setActiveMigrationIdentityId] = useState<number | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const nestedScrollRef = useRef<ScrollView | null>(null);
 
   const linkedAccountById = useMemo(() => {
     const entries = federatedLinkedAccounts.map((account) => [account.id, account] as const);
@@ -358,11 +359,13 @@ export default function LinkedAccountsScreenContainer() {
         const result = await api.updateFederatedCrosspostSettings(token, identityId, payload);
         updateIdentityState(result.identity);
         setWorkspaceNotice({ type: 'success', message: successMessage });
+        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } catch (e: any) {
         setWorkspaceNotice({
           type: 'error',
           message: e?.message || t('home.mastodonSettingsFailed', { defaultValue: 'Could not update Mastodon settings.' }),
         });
+        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } finally {
         setSettingsBusyId(null);
       }
@@ -377,11 +380,13 @@ export default function LinkedAccountsScreenContainer() {
         await runner();
         await load();
         setWorkspaceNotice({ type: 'success', message: successMessage });
+        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } catch (e: any) {
         setWorkspaceNotice({
           type: 'error',
           message: e?.message || t('home.mastodonJobFailed', { defaultValue: 'Could not complete this migration step.' }),
         });
+        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } finally {
         setJobBusyKey(null);
       }
@@ -664,7 +669,36 @@ export default function LinkedAccountsScreenContainer() {
                     </View>
                   </View>
 
-                  <ScrollView contentContainerStyle={styles.nestedDrawerContent} showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    ref={nestedScrollRef}
+                    contentContainerStyle={styles.nestedDrawerContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {workspaceNotice ? (
+                      <View
+                        style={[
+                          styles.workspaceNotice,
+                          workspaceNotice.type === 'error'
+                            ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
+                            : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name={workspaceNotice.type === 'error' ? 'alert-circle-outline' : 'check-circle-outline'}
+                          size={18}
+                          color={workspaceNotice.type === 'error' ? '#B91C1C' : '#047857'}
+                        />
+                        <Text
+                          style={[
+                            styles.workspaceNoticeText,
+                            { color: workspaceNotice.type === 'error' ? '#991B1B' : '#065F46' },
+                          ]}
+                        >
+                          {workspaceNotice.message}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <View style={[styles.heroCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                       <View style={styles.heroHeader}>
                         <View style={[styles.heroIcon, { backgroundColor: `${c.primary}16` }]}>
@@ -700,31 +734,6 @@ export default function LinkedAccountsScreenContainer() {
                     </View>
 
                     <View style={[styles.identityCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                      {workspaceNotice ? (
-                        <View
-                          style={[
-                            styles.workspaceNotice,
-                            workspaceNotice.type === 'error'
-                              ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
-                              : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
-                          ]}
-                        >
-                          <MaterialCommunityIcons
-                            name={workspaceNotice.type === 'error' ? 'alert-circle-outline' : 'check-circle-outline'}
-                            size={18}
-                            color={workspaceNotice.type === 'error' ? '#B91C1C' : '#047857'}
-                          />
-                          <Text
-                            style={[
-                              styles.workspaceNoticeText,
-                              { color: workspaceNotice.type === 'error' ? '#991B1B' : '#065F46' },
-                            ]}
-                          >
-                            {workspaceNotice.message}
-                          </Text>
-                        </View>
-                      ) : null}
-
                       <View style={styles.identityHeader}>
                         <View style={styles.identityHeaderText}>
                           <Text style={[styles.identityHandle, { color: c.textPrimary }]}>{identity.remote_handle}</Text>
