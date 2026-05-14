@@ -77,6 +77,7 @@ export default function LinkedAccountsScreenContainer() {
   const [mastodonIdentifierInput, setMastodonIdentifierInput] = useState('');
   const [mastodonLinkLoading, setMastodonLinkLoading] = useState(false);
   const [mastodonUnlinkId, setMastodonUnlinkId] = useState<number | null>(null);
+  const [mastodonInlineNotice, setMastodonInlineNotice] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [settingsBusyId, setSettingsBusyId] = useState<number | null>(null);
   const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
   const [activeMigrationIdentityId, setActiveMigrationIdentityId] = useState<number | null>(null);
@@ -109,6 +110,12 @@ export default function LinkedAccountsScreenContainer() {
   useEffect(() => {
     setVerificationNotice(null);
   }, [activeMigrationIdentityId]);
+
+  useEffect(() => {
+    if (!mastodonInlineNotice || mastodonInlineNotice.type !== 'success') return;
+    const timer = setTimeout(() => setMastodonInlineNotice(null), 3200);
+    return () => clearTimeout(timer);
+  }, [mastodonInlineNotice]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -278,16 +285,17 @@ export default function LinkedAccountsScreenContainer() {
     if (!token || mastodonLinkLoading || mastodonUnlinkId !== null) return;
     const rawValue = mastodonIdentifierInput.trim();
     if (!rawValue) {
-      showToast(
-        t('home.mastodonIdentifierRequired', {
+      setMastodonInlineNotice({
+        type: 'error',
+        message: t('home.mastodonIdentifierRequired', {
           defaultValue: 'Enter a Mastodon instance URL or @name@instance to continue.',
         }),
-        { type: 'error' },
-      );
+      });
       return;
     }
 
     setMastodonLinkLoading(true);
+    setMastodonInlineNotice(null);
     try {
       const redirectUri = getMastodonRedirectUri();
       const started = await api.startFederatedLink(token, {
@@ -309,24 +317,25 @@ export default function LinkedAccountsScreenContainer() {
       await api.completeFederatedLink(token, callbackData);
       setMastodonIdentifierInput('');
       await load();
-      showToast(
-        t('home.mastodonLinkSuccess', {
+      setMastodonInlineNotice({
+        type: 'success',
+        message: t('home.mastodonLinkSuccess', {
           defaultValue: 'Mastodon account linked successfully.',
         }),
-        { type: 'success' },
-      );
+      });
     } catch (e: any) {
-      showToast(
-        e?.message ||
+      setMastodonInlineNotice({
+        type: 'error',
+        message:
+          e?.message ||
           t('home.mastodonLinkFailed', {
             defaultValue: 'Could not link your Mastodon account.',
           }),
-        { type: 'error' },
-      );
+      });
     } finally {
       setMastodonLinkLoading(false);
     }
-  }, [load, mastodonIdentifierInput, mastodonLinkLoading, mastodonUnlinkId, showToast, t, token]);
+  }, [load, mastodonIdentifierInput, mastodonLinkLoading, mastodonUnlinkId, t, token]);
 
   const handleUnlinkMastodon = useCallback(async (linkedAccountId: number) => {
     if (!token || mastodonLinkLoading || mastodonUnlinkId !== null) return;
@@ -601,6 +610,25 @@ export default function LinkedAccountsScreenContainer() {
                   <Text style={styles.mastodonButtonText}>Connect Mastodon</Text>
                 )}
               </TouchableOpacity>
+              {mastodonInlineNotice ? (
+                <View
+                  style={[
+                    styles.mastodonInlineNotice,
+                    mastodonInlineNotice.type === 'error'
+                      ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
+                      : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.mastodonInlineNoticeText,
+                      mastodonInlineNotice.type === 'error' ? { color: '#991B1B' } : { color: '#065F46' },
+                    ]}
+                  >
+                    {mastodonInlineNotice.message}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             {hasMigrationWorkspace ? (
@@ -1385,6 +1413,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  mastodonInlineNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  mastodonInlineNoticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   identityCard: {
     borderWidth: 1,
