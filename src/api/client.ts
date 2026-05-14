@@ -1838,7 +1838,6 @@ export const api = {
 
   refreshFederatedIdentityVerification: (token: string, identityId: number) =>
     request<FederatedIdentityLink>(`/api/users/me/federated-identities/${identityId}/refresh-verification`, {
-      method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),
 
