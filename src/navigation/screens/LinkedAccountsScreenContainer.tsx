@@ -391,40 +391,6 @@ export default function LinkedAccountsScreenContainer() {
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.container}>
-        <View style={[styles.heroCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <View style={styles.heroHeader}>
-          <View style={[styles.heroIcon, { backgroundColor: `${c.primary}16` }]}>
-            <MaterialCommunityIcons name="mastodon" size={22} color={c.primary} />
-          </View>
-          <View style={styles.heroTextWrap}>
-            <Text style={[styles.heroEyebrow, { color: c.primary }]}>Phase 4</Text>
-            <Text style={[styles.heroTitle, { color: c.textPrimary }]}>
-              {t('home.federationMigrationTitle', {
-                defaultValue: 'Make your Mastodon identity feel at home on OpenSpace',
-              })}
-            </Text>
-            <Text style={[styles.heroBody, { color: c.textSecondary }]}>
-              {t('home.federationMigrationBody', {
-                defaultValue:
-                  'Link your fediverse identity, import your graph, choose how you want to publish, and transition at your own pace instead of starting from zero.',
-              })}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.heroPills}>
-          {[
-            'Verify identity',
-            'Import follows',
-            'Choose posting behavior',
-            'Keep your audience',
-          ].map((label) => (
-            <View key={label} style={[styles.heroPill, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-              <Text style={[styles.heroPillText, { color: c.textPrimary }]}>{label}</Text>
-            </View>
-          ))}
-        </View>
-        </View>
-
         <Text style={[styles.subtitle, { color: c.textMuted }]}>
           {t('home.linkedAccountsDescription', {
             defaultValue: 'Connect sign-in providers and manage the fediverse identities you want to bring with you.',
@@ -696,6 +662,40 @@ export default function LinkedAccountsScreenContainer() {
                   </View>
 
                   <ScrollView contentContainerStyle={styles.nestedDrawerContent} showsVerticalScrollIndicator={false}>
+                    <View style={[styles.heroCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                      <View style={styles.heroHeader}>
+                        <View style={[styles.heroIcon, { backgroundColor: `${c.primary}16` }]}>
+                          <MaterialCommunityIcons name="mastodon" size={22} color={c.primary} />
+                        </View>
+                        <View style={styles.heroTextWrap}>
+                          <Text style={[styles.heroEyebrow, { color: c.primary }]}>Phase 4</Text>
+                          <Text style={[styles.heroTitle, { color: c.textPrimary }]}>
+                            {t('home.federationMigrationTitle', {
+                              defaultValue: 'Make your Mastodon identity feel at home on OpenSpace',
+                            })}
+                          </Text>
+                          <Text style={[styles.heroBody, { color: c.textSecondary }]}>
+                            {t('home.federationMigrationBody', {
+                              defaultValue:
+                                'Link your fediverse identity, import your graph, choose how you want to publish, and transition at your own pace instead of starting from zero.',
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.heroPills}>
+                        {[
+                          'Verify identity',
+                          'Import follows',
+                          'Choose posting behavior',
+                          'Keep your audience',
+                        ].map((label) => (
+                          <View key={label} style={[styles.heroPill, { backgroundColor: c.surface, borderColor: c.border }]}>
+                            <Text style={[styles.heroPillText, { color: c.textPrimary }]}>{label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+
                     <View style={[styles.identityCard, { backgroundColor: c.surface, borderColor: c.border }]}>
                       <View style={styles.identityHeader}>
                         <View style={styles.identityHeaderText}>
