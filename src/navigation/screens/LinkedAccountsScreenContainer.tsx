@@ -747,13 +747,13 @@ export default function LinkedAccountsScreenContainer() {
                     </Text>
                     <View style={styles.verificationList}>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        1. In Mastodon, open Preferences {'>'} Account {'>'} Account aliases.
+                        1. In Mastodon, open Preferences {'>'} Account.
                       </Text>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        2. Add your OpenSpace profile {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as an alias.
+                        2. Find Moving from a different account and click create an account alias.
                       </Text>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        3. Save on Mastodon, then come back here and run the verification check again.
+                        3. Enter your OpenSpace profile {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as the alias, save it, then come back here and run the verification check again.
                       </Text>
                     </View>
                     <Text style={[styles.stepMeta, { color: c.textMuted }]}>
