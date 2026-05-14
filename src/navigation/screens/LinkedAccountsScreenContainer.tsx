@@ -81,6 +81,7 @@ export default function LinkedAccountsScreenContainer() {
   const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
   const [activeMigrationIdentityId, setActiveMigrationIdentityId] = useState<number | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [verificationNotice, setVerificationNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   const linkedAccountById = useMemo(() => {
     const entries = federatedLinkedAccounts.map((account) => [account.id, account] as const);
@@ -104,6 +105,10 @@ export default function LinkedAccountsScreenContainer() {
     const timer = setTimeout(() => setWorkspaceNotice(null), 3200);
     return () => clearTimeout(timer);
   }, [workspaceNotice]);
+
+  useEffect(() => {
+    setVerificationNotice(null);
+  }, [activeMigrationIdentityId]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -396,6 +401,41 @@ export default function LinkedAccountsScreenContainer() {
   );
 
   const hasMigrationWorkspace = activeFederatedIdentities.length > 0;
+
+  const handleRefreshVerification = useCallback(
+    async (identity: FederatedIdentityLink) => {
+      if (!token) return;
+      setJobBusyKey(`${identity.id}:refresh-verification`);
+      setVerificationNotice(null);
+      try {
+        const refreshed = await api.refreshFederatedIdentityVerification(token, identity.id);
+        updateIdentityState(refreshed);
+        if (refreshed.migration_readiness?.remote_alias_verified) {
+          setVerificationNotice({
+            type: 'success',
+            message: 'OpenSpace confirmed the Mastodon alias. Migration actions are now available.',
+          });
+        } else {
+          setVerificationNotice({
+            type: 'info',
+            message:
+              'OpenSpace still cannot see the alias on your Mastodon profile yet. Double-check the alias, save it in Mastodon, then try again in a minute.',
+          });
+        }
+      } catch (e: any) {
+        const friendlyMessage =
+          e?.code === 'identity_not_verified'
+            ? 'This Mastodon identity is linked, but OpenSpace cannot verify the account connection yet.'
+            : e?.status === 404 || e?.status === 405
+              ? 'Verification is not available right now. Please refresh the page and try again in a moment.'
+              : 'OpenSpace could not check your Mastodon alias right now. Please try again in a moment.';
+        setVerificationNotice({ type: 'error', message: friendlyMessage });
+      } finally {
+        setJobBusyKey(null);
+      }
+    },
+    [token, updateIdentityState],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -805,25 +845,7 @@ export default function LinkedAccountsScreenContainer() {
                     <TouchableOpacity
                       activeOpacity={0.85}
                       disabled={!!jobBusyKey}
-                      onPress={() =>
-                        void handleRunIdentityJob(
-                          identity.id,
-                          'refresh-verification',
-                          async () => {
-                            const refreshed = await api.refreshFederatedIdentityVerification(token!, identity.id);
-                            updateIdentityState(refreshed);
-                            return {
-                              id: refreshed.id,
-                              identity_link: refreshed.id,
-                              job_type: 'crosspost_setup',
-                              status: 'completed',
-                              created_at: refreshed.updated_at,
-                              updated_at: refreshed.updated_at,
-                            } as FederatedIdentityJob;
-                          },
-                          'Checked Mastodon again for your OpenSpace alias.',
-                        )
-                      }
+                      onPress={() => void handleRefreshVerification(identity)}
                       style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
                     >
                       {refreshVerificationBusy ? (
@@ -832,7 +854,32 @@ export default function LinkedAccountsScreenContainer() {
                         <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Check verification again</Text>
                       )}
                     </TouchableOpacity>
+                    {verificationNotice ? (
+                      <View
+                        style={[
+                          styles.verificationNotice,
+                          verificationNotice.type === 'error'
+                            ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
+                            : verificationNotice.type === 'success'
+                              ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                              : { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.verificationNoticeText,
+                            verificationNotice.type === 'error'
+                              ? { color: '#991B1B' }
+                              : verificationNotice.type === 'success'
+                                ? { color: '#065F46' }
+                                : { color: '#1D4ED8' },
+                          ]}
+                        >
+                          {verificationNotice.message}
+                        </Text>
                       </View>
+                    ) : null}
+                  </View>
 
                       <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                     <Text style={[styles.stepTitle, { color: c.textPrimary }]}>2. Import your graph</Text>
@@ -1452,6 +1499,17 @@ const styles = StyleSheet.create({
   verificationItem: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  verificationNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  verificationNoticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   stepMeta: {
     fontSize: 12,
