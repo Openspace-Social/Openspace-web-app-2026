@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -81,7 +81,6 @@ export default function LinkedAccountsScreenContainer() {
   const [jobBusyKey, setJobBusyKey] = useState<string | null>(null);
   const [activeMigrationIdentityId, setActiveMigrationIdentityId] = useState<number | null>(null);
   const [workspaceNotice, setWorkspaceNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const nestedScrollRef = useRef<ScrollView | null>(null);
 
   const linkedAccountById = useMemo(() => {
     const entries = federatedLinkedAccounts.map((account) => [account.id, account] as const);
@@ -99,6 +98,12 @@ export default function LinkedAccountsScreenContainer() {
     () => activeFederatedIdentities.find((identity) => identity.id === activeMigrationIdentityId) || null,
     [activeMigrationIdentityId, activeFederatedIdentities],
   );
+
+  useEffect(() => {
+    if (!workspaceNotice) return;
+    const timer = setTimeout(() => setWorkspaceNotice(null), 3200);
+    return () => clearTimeout(timer);
+  }, [workspaceNotice]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -359,13 +364,11 @@ export default function LinkedAccountsScreenContainer() {
         const result = await api.updateFederatedCrosspostSettings(token, identityId, payload);
         updateIdentityState(result.identity);
         setWorkspaceNotice({ type: 'success', message: successMessage });
-        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } catch (e: any) {
         setWorkspaceNotice({
           type: 'error',
           message: e?.message || t('home.mastodonSettingsFailed', { defaultValue: 'Could not update Mastodon settings.' }),
         });
-        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } finally {
         setSettingsBusyId(null);
       }
@@ -380,13 +383,11 @@ export default function LinkedAccountsScreenContainer() {
         await runner();
         await load();
         setWorkspaceNotice({ type: 'success', message: successMessage });
-        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } catch (e: any) {
         setWorkspaceNotice({
           type: 'error',
           message: e?.message || t('home.mastodonJobFailed', { defaultValue: 'Could not complete this migration step.' }),
         });
-        nestedScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       } finally {
         setJobBusyKey(null);
       }
@@ -669,36 +670,38 @@ export default function LinkedAccountsScreenContainer() {
                     </View>
                   </View>
 
-                  <ScrollView
-                    ref={nestedScrollRef}
-                    contentContainerStyle={styles.nestedDrawerContent}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {workspaceNotice ? (
+                  {workspaceNotice ? (
+                    <View pointerEvents="none" style={styles.workspaceToastLayer}>
                       <View
                         style={[
-                          styles.workspaceNotice,
+                          styles.workspaceToast,
                           workspaceNotice.type === 'error'
-                            ? { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }
-                            : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+                            ? { backgroundColor: c.errorBackground, borderColor: c.errorBorder }
+                            : { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' },
                         ]}
                       >
-                        <MaterialCommunityIcons
-                          name={workspaceNotice.type === 'error' ? 'alert-circle-outline' : 'check-circle-outline'}
-                          size={18}
-                          color={workspaceNotice.type === 'error' ? '#B91C1C' : '#047857'}
-                        />
                         <Text
                           style={[
-                            styles.workspaceNoticeText,
-                            { color: workspaceNotice.type === 'error' ? '#991B1B' : '#065F46' },
+                            styles.workspaceToastTitle,
+                            { color: workspaceNotice.type === 'error' ? c.errorText : '#4338CA' },
                           ]}
+                        >
+                          {workspaceNotice.type === 'error' ? 'Error' : 'Success'}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.workspaceToastMessage,
+                            { color: workspaceNotice.type === 'error' ? c.errorText : '#4338CA' },
+                          ]}
+                          numberOfLines={4}
                         >
                           {workspaceNotice.message}
                         </Text>
                       </View>
-                    ) : null}
+                    </View>
+                  ) : null}
 
+                  <ScrollView contentContainerStyle={styles.nestedDrawerContent} showsVerticalScrollIndicator={false}>
                     <View style={[styles.heroCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                       <View style={styles.heroHeader}>
                         <View style={[styles.heroIcon, { backgroundColor: `${c.primary}16` }]}>
@@ -1342,20 +1345,38 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  workspaceNotice: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+  workspaceToastLayer: {
+    position: 'absolute',
+    top: 74,
+    left: 16,
+    right: 16,
+    zIndex: 20,
   },
-  workspaceNoticeText: {
-    flex: 1,
+  workspaceToast: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+  },
+  workspaceToastTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    opacity: 0.85,
+  },
+  workspaceToastMessage: {
     fontSize: 13,
-    lineHeight: 18,
     fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   identityHeader: {
     flexDirection: 'row',
