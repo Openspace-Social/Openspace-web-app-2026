@@ -747,10 +747,10 @@ export default function LinkedAccountsScreenContainer() {
                     </Text>
                     <View style={styles.verificationList}>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        1. In Mastodon, open Settings {'>'} Account {'>'} Account aliases.
+                        1. In Mastodon, open Preferences {'>'} Account {'>'} Account aliases.
                       </Text>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
-                        2. Add your OpenSpace actor {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as an alias.
+                        2. Add your OpenSpace profile {identity.local_actor_handle || identity.local_actor_uri || 'profile'} as an alias.
                       </Text>
                       <Text style={[styles.verificationItem, { color: c.textSecondary }]}>
                         3. Save on Mastodon, then come back here and run the verification check again.
