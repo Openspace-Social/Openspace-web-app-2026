@@ -58,6 +58,14 @@ function activityIconName(type?: string) {
   }
 }
 
+function SectionLabel({ c, children }: { c: any; children: React.ReactNode }) {
+  return (
+    <Text style={{ color: c.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+      {children}
+    </Text>
+  );
+}
+
 export default function FederationSummaryCard({
   c,
   t,
@@ -89,6 +97,17 @@ export default function FederationSummaryCard({
 
   const actorUri = summary.actor_uri?.trim();
   const recentActivity = Array.isArray(summary.recent_activity) ? summary.recent_activity.slice(0, 4) : [];
+  const creatorGrowth = isOwnProfile ? summary.creator_growth : null;
+  const topInstances = creatorGrowth?.top_remote_instances || [];
+  const topPosts = creatorGrowth?.top_distributed_posts || [];
+  const networkEngagement = creatorGrowth?.engagement_by_network || [];
+  const prompts = creatorGrowth?.prompts || [];
+  const guidance = creatorGrowth?.guidance || [];
+  const bestTimes = creatorGrowth?.suggestions?.best_posting_times || [];
+  const communitySuggestions = creatorGrowth?.suggestions?.recommended_public_communities || [];
+  const amplifiedPosts = creatorGrowth?.suggestions?.amplified_posts || [];
+  const followerGrowth = creatorGrowth?.remote_follower_growth;
+  const profileCompletion = creatorGrowth?.profile_completion;
 
   return (
     <View
@@ -208,9 +227,9 @@ export default function FederationSummaryCard({
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: c.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        <SectionLabel c={c}>
           {t('federation.statusHeadline', { defaultValue: 'What this means' })}
-        </Text>
+        </SectionLabel>
         <Text style={{ color: c.textSecondary, fontSize: 14, lineHeight: 21 }}>
           {isOwnProfile
             ? t('federation.ownProfileExplainer', {
@@ -231,9 +250,9 @@ export default function FederationSummaryCard({
 
       {recentActivity.length > 0 ? (
         <View style={{ gap: 10 }}>
-          <Text style={{ color: c.textSecondary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <SectionLabel c={c}>
             {t('federation.recentActivityHeadline', { defaultValue: 'Recent fediverse activity' })}
-          </Text>
+          </SectionLabel>
           <View style={{ gap: 10 }}>
             {recentActivity.map((item) => {
               const actorHandle = item.actor?.handle?.trim();
@@ -286,6 +305,220 @@ export default function FederationSummaryCard({
               );
             })}
           </View>
+        </View>
+      ) : null}
+
+      {creatorGrowth ? (
+        <View style={{ gap: 16 }}>
+          {followerGrowth ? (
+            <View style={{ gap: 10 }}>
+              <SectionLabel c={c}>Creator growth</SectionLabel>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                <Metric
+                  c={c}
+                  value={followerGrowth.net_change}
+                  label={`Net remote follower change (${creatorGrowth.window_days}d)`}
+                />
+                <Metric
+                  c={c}
+                  value={followerGrowth.gained_count}
+                  label={`New remote followers (${creatorGrowth.window_days}d)`}
+                />
+                <Metric
+                  c={c}
+                  value={profileCompletion?.completion_percent || 0}
+                  label="Profile completion"
+                />
+              </View>
+            </View>
+          ) : null}
+
+          {prompts.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              <SectionLabel c={c}>Momentum prompts</SectionLabel>
+              <View style={{ gap: 10 }}>
+                {prompts.map((prompt, index) => (
+                  <View
+                    key={`prompt-${index}`}
+                    style={{
+                      borderRadius: 16,
+                      padding: 14,
+                      backgroundColor: `${c.primary}10`,
+                      borderWidth: 1,
+                      borderColor: `${c.primary}22`,
+                      gap: 4,
+                    }}
+                  >
+                    <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '800', lineHeight: 19 }}>
+                      {prompt.title}
+                    </Text>
+                    {prompt.body ? (
+                      <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                        {prompt.body}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {(topInstances.length > 0 || networkEngagement.length > 0) ? (
+            <View style={{ gap: 10 }}>
+              <SectionLabel c={c}>Remote audience</SectionLabel>
+              {topInstances.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>Top remote instances</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {topInstances.map((item) => (
+                      <View
+                        key={item.domain}
+                        style={{
+                          borderRadius: 999,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          backgroundColor: c.surface,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                        }}
+                      >
+                        <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: '700' }}>
+                          {item.domain} · {item.followers_count}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+              {networkEngagement.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>Engagement by network</Text>
+                  <View style={{ gap: 8 }}>
+                    {networkEngagement.map((item) => (
+                      <View
+                        key={item.network}
+                        style={{
+                          borderRadius: 16,
+                          padding: 12,
+                          backgroundColor: c.surface,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '800' }}>{item.network}</Text>
+                        <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }}>
+                          {item.interactions_count} interactions · {item.likes_count} likes · {item.boosts_count} boosts · {item.replies_count} replies
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {(topPosts.length > 0 || amplifiedPosts.length > 0) ? (
+            <View style={{ gap: 10 }}>
+              <SectionLabel c={c}>What traveled</SectionLabel>
+              {topPosts.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>Top distributed posts</Text>
+                  <View style={{ gap: 8 }}>
+                    {topPosts.map((post) => (
+                      <View
+                        key={post.post_uuid}
+                        style={{
+                          borderRadius: 16,
+                          padding: 12,
+                          backgroundColor: c.surface,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '800' }}>{post.headline}</Text>
+                        <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }}>
+                          Reached {post.estimated_remote_reach} remote follower{post.estimated_remote_reach === 1 ? '' : 's'}
+                          {post.community_title ? ` · ${post.community_title}` : ''}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+              {amplifiedPosts.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>Posts amplified remotely</Text>
+                  <View style={{ gap: 8 }}>
+                    {amplifiedPosts.map((post) => (
+                      <View
+                        key={`amplified-${post.post_uuid}`}
+                        style={{
+                          borderRadius: 16,
+                          padding: 12,
+                          backgroundColor: c.surface,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '800' }}>{post.headline}</Text>
+                        <Text style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }}>
+                          {post.interactions_count} interactions · {post.likes_count} likes · {post.boosts_count} boosts · {post.replies_count} replies
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {(guidance.length > 0 || bestTimes.length > 0 || communitySuggestions.length > 0) ? (
+            <View style={{ gap: 10 }}>
+              <SectionLabel c={c}>How to grow from here</SectionLabel>
+              {guidance.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  {guidance.map((item, index) => (
+                    <View key={`guide-${index}`} style={{ gap: 2 }}>
+                      <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '800' }}>{item.title}</Text>
+                      <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>{item.body}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {bestTimes.length > 0 ? (
+                <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                  Best times to post: {bestTimes.map((item) => item.label).join(', ')}
+                </Text>
+              ) : null}
+              {communitySuggestions.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>Recommended public communities</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {communitySuggestions.map((community) => (
+                      <View
+                        key={community.name}
+                        style={{
+                          borderRadius: 999,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          backgroundColor: c.surface,
+                          borderWidth: 1,
+                          borderColor: c.border,
+                        }}
+                      >
+                        <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: '700' }}>
+                          {community.title || community.name} · {community.member_count} members
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>

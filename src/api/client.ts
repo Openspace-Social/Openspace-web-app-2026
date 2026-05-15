@@ -966,6 +966,73 @@ export type FederationSummary = {
       domain?: string | null;
     } | null;
   }>;
+  creator_growth?: {
+    window_days: number;
+    remote_follower_growth?: {
+      current_count: number;
+      gained_count: number;
+      lost_count: number;
+      net_change: number;
+    };
+    top_remote_instances?: Array<{
+      domain?: string | null;
+      followers_count: number;
+    }>;
+    top_distributed_posts?: Array<{
+      post_uuid?: string | null;
+      headline?: string | null;
+      created?: string | null;
+      community_name?: string | null;
+      community_title?: string | null;
+      sent_deliveries_count: number;
+      queued_deliveries_count: number;
+      failed_deliveries_count: number;
+      estimated_remote_reach: number;
+    }>;
+    engagement_by_network?: Array<{
+      network?: string | null;
+      interactions_count: number;
+      likes_count: number;
+      boosts_count: number;
+      replies_count: number;
+      follows_count: number;
+      mentions_count: number;
+    }>;
+    prompts?: Array<{
+      title?: string | null;
+      body?: string | null;
+    }>;
+    guidance?: Array<{
+      title?: string | null;
+      body?: string | null;
+    }>;
+    suggestions?: {
+      best_posting_times?: Array<{
+        hour: number;
+        label?: string | null;
+        sample_size: number;
+      }>;
+      recommended_public_communities?: Array<{
+        name?: string | null;
+        title?: string | null;
+        member_count: number;
+      }>;
+      amplified_posts?: Array<{
+        post_uuid?: string | null;
+        headline?: string | null;
+        interactions_count: number;
+        likes_count: number;
+        boosts_count: number;
+        replies_count: number;
+      }>;
+    };
+    profile_completion?: {
+      has_avatar: boolean;
+      has_cover: boolean;
+      has_bio: boolean;
+      completion_percent: number;
+    };
+  } | null;
 };
 
 export type FederationRemoteFollower = {
