@@ -108,6 +108,26 @@ function applyInsertion(text: string, start: number, cursor: number, rep: string
 }
 
 /**
+ * Resolve the caret index after a text change by diffing old → new from
+ * both ends. The caret sits at the end of the changed region.
+ *
+ * Used as the native caret source: on native `onChangeText` fires BEFORE
+ * `onSelectionChange`, so the selection ref is one keystroke stale inside
+ * the change handler. Diffing is robust for keystrokes, paste, delete and
+ * replace-selection, and — unlike the old `text.length` guess — works when
+ * the edit happens in the MIDDLE of the post (the case that broke trigger
+ * detection on complex posts that already contain #tags / links).
+ */
+function caretFromDiff(prev: string, next: string): number {
+  const max = Math.min(prev.length, next.length);
+  let start = 0;
+  while (start < max && prev[start] === next[start]) start++;
+  let end = 0;
+  while (end < max - start && prev[prev.length - 1 - end] === next[next.length - 1 - end]) end++;
+  return next.length - end;
+}
+
+/**
  * Mirror-div technique — positions a hidden div at the EXACT same viewport
  * location as the textarea and measures the span at `caretIndex`.
  * Returns viewport (x, y) of the caret, where y is the BOTTOM of the line.
@@ -184,7 +204,7 @@ function getCaretViewportPos(
 function getInputDOMEl(
   inputId: string,
   inputRef: React.RefObject<any>,
-  containerRef: React.RefObject<View>,
+  containerRef: React.RefObject<View | null>,
 ): HTMLTextAreaElement | HTMLInputElement | null {
   try {
     // Strategy 1: direct DOM lookup by id — immune to portal/Modal boundaries
@@ -428,6 +448,44 @@ export default function MentionHashtagInput({
     };
   }, [suggestions.length, suggestLoading, activeTrigger]);
 
+  // ─── follow-the-input loop (web) ─────────────────────────────────────────
+  // computePosition()'s mirror-div measurement is a one-shot snapshot. When
+  // layout shifts while the popup is open — a link-preview card loading
+  // below, media thumbnails appearing, the ScrollView scrolling — the input
+  // moves but the cached popupPos doesn't, so the popup detaches from the
+  // caret. Re-measure each frame against the live caret. setPopupPos bails
+  // when unchanged, so steady frames don't trigger re-renders.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+    if (!suggestions.length && !suggestLoading && !activeTrigger) return undefined;
+    let cancelled = false;
+    let rafId: number | null = null;
+    const tick = () => {
+      if (cancelled) return;
+      const domEl = getInputDOMEl(inputIdRef.current, textInputRef, containerRef);
+      if (domEl) {
+        const caretIdx = typeof domEl.selectionStart === 'number'
+          ? domEl.selectionStart
+          : cursorRef.current;
+        const caret = getCaretViewportPos(domEl, caretIdx);
+        if (caret) {
+          setPopupPos((prev) => {
+            if (prev && Math.abs(prev.x - caret.x) < 0.5 && Math.abs(prev.y - caret.y) < 0.5) {
+              return prev;
+            }
+            return { x: caret.x, y: caret.y, spaceAbove: caret.y };
+          });
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [suggestions.length, suggestLoading, activeTrigger]);
+
   // ─── text / cursor handlers ──────────────────────────────────────────────
 
   function handleChangeText(text: string) {
@@ -435,9 +493,23 @@ export default function MentionHashtagInput({
     if (!isControlled) setUncontrolledText(text);
     if (!token) return;
 
-    const pos = text.length >= currentText.length
-      ? text.length
-      : Math.min(cursorRef.current, text.length);
+    // Resolve the TRUE caret position. On web the <textarea>'s selectionStart
+    // is already updated by the time onChange fires; on native it isn't
+    // (onSelectionChange fires after onChangeText), so diff old → new text.
+    // The previous code guessed "caret = end of text whenever it grew", which
+    // made detectTrigger scan the end of the post — so editing mid-text in a
+    // complex post either missed the @/# entirely or latched onto a trailing
+    // #tag / link fragment.
+    let pos: number;
+    const domEl = Platform.OS === 'web'
+      ? getInputDOMEl(inputIdRef.current, textInputRef, containerRef)
+      : null;
+    if (domEl && typeof domEl.selectionStart === 'number') {
+      pos = domEl.selectionStart;
+    } else {
+      pos = caretFromDiff(currentText, text);
+    }
+    cursorRef.current = pos;
 
     const trig = detectTrigger(text, pos);
     if (!trig) { clearSuggestions(); return; }
@@ -465,7 +537,11 @@ export default function MentionHashtagInput({
   function selectSuggestion(s: Suggestion) {
     if (!activeTrigger) return;
     const rep = s.kind === 'user' ? `@${s.username}` : `#${s.name}`;
-    const next = applyInsertion(currentText, activeTrigger.startIndex, cursorRef.current, rep);
+    // Clamp against the current text — guards the edge case where the parent
+    // reset `value` out from under us and left the refs/trigger stale.
+    const start = Math.min(activeTrigger.startIndex, currentText.length);
+    const cursor = Math.min(Math.max(cursorRef.current, start), currentText.length);
+    const next = applyInsertion(currentText, start, cursor, rep);
     onChangeText(next);
     if (!isControlled) setUncontrolledText(next);
     clearSuggestions();

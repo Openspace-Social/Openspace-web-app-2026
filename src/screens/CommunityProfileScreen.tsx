@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CommunityMember, CommunityOwner, FeedPost, SearchCommunityResult } from '../api/client';
+import LinkifyText from '../components/LinkifyText';
 
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
@@ -54,6 +55,9 @@ type Props = {
   onLoadMoreMembers?: () => void;
   onClearCommunityPostsFilter?: () => void;
   onOpenProfile: (username: string) => void;
+  onOpenHashtag?: (tag: string) => void;
+  onOpenLink?: (url: string) => void;
+  onOpenCommunity?: (name: string) => void;
   renderPostCard: (post: FeedPost, variant: 'feed' | 'profile') => React.ReactNode;
   /** When true, strip the outer page card chrome so content runs edge-to-edge. */
   isEdgeToEdge?: boolean;
@@ -95,6 +99,9 @@ export default function CommunityProfileScreen({
   onLoadMoreMembers,
   onClearCommunityPostsFilter,
   onOpenProfile,
+  onOpenHashtag,
+  onOpenLink,
+  onOpenCommunity,
   renderPostCard,
   isEdgeToEdge = false,
 }: Props) {
@@ -343,9 +350,15 @@ export default function CommunityProfileScreen({
       </View>
 
       {description ? (
-        <Text style={[{ fontSize: 14, lineHeight: 20, marginBottom: 8 }, { color: c.textSecondary }]}>
-          {description}
-        </Text>
+        <LinkifyText
+          text={description}
+          style={[{ fontSize: 14, lineHeight: 20, marginBottom: 8 }, { color: c.textSecondary }]}
+          linkColor={c.primary}
+          onPressMention={onOpenProfile}
+          onPressHashtag={onOpenHashtag}
+          onPressLink={onOpenLink}
+          onPressCommunity={onOpenCommunity}
+        />
       ) : null}
 
       {/* Visibility */}

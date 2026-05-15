@@ -33,6 +33,7 @@ import type {
   SearchCommunityResult,
 } from '../api/client';
 import ThemedFlatList from '../components/ThemedFlatList';
+import LinkifyText from '../components/LinkifyText';
 
 type Props = {
   token: string;
@@ -72,6 +73,9 @@ type Props = {
   pinnedPostsLoading: boolean;
   moderationCategories: ModerationCategory[];
   onOpenProfile: (username: string) => void;
+  onOpenHashtag?: (tag: string) => void;
+  onOpenLink?: (url: string) => void;
+  onOpenCommunity?: (name: string) => void;
   onReport: (categoryId: number) => Promise<void> | void;
 
   /** Render a single post row. Container provides this so reactions /
@@ -112,6 +116,9 @@ export default function CommunityScreen({
   pinnedPostsLoading,
   moderationCategories,
   onOpenProfile,
+  onOpenHashtag,
+  onOpenLink,
+  onOpenCommunity,
   onReport,
   renderPostCard,
 }: Props) {
@@ -298,6 +305,10 @@ export default function CommunityScreen({
           label={t('home.communityAboutLabel', { defaultValue: 'ABOUT' })}
           text={community.description}
           styles={s}
+          onOpenProfile={onOpenProfile}
+          onOpenHashtag={onOpenHashtag}
+          onOpenLink={onOpenLink}
+          onOpenCommunity={onOpenCommunity}
         />
       ) : null}
       {community.rules ? (
@@ -307,6 +318,10 @@ export default function CommunityScreen({
           label={t('home.communityRulesLabel', { defaultValue: 'RULES' })}
           text={community.rules}
           styles={s}
+          onOpenProfile={onOpenProfile}
+          onOpenHashtag={onOpenHashtag}
+          onOpenLink={onOpenLink}
+          onOpenCommunity={onOpenCommunity}
         />
       ) : null}
 
@@ -528,12 +543,20 @@ function ExpandableCard({
   label,
   text,
   styles: parentStyles,
+  onOpenProfile,
+  onOpenHashtag,
+  onOpenLink,
+  onOpenCommunity,
 }: {
   c: any;
   t: (key: string, options?: any) => string;
   label: string;
   text: string;
   styles: any;
+  onOpenProfile: (username: string) => void;
+  onOpenHashtag?: (tag: string) => void;
+  onOpenLink?: (url: string) => void;
+  onOpenCommunity?: (name: string) => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   // We only need the toggle when the text would actually overflow the
@@ -560,12 +583,16 @@ function ExpandableCard({
       >
         {text}
       </Text>
-      <Text
+      <LinkifyText
+        text={text}
         style={[parentStyles.aboutText, { color: c.textPrimary }]}
+        linkColor={c.primary}
         numberOfLines={expanded ? undefined : COLLAPSED_LINES}
-      >
-        {text}
-      </Text>
+        onPressMention={onOpenProfile}
+        onPressHashtag={onOpenHashtag}
+        onPressLink={onOpenLink}
+        onPressCommunity={onOpenCommunity}
+      />
       {overflows ? (
         <TouchableOpacity
           onPress={() => setExpanded((prev) => !prev)}

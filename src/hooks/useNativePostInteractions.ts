@@ -304,7 +304,14 @@ export function useNativePostInteractions({
       onSetDraftReplyGif: comments.setDraftReplyGif,
       onClearDraftCommentMedia: comments.clearDraftCommentMedia,
       onClearDraftReplyMedia: comments.clearDraftReplyMedia,
-      onOpenReportPostModal: () => stub('Report post'),
+      onOpenReportPostModal: (post: FeedPost) => {
+        const uuid = (post as any)?.uuid as string | undefined;
+        if (!uuid) {
+          stub('Report post');
+          return;
+        }
+        navigation.navigate('ReportPost', { postUuid: uuid });
+      },
       onReportComment: () => stub('Report comment'),
       onEditPost: async (post, text) => {
         const uuid = (post as any)?.uuid as string | undefined;
@@ -426,8 +433,50 @@ export function useNativePostInteractions({
           );
         }
       },
-      onToggleClosePost: () => stub('Close post'),
-      onFilterCommunityPostsByUser: () => stub('Filter by user'),
+      // Lock / unlock comments on a community post (admin action — PostCard
+      // gates the menu item via canManageCommunity). Mirrors onTogglePinPost:
+      // hit the close/open endpoint, patch `is_closed` in the feed.
+      onToggleClosePost: async (post) => {
+        const uuid = (post as any)?.uuid as string | undefined;
+        const id = (post as any)?.id as number | undefined;
+        if (!token || !uuid) return;
+        const wasClosed = !!(post as any)?.is_closed;
+        try {
+          const updated = wasClosed
+            ? await api.openPost(token, uuid)
+            : await api.closePost(token, uuid);
+          const nextClosed =
+            typeof (updated as any)?.is_closed === 'boolean'
+              ? (updated as any).is_closed
+              : !wasClosed;
+          if (typeof id === 'number') {
+            patchPost?.(id, (current) => ({
+              ...current,
+              is_closed: nextClosed,
+            } as FeedPost));
+          }
+          showToast(
+            nextClosed
+              ? t('home.postLockedSuccess', { defaultValue: 'Post locked. Comments are disabled.' })
+              : t('home.postUnlockedSuccess', { defaultValue: 'Post unlocked. Comments are enabled.' }),
+            { type: 'success' },
+          );
+        } catch (e: any) {
+          showToast(
+            e?.message || t('home.postCloseFailed', { defaultValue: 'Failed to update post lock.' }),
+            { type: 'error' },
+          );
+          throw e;
+        }
+      },
+      // "View all posts in c/<name> by @<user>" — open the dedicated screen
+      // listing that author's posts within the community.
+      onFilterCommunityPostsByUser: (username, communityName) => {
+        const name = (communityName || '').trim();
+        const poster = (username || '').trim();
+        if (!name || !poster) return;
+        navigation.navigate('CommunityUserPosts', { communityName: name, username: poster });
+      },
       canManageCommunity,
 
       // ── Helpers ───────────────────────────────────────────────────

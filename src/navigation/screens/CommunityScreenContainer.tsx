@@ -417,6 +417,9 @@ export default function CommunityScreenContainer() {
           pinnedPostsLoading={pinnedPostsLoading}
           moderationCategories={moderationCategories}
           onOpenProfile={onOpenProfile}
+          onOpenHashtag={interactions.onNavigateHashtag}
+          onOpenLink={interactions.onOpenLink}
+          onOpenCommunity={interactions.onNavigateCommunity}
           onReport={onReport}
           renderPostCard={renderPostCard}
         />

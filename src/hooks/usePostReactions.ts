@@ -19,9 +19,14 @@
  *     render with until the next refetch).
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, type FeedPost } from '../api/client';
 import type { ReactionGroup } from '../components/PostCard';
+import {
+  emitPostReactionUpdate,
+  subscribePostReactionUpdate,
+  type PostReactionPatch,
+} from '../utils/postUpdates';
 
 type EmojiSummary = { id?: number; keyword?: string; image?: string };
 
@@ -95,23 +100,29 @@ export function usePostReactions(
         }
       }
 
-      // Optimistic update.
+      // Apply a reaction patch everywhere at once: `emitPostReactionUpdate`
+      // notifies every mounted screen holding this post — including THIS
+      // consumer, which subscribes below. Patches carry absolute values, so
+      // the originating screen re-applying its own broadcast is a harmless
+      // no-op. This is what keeps the feed / hashtag / profile / community
+      // lists and the post-detail screen in sync without a shared store.
+      const broadcast = (patch: PostReactionPatch) => emitPostReactionUpdate(postId, patch);
+
+      // Optimistic update — computed as absolute state from the reacted post.
       if (isAlreadyMine) {
-        patchPost(postId, (p: any) => ({
-          ...p,
+        broadcast({
           reaction: null,
-          reactions_emoji_counts: (p.reactions_emoji_counts || [])
+          reactions_emoji_counts: (current.reactions_emoji_counts || [])
             .map((e: any) =>
               e.emoji?.id === emojiId ? { ...e, count: Math.max(0, (e.count || 1) - 1) } : e,
             )
             .filter((e: any) => (e.count || 0) > 0),
-        }));
+        });
       } else {
-        patchPost(postId, (p: any) => ({
-          ...p,
+        broadcast({
           reaction: { emoji: emojiMeta },
           reactions_emoji_counts: (() => {
-            const counts = (p.reactions_emoji_counts || []).map((e: any) => {
+            const counts = (current.reactions_emoji_counts || []).map((e: any) => {
               if (e.emoji?.id === emojiId) return { ...e, count: (e.count || 0) + 1 };
               if (prevId && e.emoji?.id === prevId) return { ...e, count: Math.max(0, (e.count || 1) - 1) };
               return e;
@@ -123,7 +134,7 @@ export function usePostReactions(
             }
             return counts.filter((e: any) => (e.count || 0) > 0);
           })(),
-        }));
+        });
       }
 
       setReactionActionLoading(true);
@@ -135,7 +146,7 @@ export function usePostReactions(
           // it has the proper id, created timestamp, etc. for any caller
           // that compares on those). Counts stay optimistic.
           const reaction = await api.reactToPost(token, uuid, emojiId);
-          patchPost(postId, (p: any) => ({ ...p, reaction }));
+          broadcast({ reaction });
         }
         try {
           await onAfterReact?.(post, !isAlreadyMine);
@@ -149,7 +160,7 @@ export function usePostReactions(
         // the optimistic state — it's the best we have.
         try {
           const counts = await api.getPostReactionCounts(token, uuid);
-          patchPost(postId, (p: any) => ({ ...p, reactions_emoji_counts: counts }));
+          broadcast({ reactions_emoji_counts: counts });
         } catch {
           // give up
         }
@@ -158,8 +169,17 @@ export function usePostReactions(
         setReactionActionLoading(false);
       }
     },
-    [token, reactionActionLoading, patchPost, reactionGroups, onAfterReact, onError],
+    [token, reactionActionLoading, reactionGroups, onAfterReact, onError],
   );
+
+  // Apply inbound reaction updates — our own broadcasts and those from other
+  // screens — to this consumer's post copy. Every reaction-capable screen
+  // routes through this hook, so subscribing here syncs them all.
+  useEffect(() => {
+    return subscribePostReactionUpdate((postId, patch) => {
+      patchPost(postId, (p: any) => ({ ...p, ...patch }));
+    });
+  }, [patchPost]);
 
   return { reactionActionLoading, reactToPost };
 }

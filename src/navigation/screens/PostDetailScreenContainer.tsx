@@ -316,7 +316,10 @@ export default function PostDetailScreenContainer() {
         const root = navigation.getParent()?.getParent() ?? navigation.getParent();
         (root as any)?.navigate('PostComposer', { sharedPost: p });
       }}
-      onReportPost={() => stub('Report post')}
+      onReportPost={(p) => {
+        const uuid = (p as any)?.uuid as string | undefined;
+        if (uuid) navigation.navigate('ReportPost', { postUuid: uuid });
+      }}
       onReportComment={() => stub('Report comment')}
       onOpenLink={handleOpenLink}
       onPickDraftCommentImage={comments.pickDraftCommentImage}

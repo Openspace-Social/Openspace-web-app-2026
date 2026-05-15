@@ -62,6 +62,8 @@ import UserFollowingsScreenContainer from './screens/UserFollowingsScreenContain
 import RemoteProfileScreenContainer from './screens/RemoteProfileScreenContainer';
 import RemoteThreadScreenContainer from './screens/RemoteThreadScreenContainer';
 import RemoteCommunityScreenContainer from './screens/RemoteCommunityScreenContainer';
+import ReportPostScreenContainer from './screens/ReportPostScreenContainer';
+import CommunityUserPostsScreenContainer from './screens/CommunityUserPostsScreenContainer';
 
 // ── Param lists ──────────────────────────────────────────────────────────────
 // Describe the shape of every navigation.navigate(screen, params) call. Grow
@@ -110,6 +112,20 @@ export type PostScreenParams = {
   initialView?: 'media' | 'comments';
 };
 
+// Dedicated "Report post" page params. Reached from the PostCard ellipsis
+// menu + the post-detail report action. Mirrored across all three stacks
+// (like Post) so the report screen pushes locally from any tab.
+export type ReportPostScreenParams = {
+  postUuid: string;
+};
+
+// Dedicated "View all posts in c/<name> by @<user>" page params — a
+// community-admin action from the PostCard ellipsis menu.
+export type CommunityUserPostsScreenParams = {
+  communityName: string;
+  username: string;
+};
+
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' | 'mastodon' } | undefined;
   Post: PostScreenParams;
@@ -128,6 +144,8 @@ export type HomeStackParamList = {
   RemoteProfile: { remoteActorId: number };
   RemoteCommunity: { remoteCommunityId: number };
   RemoteThread: { inboundObjectId: number };
+  ReportPost: ReportPostScreenParams;
+  CommunityUserPosts: CommunityUserPostsScreenParams;
 };
 
 export type CommunitiesStackParamList = {
@@ -136,6 +154,8 @@ export type CommunitiesStackParamList = {
   CommunityMembers: { name: string };
   Post: PostScreenParams;
   LongPost: PostScreenParams;
+  ReportPost: ReportPostScreenParams;
+  CommunityUserPosts: CommunityUserPostsScreenParams;
 };
 
 export type ProfileStackParamList = {
@@ -157,6 +177,8 @@ export type ProfileStackParamList = {
   UserFollowings: { username: string };
   Post: PostScreenParams;
   LongPost: PostScreenParams;
+  ReportPost: ReportPostScreenParams;
+  CommunityUserPosts: CommunityUserPostsScreenParams;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -280,6 +302,26 @@ function HomeTabStack() {
         component={RemoteThreadScreenContainer}
         options={{ title: 'Fediverse thread' }}
       />
+      <HomeStack.Screen
+        name="ReportPost"
+        component={ReportPostScreenContainer}
+        options={{ title: 'Report post' }}
+      />
+      <HomeStack.Screen
+        name="CommunityUserPosts"
+        component={CommunityUserPostsScreenContainer}
+        options={({ route }) => {
+          const username = route.params?.username;
+          const communityName = route.params?.communityName;
+          return {
+            title: username
+              ? communityName
+                ? `@${username} · c/${communityName}`
+                : `@${username}`
+              : 'Posts',
+          };
+        }}
+      />
     </HomeStack.Navigator>
   );
 }
@@ -351,6 +393,26 @@ function CommunitiesTabStack() {
         name="LongPost"
         component={LongPostDetailScreenContainer}
         options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
+      <CommunitiesStack.Screen
+        name="ReportPost"
+        component={ReportPostScreenContainer}
+        options={{ title: 'Report post' }}
+      />
+      <CommunitiesStack.Screen
+        name="CommunityUserPosts"
+        component={CommunityUserPostsScreenContainer}
+        options={({ route }) => {
+          const username = route.params?.username;
+          const communityName = route.params?.communityName;
+          return {
+            title: username
+              ? communityName
+                ? `@${username} · c/${communityName}`
+                : `@${username}`
+              : 'Posts',
+          };
+        }}
       />
     </CommunitiesStack.Navigator>
   );
@@ -455,6 +517,26 @@ function ProfileTabStack() {
         name="LongPost"
         component={LongPostDetailScreenContainer}
         options={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}
+      />
+      <ProfileStack.Screen
+        name="ReportPost"
+        component={ReportPostScreenContainer}
+        options={{ title: 'Report post' }}
+      />
+      <ProfileStack.Screen
+        name="CommunityUserPosts"
+        component={CommunityUserPostsScreenContainer}
+        options={({ route }) => {
+          const username = route.params?.username;
+          const communityName = route.params?.communityName;
+          return {
+            title: username
+              ? communityName
+                ? `@${username} · c/${communityName}`
+                : `@${username}`
+              : 'Posts',
+          };
+        }}
       />
     </ProfileStack.Navigator>
   );

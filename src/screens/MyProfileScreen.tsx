@@ -16,6 +16,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
+import LinkifyText from '../components/LinkifyText';
 import {
   CircleResult,
   FeedPost,
@@ -65,6 +66,8 @@ type Props = {
   myFollowingsHasMore: boolean;
   onLoadMoreFollowings: () => void;
   onOpenProfile: (username: string) => void;
+  onOpenHashtag?: (tag: string) => void;
+  onOpenLink?: (url: string) => void;
   onOpenFollowersScreen?: () => void;
   onOpenFollowingScreen?: () => void;
   onUpdateProfile: (payload: UpdateAuthenticatedUserPayload) => Promise<void>;
@@ -133,6 +136,8 @@ export default function MyProfileScreen({
   myFollowingsHasMore,
   onLoadMoreFollowings,
   onOpenProfile,
+  onOpenHashtag,
+  onOpenLink,
   onOpenFollowersScreen,
   onOpenFollowingScreen,
   onUpdateProfile,
@@ -1491,14 +1496,29 @@ export default function MyProfileScreen({
                 {user?.profile?.bio ? (
                   <View style={styles.profileDetailItem}>
                     <MaterialCommunityIcons name="text-box-outline" size={18} color={c.textMuted} />
-                    <Text style={[styles.profileDetailText, { color: c.textSecondary }]}>{user.profile.bio}</Text>
+                    <LinkifyText
+                      text={user.profile.bio}
+                      style={[styles.profileDetailText, { color: c.textSecondary }]}
+                      linkColor={c.primary}
+                      onPressMention={onOpenProfile}
+                      onPressHashtag={onOpenHashtag}
+                      onPressLink={onOpenLink}
+                      onPressCommunity={onOpenCommunity}
+                    />
                   </View>
                 ) : null}
                 {user?.profile?.url ? (
-                  <View style={styles.profileDetailItem}>
+                  <TouchableOpacity
+                    style={styles.profileDetailItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const profileUrl = user?.profile?.url;
+                      if (profileUrl) onOpenLink?.(profileUrl);
+                    }}
+                  >
                     <MaterialCommunityIcons name="link-variant" size={18} color={c.textMuted} />
-                    <Text style={[styles.profileDetailText, { color: c.textSecondary }]}>{user.profile.url}</Text>
-                  </View>
+                    <Text style={[styles.profileDetailText, { color: c.primary }]}>{user.profile.url}</Text>
+                  </TouchableOpacity>
                 ) : null}
                 <View style={styles.profileDetailItem}>
                   <MaterialCommunityIcons name="calendar-month-outline" size={18} color={c.textMuted} />

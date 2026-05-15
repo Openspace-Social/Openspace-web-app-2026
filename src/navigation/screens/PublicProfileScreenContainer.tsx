@@ -52,6 +52,7 @@ import { ThemedScrollView } from '../../components/ThemedFlatList';
 import EditProfileModal from '../../components/EditProfileModal';
 import FederationSummaryCard from '../../components/FederationSummaryCard';
 import UserBadge from '../../components/UserBadge';
+import LinkifyText from '../../components/LinkifyText';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
 import { api, type FeedPost, type FederationSummary, type PostComment } from '../../api/client';
@@ -864,13 +865,36 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
           </View>
         </View>
         {user?.profile?.bio ? (
-          <Text style={[styles.bio, { color: c.textSecondary }]}>{user.profile.bio}</Text>
+          <LinkifyText
+            text={user.profile.bio}
+            style={[styles.bio, { color: c.textSecondary }]}
+            linkColor={c.primary}
+            onPressMention={interactions.onNavigateProfile}
+            onPressHashtag={interactions.onNavigateHashtag}
+            onPressLink={interactions.onOpenLink}
+            onPressCommunity={interactions.onNavigateCommunity}
+          />
         ) : null}
         {user?.profile?.location ? (
           <View style={styles.locationRow}>
             <MaterialCommunityIcons name="map-marker-outline" size={14} color={c.textMuted} />
             <Text style={[styles.locationText, { color: c.textMuted }]}>{user.profile.location}</Text>
           </View>
+        ) : null}
+        {user?.profile?.url ? (
+          <TouchableOpacity
+            style={styles.locationRow}
+            activeOpacity={0.7}
+            onPress={() => {
+              const profileUrl = user?.profile?.url;
+              if (profileUrl) interactions.onOpenLink(profileUrl);
+            }}
+          >
+            <MaterialCommunityIcons name="link-variant" size={14} color={c.textMuted} />
+            <Text numberOfLines={1} style={[styles.locationText, { color: c.primary }]}>
+              {user.profile.url}
+            </Text>
+          </TouchableOpacity>
         ) : null}
         {user?.federation_summary ? (
           <View style={styles.federationCardWrap}>

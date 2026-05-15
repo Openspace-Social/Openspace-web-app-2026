@@ -60,6 +60,12 @@ function jobTitle(job: FederatedIdentityJob) {
   }
 }
 
+function hasCompletedJob(identity: FederatedIdentityLink, jobType: FederatedIdentityJob['job_type']) {
+  return Array.isArray(identity.recent_jobs) && identity.recent_jobs.some(
+    (job) => job.job_type === jobType && job.status === 'completed',
+  );
+}
+
 export default function LinkedAccountsScreenContainer() {
   const { token } = useAuth();
   const { theme } = useTheme();
@@ -718,6 +724,10 @@ export default function LinkedAccountsScreenContainer() {
               const autoFollowBusy = jobBusyKey === `${identity.id}:auto-follow-old-account`;
               const migrationNoticeBusy = jobBusyKey === `${identity.id}:migration-notice`;
               const refreshVerificationBusy = jobBusyKey === `${identity.id}:refresh-verification`;
+              const hasImportedFollows = hasCompletedJob(identity, 'import_follows');
+              const hasImportedFollowers = hasCompletedJob(identity, 'import_followers');
+              const hasFollowedOldAccount = hasCompletedJob(identity, 'auto_follow_old_account');
+              const hasPreparedMigrationNotice = hasCompletedJob(identity, 'migration_notice');
 
               return (
                 <View style={[styles.nestedDrawerPanel, { backgroundColor: c.surface, borderLeftColor: c.border }]}>
@@ -909,6 +919,66 @@ export default function LinkedAccountsScreenContainer() {
                     ) : null}
                   </View>
 
+                  <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>Recent migration activity</Text>
+                    <Text style={[styles.stepBody, { color: c.textSecondary }]}>
+                      Check here first after running an import or migration step to confirm what finished and when.
+                    </Text>
+                    {identity.recent_jobs && identity.recent_jobs.length > 0 ? (
+                      <View style={styles.jobList}>
+                        {identity.recent_jobs.map((job) => (
+                          <View key={`job-${job.id}`} style={[styles.jobRow, { borderColor: c.border }]}>
+                            <View style={styles.jobMeta}>
+                              <Text style={[styles.jobTitle, { color: c.textPrimary }]}>{jobTitle(job)}</Text>
+                              <Text style={[styles.jobSubtitle, { color: c.textMuted }]}>
+                                {formatDate(job.updated_at) || 'Recently updated'}
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.badge,
+                                {
+                                  backgroundColor:
+                                    job.status === 'completed'
+                                      ? '#DCFCE7'
+                                      : job.status === 'failed'
+                                        ? '#FEE2E2'
+                                        : `${c.primary}16`,
+                                  borderColor:
+                                    job.status === 'completed'
+                                      ? '#86EFAC'
+                                      : job.status === 'failed'
+                                        ? '#FCA5A5'
+                                        : `${c.primary}33`,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.badgeText,
+                                  {
+                                    color:
+                                      job.status === 'completed'
+                                        ? '#166534'
+                                        : job.status === 'failed'
+                                          ? '#991B1B'
+                                          : c.primary,
+                                  },
+                                ]}
+                              >
+                                {job.status}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[styles.stepBody, { color: c.textMuted }]}>
+                        No migration jobs have run for this identity yet.
+                      </Text>
+                    )}
+                  </View>
+
                       <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
                     <Text style={[styles.stepTitle, { color: c.textPrimary }]}>2. Import your graph</Text>
                     <Text style={[styles.stepBody, { color: c.textSecondary }]}>
@@ -928,7 +998,7 @@ export default function LinkedAccountsScreenContainer() {
                         }
                         style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
                       >
-                        {importFollowsBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Import follows</Text>}
+                        {importFollowsBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>{hasImportedFollows ? 'Re-import follows' : 'Import follows'}</Text>}
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.85}
@@ -943,7 +1013,7 @@ export default function LinkedAccountsScreenContainer() {
                         }
                         style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
                       >
-                        {importFollowersBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Import followers</Text>}
+                        {importFollowersBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>{hasImportedFollowers ? 'Re-import followers' : 'Import followers'}</Text>}
                       </TouchableOpacity>
                       <TouchableOpacity
                         activeOpacity={0.85}
@@ -958,7 +1028,7 @@ export default function LinkedAccountsScreenContainer() {
                         }
                         style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
                       >
-                        {autoFollowBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Follow old account</Text>}
+                        {autoFollowBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>{hasFollowedOldAccount ? 'Follow old account again' : 'Follow old account'}</Text>}
                       </TouchableOpacity>
                     </View>
                       </View>
@@ -1038,9 +1108,12 @@ export default function LinkedAccountsScreenContainer() {
                       </View>
 
                       <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>4. Customize your federated note</Text>
+                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>4. Customize your federated identity note</Text>
                     <Text style={[styles.stepBody, { color: c.textSecondary }]}>
                       Give visitors a clear explanation of how this OpenSpace account relates to your Mastodon identity.
+                    </Text>
+                    <Text style={[styles.helperText, { color: c.textMuted }]}>
+                      This note is attached to your verified federated identity metadata so OpenSpace can explain the link between your Mastodon account and this profile.
                     </Text>
                     <TextInput
                       multiline
@@ -1089,66 +1162,9 @@ export default function LinkedAccountsScreenContainer() {
                           { borderColor: c.border, backgroundColor: c.surface, opacity: actionsUnlocked ? 1 : 0.55 },
                         ]}
                       >
-                        {migrationNoticeBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Prepare migration notice</Text>}
+                        {migrationNoticeBusy ? <ActivityIndicator size="small" color={c.primary} /> : <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>{hasPreparedMigrationNotice ? 'Prepare migration notice again' : 'Prepare migration notice'}</Text>}
                       </TouchableOpacity>
                     </View>
-                      </View>
-
-                      <View style={[styles.stepCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-                    <Text style={[styles.stepTitle, { color: c.textPrimary }]}>Recent migration activity</Text>
-                    {identity.recent_jobs && identity.recent_jobs.length > 0 ? (
-                      <View style={styles.jobList}>
-                        {identity.recent_jobs.map((job) => (
-                          <View key={`job-${job.id}`} style={[styles.jobRow, { borderColor: c.border }]}>
-                            <View style={styles.jobMeta}>
-                              <Text style={[styles.jobTitle, { color: c.textPrimary }]}>{jobTitle(job)}</Text>
-                              <Text style={[styles.jobSubtitle, { color: c.textMuted }]}>
-                                {formatDate(job.updated_at) || 'Recently updated'}
-                              </Text>
-                            </View>
-                            <View
-                              style={[
-                                styles.badge,
-                                {
-                                  backgroundColor:
-                                    job.status === 'completed'
-                                      ? '#DCFCE7'
-                                      : job.status === 'failed'
-                                        ? '#FEE2E2'
-                                        : `${c.primary}16`,
-                                  borderColor:
-                                    job.status === 'completed'
-                                      ? '#86EFAC'
-                                      : job.status === 'failed'
-                                        ? '#FCA5A5'
-                                        : `${c.primary}33`,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.badgeText,
-                                  {
-                                    color:
-                                      job.status === 'completed'
-                                        ? '#166534'
-                                        : job.status === 'failed'
-                                          ? '#991B1B'
-                                          : c.primary,
-                                  },
-                                ]}
-                              >
-                                {job.status}
-                              </Text>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={[styles.stepBody, { color: c.textMuted }]}>
-                        No migration jobs have run for this identity yet.
-                      </Text>
-                    )}
                       </View>
                     </View>
                   </ScrollView>
@@ -1531,6 +1547,10 @@ const styles = StyleSheet.create({
   stepBody: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  helperText: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   verificationList: {
     gap: 6,

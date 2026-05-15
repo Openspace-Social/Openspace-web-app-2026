@@ -9353,6 +9353,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 myFollowingsHasMore={myFollowingsHasMore}
                 onLoadMoreFollowings={loadMoreMyFollowings}
                 onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onOpenHashtag={handleNavigateHashtag}
+                onOpenLink={openLink}
                 onOpenFollowersScreen={() => onNavigate({ screen: 'followers' })}
                 onOpenFollowingScreen={() => onNavigate({ screen: 'following' })}
                 onUpdateProfile={updateMyProfile}
@@ -9395,6 +9397,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 myFollowingsHasMore={profileFollowingsHasMore}
                 onLoadMoreFollowings={loadMoreProfileFollowings}
                 onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onOpenHashtag={handleNavigateHashtag}
+                onOpenLink={openLink}
                 onUpdateProfile={updateMyProfile}
                 onUpdateProfileMedia={updateMyProfileMedia}
                 onNotice={setNotice}
@@ -9497,6 +9501,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   setCommunityManageDrawerOpen(true);
                 }}
                 onOpenProfile={(username) => onNavigate({ screen: 'profile', username })}
+                onOpenHashtag={handleNavigateHashtag}
+                onOpenLink={openLink}
+                onOpenCommunity={handleNavigateCommunity}
                 onReportCommunity={communityInfo?.name ? () => openCommunityReportModal(communityInfo.name!, communityInfo.title) : undefined}
                 renderPostCard={(post, variant) =>
                   renderPostCard(post, variant, myPinnedPosts, {

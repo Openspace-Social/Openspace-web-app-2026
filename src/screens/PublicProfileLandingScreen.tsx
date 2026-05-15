@@ -15,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { api, FeedPost, UserProfile } from '../api/client';
 import FederationSummaryCard from '../components/FederationSummaryCard';
+import LinkifyText from '../components/LinkifyText';
 import { useTheme } from '../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import {
@@ -181,7 +182,12 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
                       })}
                     </Text>
                     {bio ? (
-                      <Text style={[styles.bioText, { color: c.textSecondary }]}>{bio}</Text>
+                      <LinkifyText
+                        text={bio}
+                        style={[styles.bioText, { color: c.textSecondary }]}
+                        linkColor={c.primary}
+                        onPressLink={(linkUrl) => Linking.openURL(linkUrl)}
+                      />
                     ) : null}
                     {url ? (
                       <TouchableOpacity onPress={() => Linking.openURL(url)} activeOpacity={0.8}>
