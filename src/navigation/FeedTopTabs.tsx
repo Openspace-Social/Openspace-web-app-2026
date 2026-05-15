@@ -120,6 +120,10 @@ function FeedTopTabBar({ state, navigation }: MaterialTopTabBarProps) {
     <ScrollView
       ref={scrollViewRef}
       horizontal
+      // Horizontal scrollers must opt out of iOS's status-bar tap-to-top —
+      // otherwise this bar competes with the feed list for the gesture and
+      // iOS, seeing more than one claimant, scrolls neither.
+      scrollsToTop={false}
       showsHorizontalScrollIndicator={false}
       style={[styles.tabBar, { backgroundColor: c.surface, borderBottomColor: c.border }]}
       contentContainerStyle={styles.tabBarContent}

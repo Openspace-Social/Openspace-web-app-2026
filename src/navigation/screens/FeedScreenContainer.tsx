@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
+import { useIsFocused, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -44,17 +44,19 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
   const route = useRoute<RouteProp<HomeStackParamList, 'Feed'>>();
   const feedType: FeedType = feedTypeProp || (route.params?.feed as FeedType) || 'home';
 
-  // Scroll-to-top wiring. `useScrollToTop` from React Navigation:
-  //   • Listens for `tabPress` on every parent tab/drawer navigator
-  //     (top-tabs above us → bottom-tabs at the root) and calls
-  //     `scrollToOffset({offset:0, animated:true})` on the FlatList ref
-  //     when the screen is currently focused.
-  //   • Sets `scrollsToTop` on the underlying scrollable so iOS's native
-  //     status-bar tap also scrolls this feed to the top — no extra work
-  //     needed there. (Android has no equivalent OS gesture; the
-  //     bottom-tab home button is the cross-platform path.)
+  // Scroll-to-top wiring.
+  //   • `useScrollToTop` (React Navigation) listens for `tabPress` on every
+  //     parent tab/drawer navigator and scrolls this FlatList to the top
+  //     when the screen is focused. It does NOT touch `scrollsToTop`.
+  //   • iOS's status-bar tap is a separate, native mechanism: iOS scrolls
+  //     the one scroll view with `scrollsToTop === true` — but does nothing
+  //     when several are enabled at once. FeedTopTabs keeps every visited
+  //     feed tab mounted, so without gating, all their FlatLists (plus the
+  //     horizontal tab bar) claim the gesture and it silently no-ops. Tie
+  //     `scrollsToTop` to focus so exactly one list owns it at a time.
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
+  const isFocused = useIsFocused();
 
   const {
     posts, loading, loadingMore, refreshing, hasMore, error, refresh, loadMore,
@@ -327,6 +329,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
       />
       <ThemedFlatList
         ref={flatListRef}
+        scrollsToTop={isFocused}
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.listContent}
         data={posts}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, RefreshControl, View } from 'react-native';
-import { useScrollToTop } from '@react-navigation/native';
+import { useIsFocused, useScrollToTop } from '@react-navigation/native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -15,12 +15,14 @@ export default function MastodonFeedScreenContainer() {
   const { token } = useAuth();
   const c = theme.colors;
 
-  // Wire scroll-to-top so tapping the bottom Home tab + iOS's status-bar
-  // tap both jump to the top of this feed, matching the FeedScreen
-  // behaviour. useScrollToTop also flips `scrollsToTop` on the
-  // underlying ScrollView so the system handles the status-bar gesture.
+  // Scroll-to-top wiring. `useScrollToTop` handles the bottom-tab `tabPress`
+  // gesture. iOS's status-bar tap is separate and native: it only fires when
+  // exactly one scroll view has `scrollsToTop` enabled, so — like the other
+  // feed tabs, which all stay mounted — gate it on focus so only the visible
+  // feed claims the gesture.
   const scrollViewRef = useRef<ScrollView>(null);
   useScrollToTop(scrollViewRef);
+  const isFocused = useIsFocused();
 
   const [linkedAccount, setLinkedAccount] = useState<FederatedLinkedAccount | null>(null);
   const [items, setItems] = useState<FederatedTimelineStatus[]>([]);
@@ -109,6 +111,7 @@ export default function MastodonFeedScreenContainer() {
   return (
     <ScrollView
       ref={scrollViewRef}
+      scrollsToTop={isFocused}
       style={{ flex: 1, backgroundColor: c.background }}
       // Edge-to-edge cards (matching FeedScreenContainer) — the screen
       // component pads non-card chrome (banners, empty states) itself.
