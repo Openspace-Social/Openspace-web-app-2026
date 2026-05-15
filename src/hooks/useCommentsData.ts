@@ -18,12 +18,15 @@
  *   - Reactions on comments.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, type FeedPost, type PostComment } from '../api/client';
 import { useGifPicker } from '../components/GifPickerProvider';
+import { extractCommenterFromUser, hydrateCommenter } from '../utils/hydrateCommenter';
+
+type CurrentCommenter = NonNullable<PostComment['commenter']>;
 
 type Bool = Record<number, boolean>;
 type CommentsMap = Record<number, PostComment[]>;
@@ -102,6 +105,26 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
   const [draftCommentMediaByPostId, setDraftCommentMediaByPostId] = useState<DraftMediaMap>({});
   const [draftReplyMediaByCommentId, setDraftReplyMediaByCommentId] = useState<DraftMediaMap>({});
 
+  // The POST /comments endpoint can return a comment without its embedded
+  // `commenter` (the GET endpoint always expands it). Cache the current user
+  // so we can fill in the missing author on optimistic inserts — otherwise
+  // the freshly-posted comment renders as "@unknown" until reload.
+  const currentCommenterRef = useRef<CurrentCommenter | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await api.getAuthenticatedUser(token);
+        if (cancelled) return;
+        currentCommenterRef.current = extractCommenterFromUser(me);
+      } catch {
+        // non-fatal — comments still post, optimistic author info just stays empty
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
   const resolveUuid = useCallback(
     (postId: number): string | undefined => {
       const match = posts.find((p) => (p as any).id === postId);
@@ -155,9 +178,10 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
             : null,
           gif_url: media?.kind === 'gif' ? media.uri : undefined,
         });
+        const hydrated = hydrateCommenter(newComment, currentCommenterRef.current);
         setLocalComments((prev) => ({
           ...prev,
-          [postId]: [...(prev[postId] || []), newComment],
+          [postId]: [...(prev[postId] || []), hydrated],
         }));
         // Clear draft media now that it's attached to a real comment.
         setDraftCommentMediaByPostId((prev) => ({ ...prev, [postId]: null }));
@@ -212,9 +236,10 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
             : null,
           gif_url: media?.kind === 'gif' ? media.uri : undefined,
         });
+        const hydrated = hydrateCommenter(newReply, currentCommenterRef.current);
         setCommentRepliesById((prev) => ({
           ...prev,
-          [commentId]: [...(prev[commentId] || []), newReply],
+          [commentId]: [...(prev[commentId] || []), hydrated],
         }));
         // Auto-expand so the new reply is visible.
         setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: true }));

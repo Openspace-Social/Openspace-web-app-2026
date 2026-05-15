@@ -89,6 +89,7 @@ import {
   fetchShortPostLinkPreviewCached,
 } from '../utils/shortPostEmbeds';
 import { parseExternalVideoUrl } from '../utils/externalVideoEmbeds';
+import { extractCommenterFromUser, hydrateCommenter } from '../utils/hydrateCommenter';
 import { useGifPicker } from '../components/GifPickerProvider';
 
 interface HomeScreenProps {
@@ -561,7 +562,7 @@ type PostReaction = {
   };
 };
 
-type ProfileTabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
+type ProfileTabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more' | 'federation';
 type ComposerMediaType = 'image' | 'video';
 type ComposerImageSelection = {
   file: Blob & { name?: string; type?: string };
@@ -2994,9 +2995,13 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         image: media?.kind === 'image' ? (media.file || null) : null,
         gif_url: media?.kind === 'gif' ? media.uri : undefined,
       });
+      // The POST endpoint can return the comment without its embedded
+      // `commenter` — fill it in from the current user so the optimistic
+      // insert doesn't render as "@unknown" until reload.
+      const hydrated = hydrateCommenter(createdComment, extractCommenterFromUser(user));
       setLocalComments((prev) => ({
         ...prev,
-        [postId]: [createdComment, ...(prev[postId] || [])],
+        [postId]: [hydrated, ...(prev[postId] || [])],
       }));
       clearDraftCommentMedia(postId);
       applyPostPatch(postId, (post) => ({
@@ -3063,9 +3068,10 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         image: media?.kind === 'image' ? (media.file || null) : null,
         gif_url: media?.kind === 'gif' ? media.uri : undefined,
       });
+      const hydratedReply = hydrateCommenter(createdReply, extractCommenterFromUser(user));
       setCommentRepliesById((prev) => ({
         ...prev,
-        [commentId]: [createdReply, ...(prev[commentId] || [])],
+        [commentId]: [hydratedReply, ...(prev[commentId] || [])],
       }));
       setCommentRepliesExpanded((prev) => ({ ...prev, [commentId]: true }));
       clearDraftReplyMedia(commentId);
@@ -6092,6 +6098,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     { key: 'photos', label: t('home.profileTabPhotos') },
     { key: 'reels', label: t('home.profileTabReels') },
     { key: 'more', label: t('home.profileTabMore') },
+    { key: 'federation', label: t('home.profileFederationDetailsTitle', { defaultValue: 'Federation details' }) },
   ];
   const showFeedFollowButton = !viewingProfileRoute && !viewingRemoteProfileRoute && !viewingRemoteThreadRoute && !viewingRemoteCommunityRoute && !viewingCommunitiesRoute && !viewingManageCommunitiesRoute && !viewingMutedCommunitiesRoute && !viewingCommunityRoute && !viewingHashtagRoute && !viewingFollowPeopleRoute && !viewingSettingsRoute && !showingMainSearchResults && displayRoute.screen !== 'circles' && displayRoute.screen !== 'lists';
   const reactionListModalHeight = Math.max(420, Math.min(Math.floor(viewportHeight * 0.8), 740));

@@ -35,7 +35,7 @@ import UserBadge from '../components/UserBadge';
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 
-type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more';
+type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more' | 'federation';
 type ActivityFilterKey = 'community' | 'public' | 'comments';
 
 type Props = {
@@ -276,12 +276,21 @@ export default function MyProfileScreen({
   const shouldShowFollowersCount = isOwnProfile
     ? resolveVisibility(user?.followers_count_visible, true)
     : hasResolvedFollowersCount;
+  const hasFederationSummary = !!user?.federation_summary;
+  const showingFederationDetails = hasFederationSummary && profileActiveTab === 'federation';
 
   React.useEffect(() => {
     setVisibleJoinedCommunities(9);
     setVisibleFollowings(9);
     setActivityFilter('community');
-  }, [profileRouteUsername]);
+    onSetProfileActiveTab('all');
+  }, [onSetProfileActiveTab, profileRouteUsername]);
+
+  React.useEffect(() => {
+    if (!hasFederationSummary && profileActiveTab === 'federation') {
+      onSetProfileActiveTab('all');
+    }
+  }, [hasFederationSummary, onSetProfileActiveTab, profileActiveTab]);
 
   React.useEffect(() => {
     return () => {
@@ -1458,19 +1467,55 @@ export default function MyProfileScreen({
         ) : null}
       </View>
 
-      <FederationSummaryCard
-        c={c}
-        t={t}
-        summary={user?.federation_summary}
-        isOwnProfile={isOwnProfile}
-      />
-
       <View style={[styles.profileTabsRow, { borderTopColor: c.border }]}>
-        <Text style={[styles.profileTabText, { color: c.textSecondary }]}>
-          {t('home.profileInfoRecentActivityTitle')}
-        </Text>
+        <TouchableOpacity
+          style={[
+            styles.profileTabBtn,
+            { borderBottomColor: showingFederationDetails ? 'transparent' : c.primary },
+          ]}
+          activeOpacity={0.85}
+          onPress={() => onSetProfileActiveTab('all')}
+        >
+          <Text
+            style={[
+              styles.profileTabText,
+              { color: showingFederationDetails ? c.textSecondary : c.textPrimary },
+            ]}
+          >
+            {t('home.profileInfoRecentActivityTitle')}
+          </Text>
+        </TouchableOpacity>
+        {hasFederationSummary ? (
+          <TouchableOpacity
+            style={[
+              styles.profileTabBtn,
+              { borderBottomColor: showingFederationDetails ? c.primary : 'transparent' },
+            ]}
+            activeOpacity={0.85}
+            onPress={() => onSetProfileActiveTab('federation')}
+          >
+            <Text
+              style={[
+                styles.profileTabText,
+                { color: showingFederationDetails ? c.textPrimary : c.textSecondary },
+              ]}
+            >
+              {t('home.profileFederationDetailsTitle', { defaultValue: 'Federation details' })}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
+      {showingFederationDetails ? (
+        <View style={{ marginTop: 16 }}>
+          <FederationSummaryCard
+            c={c}
+            t={t}
+            summary={user?.federation_summary}
+            isOwnProfile={isOwnProfile}
+          />
+        </View>
+      ) : (
       <View style={[styles.profileBodyLayout, isCompactProfileLayout ? styles.profileBodyLayoutCompact : null]}>
           <View style={[styles.profileBodyLeft, isCompactProfileLayout ? styles.profileBodyLeftCompact : null]}>
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
@@ -1807,6 +1852,7 @@ export default function MyProfileScreen({
             </View>
           </View>
       </View>
+      )}
     </View>
   );
 }
