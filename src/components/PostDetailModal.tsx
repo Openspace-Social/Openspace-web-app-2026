@@ -2728,25 +2728,50 @@ export default function PostDetailModal({
   function renderReactionSummary(post: FeedPost) {
     if (!(post.reactions_emoji_counts || []).length) return null;
 
+    // Mirror the feed PostCard: tapping a chip TOGGLES the user's reaction
+    // with that emoji (+1 / −1), and a separate "people" chip opens the
+    // reactor list. Previously chips opened the reactor panel directly,
+    // which left no way to react/unreact from the post-detail summary and
+    // was inconsistent with how the feed cards behave.
     return (
       <View style={styles.reactionSummaryWrap}>
         {(post.reactions_emoji_counts || [])
           .filter((entry) => (entry?.count || 0) > 0)
-          .map((entry, idx) => (
-            <TouchableOpacity
-              key={`detail-reaction-summary-${post.id}-${entry.emoji?.id || idx}`}
-              style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
-              onPress={() => void openReactionsPanel(post, entry.emoji)}
-              activeOpacity={0.85}
-            >
-              {entry.emoji?.image ? (
-                <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
-              ) : (
-                <MaterialCommunityIcons name="emoticon-outline" size={14} color={c.textSecondary} />
-              )}
-              <Text style={[styles.reactionSummaryCount, { color: c.textSecondary }]}>{entry.count || 0}</Text>
-            </TouchableOpacity>
-          ))}
+          .map((entry, idx) => {
+            const isMyReaction = !!entry.emoji?.id && post.reaction?.emoji?.id === entry.emoji.id;
+            return (
+              <TouchableOpacity
+                key={`detail-reaction-summary-${post.id}-${entry.emoji?.id || idx}`}
+                style={[
+                  styles.reactionSummaryChip,
+                  isMyReaction
+                    ? { borderColor: c.primary, backgroundColor: c.surface }
+                    : { borderColor: c.border, backgroundColor: c.surface },
+                ]}
+                onPress={() => void onReactToPostWithEmoji(post, entry.emoji?.id)}
+                disabled={reactionActionLoading}
+                activeOpacity={0.75}
+              >
+                {entry.emoji?.image ? (
+                  <Image source={{ uri: entry.emoji.image }} style={styles.reactionSummaryEmojiImage} resizeMode="contain" />
+                ) : (
+                  <MaterialCommunityIcons name="emoticon-outline" size={14} color={isMyReaction ? c.primary : c.textSecondary} />
+                )}
+                <Text style={[styles.reactionSummaryCount, { color: isMyReaction ? c.primary : c.textSecondary }]}>
+                  {entry.count || 0}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        <TouchableOpacity
+          style={[styles.reactionSummaryChip, { borderColor: c.border, backgroundColor: c.surface }]}
+          onPress={() => void openReactionsPanel(post)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.reactionListAction', { defaultValue: 'See who reacted' })}
+        >
+          <MaterialCommunityIcons name="account-multiple-outline" size={14} color={c.textMuted} />
+        </TouchableOpacity>
       </View>
     );
   }

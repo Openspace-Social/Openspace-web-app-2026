@@ -78,6 +78,7 @@ import RemoteThreadScreen from './RemoteThreadScreen';
 import RemoteCommunityScreen from './RemoteCommunityScreen';
 import LinkedAccountsScreenContainer from '../navigation/screens/LinkedAccountsScreenContainer';
 import EmailPreferencesScreenContainer from '../navigation/screens/EmailPreferencesScreenContainer';
+import FederationSummaryScreenContainer from '../navigation/screens/FederationSummaryScreenContainer';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
 import EditProfileDrawer from '../components/EditProfileDrawer';
@@ -875,12 +876,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [menuDrawerMounted, setMenuDrawerMounted] = useState(false);
   const [autoPlayMedia, setAutoPlayMedia] = useState(false);
   const [linkedAccountsOpen, setLinkedAccountsOpen] = useState(false);
+  const [federationDrawerOpen, setFederationDrawerOpen] = useState(false);
   const [federatedLinkedAccounts, setFederatedLinkedAccounts] = useState<FederatedLinkedAccount[]>([]);
   const [mastodonIdentifierInput, setMastodonIdentifierInput] = useState('');
   const [mastodonLinkLoading, setMastodonLinkLoading] = useState(false);
   const [mastodonUnlinkId, setMastodonUnlinkId] = useState<number | null>(null);
   const [blockedUsersDrawerOpen, setBlockedUsersDrawerOpen] = useState(false);
   const [linkedAccountsDrawerMounted, setLinkedAccountsDrawerMounted] = useState(false);
+  const [federationDrawerMounted, setFederationDrawerMounted] = useState(false);
   const [blockedUsersDrawerMounted, setBlockedUsersDrawerMounted] = useState(false);
   const [emailPreferencesOpen, setEmailPreferencesOpen] = useState(false);
   const [emailPreferencesDrawerMounted, setEmailPreferencesDrawerMounted] = useState(false);
@@ -929,6 +932,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const processedChangeEmailTokenRef = useRef<string | null>(null);
   const linkedAccountsDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const linkedAccountsDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const federationDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const federationDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const blockedUsersDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const blockedUsersDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const emailPreferencesDrawerTranslateX = useRef(new Animated.Value(0)).current;
@@ -1426,6 +1431,38 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       ]).start(() => setLinkedAccountsDrawerMounted(false));
     }
   }, [linkedAccountsOpen, linkedAccountsDrawerBackdropOpacity, linkedAccountsDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (federationDrawerOpen) {
+      setFederationDrawerMounted(true);
+      federationDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(federationDrawerTranslateX, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(federationDrawerBackdropOpacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(federationDrawerTranslateX, {
+          toValue: sideDrawerWidth,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(federationDrawerBackdropOpacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setFederationDrawerMounted(false));
+    }
+  }, [federationDrawerOpen, federationDrawerBackdropOpacity, federationDrawerTranslateX, sideDrawerWidth]);
 
   useEffect(() => {
     if (emailPreferencesOpen) {
@@ -6204,14 +6241,24 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     if (/^hsl(a)?\(/i.test(trimmed)) return trimmed;
     return undefined;
   }
+  // Search results should be hidden whenever the user is on any non-feed
+  // route, otherwise the persisted search state keeps the results rendering
+  // *underneath* the active page (Settings / Followers / Circles / Lists /
+  // Muted communities all hit this bug). Mirrors the same route gate the
+  // feed and `showFeedFollowButton` already use.
   const showingMainSearchResults = !viewingProfileRoute &&
     !viewingRemoteProfileRoute &&
     !viewingRemoteThreadRoute &&
     !viewingRemoteCommunityRoute &&
     !viewingCommunitiesRoute &&
     !viewingManageCommunitiesRoute &&
+    !viewingMutedCommunitiesRoute &&
     !viewingCommunityRoute &&
     !viewingHashtagRoute &&
+    !viewingFollowPeopleRoute &&
+    !viewingSettingsRoute &&
+    displayRoute.screen !== 'circles' &&
+    displayRoute.screen !== 'lists' &&
     searchResultsActive &&
     searchResultsQuery.length >= 2;
   const isWideSearchResultsLayout = viewportWidth >= 1200;
@@ -6959,6 +7006,40 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
             </Text>
           </View>
           <LinkedAccountsScreenContainer />
+        </Animated.View>
+      </Modal>
+
+      <Modal
+        visible={federationDrawerMounted}
+        transparent
+        animationType="none"
+        onRequestClose={() => setFederationDrawerOpen(false)}
+      >
+        <Animated.View
+          style={[
+            styles.drawerBackdrop,
+            { opacity: federationDrawerBackdropOpacity },
+          ]}
+          pointerEvents="auto"
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setFederationDrawerOpen(false)} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.drawerPanel,
+            {
+              width: sideDrawerWidth,
+              backgroundColor: c.surface,
+              transform: [{ translateX: federationDrawerTranslateX }],
+            },
+          ]}
+        >
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('settings.federationTile', { defaultValue: 'Federation' })}
+            </Text>
+          </View>
+          <FederationSummaryScreenContainer />
         </Animated.View>
       </Modal>
 
@@ -9807,6 +9888,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 }}
                 onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
                 onOpenEmailPreferences={() => setEmailPreferencesOpen(true)}
+                onOpenFederation={() => setFederationDrawerOpen(true)}
                 onOpenBlockedUsers={() => setBlockedUsersDrawerOpen(true)}
                 onNotice={setNotice}
                 onChangePassword={handleChangePassword}

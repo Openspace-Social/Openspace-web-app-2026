@@ -339,6 +339,24 @@ export function useNativePostInteractions({
         }
       },
       onOpenLongPostEdit: () => stub('Edit long post'),
+      // Push the dedicated EditPost screen instead of letting PostCard render
+      // its inline modal — the modal sat over the keyboard on phones and
+      // hid the Save button. The screen calls api.updatePost itself and
+      // broadcasts the new text so every mounted copy of this post stays
+      // in sync (see emitPostContentUpdate in utils/postUpdates).
+      onOpenPostEdit: (post: FeedPost) => {
+        const uuid = (post as any)?.uuid as string | undefined;
+        const id = (post as any)?.id as number | undefined;
+        if (!uuid) {
+          stub('Edit post');
+          return;
+        }
+        navigation.navigate('EditPost', {
+          postUuid: uuid,
+          postId: typeof id === 'number' ? id : undefined,
+          initialText: getPostText(post),
+        });
+      },
       onDeletePost: async (post) => {
         const uuid = (post as any)?.uuid as string | undefined;
         const id = (post as any)?.id as number | undefined;

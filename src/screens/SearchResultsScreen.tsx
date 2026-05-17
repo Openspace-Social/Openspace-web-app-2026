@@ -41,17 +41,20 @@ export default function SearchResultsScreen({
   onSelectHashtag,
   isEdgeToEdge = false,
 }: Props) {
+  // HomeScreen already renders the page-level left sidebar (SIDEBAR_LEFT_W
+  // = 260) at wide viewports, so wrapping the results in a second row with
+  // a 260px "left reserve" View was duplicating that gutter and pushing
+  // the card off-center. Render the search card with the same chrome as a
+  // regular feed card — `isWideSearchResultsLayout` is still threaded into
+  // the tile grid below for the 3-col layout.
   return (
-    <View style={isWideSearchResultsLayout ? styles.searchResultsWideLayout : undefined}>
-      {isWideSearchResultsLayout ? <View style={styles.searchResultsLeftReserve} /> : null}
-      <View
-        style={[
-          styles.feedCard,
-          isWideSearchResultsLayout ? styles.searchResultsMainCard : null,
-          { backgroundColor: c.surface, borderColor: c.border },
-          isEdgeToEdge && { borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, marginBottom: 0, maxWidth: '100%' as const },
-        ]}
-      >
+    <View
+      style={[
+        styles.feedCard,
+        { backgroundColor: c.surface, borderColor: c.border },
+        isEdgeToEdge && { borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, marginBottom: 0, maxWidth: '100%' as const },
+      ]}
+    >
         <View style={styles.searchMainHeader}>
           <TouchableOpacity
             style={[styles.searchShowAllButton, styles.backToFeedButton, styles.backToFeedButtonSlim, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -173,7 +176,6 @@ export default function SearchResultsScreen({
             ) : null}
           </View>
         )}
-      </View>
     </View>
   );
 }

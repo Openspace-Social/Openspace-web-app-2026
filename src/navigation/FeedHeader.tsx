@@ -28,6 +28,12 @@ export default function FeedHeader() {
     (navigation.getParent()?.getParent?.() ?? navigation.getParent())?.navigate('Search' as never);
   };
 
+  const openSettings = () => {
+    // Settings lives in the ProfileTab's stack — jump from this stack up to
+    // the bottom-tab navigator, then into ProfileTab > Settings.
+    navigation.getParent()?.navigate('ProfileTab' as never, { screen: 'Settings' } as never);
+  };
+
   return (
     <View
       style={[
@@ -50,6 +56,15 @@ export default function FeedHeader() {
             {t('home.searchPlaceholder', { defaultValue: 'Search Openspace' })}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={openSettings}
+          style={[styles.iconButton, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.sideMenuSettings', { defaultValue: 'Settings' })}
+        >
+          <MaterialCommunityIcons name="cog-outline" size={20} color={c.textSecondary} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -62,6 +77,7 @@ const styles = StyleSheet.create({
   topNav: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
@@ -79,5 +95,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     paddingVertical: 0,
+  },
+  iconButton: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

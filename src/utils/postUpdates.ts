@@ -39,3 +39,37 @@ export function subscribePostReactionUpdate(listener: Listener): () => void {
     listeners.delete(listener);
   };
 }
+
+// ── Post-content updates ────────────────────────────────────────────────
+// Parallel emitter for non-reaction post mutations — currently used by the
+// dedicated EditPost screen so an edit applied on one screen propagates to
+// every other mounted copy of that post (feed cards, profile lists,
+// post-detail). Kept absolute-state and idempotent for the same reason
+// reaction patches are.
+export type PostContentPatch = {
+  text?: string;
+  long_text?: any;
+  long_text_blocks?: any;
+  long_text_rendered_html?: string;
+};
+
+type ContentListener = (postId: number, patch: PostContentPatch) => void;
+
+const contentListeners = new Set<ContentListener>();
+
+export function emitPostContentUpdate(postId: number, patch: PostContentPatch): void {
+  for (const listener of contentListeners) {
+    try {
+      listener(postId, patch);
+    } catch {
+      // A misbehaving subscriber must not break the others or the emitter.
+    }
+  }
+}
+
+export function subscribePostContentUpdate(listener: ContentListener): () => void {
+  contentListeners.add(listener);
+  return () => {
+    contentListeners.delete(listener);
+  };
+}

@@ -73,10 +73,16 @@ export default function FederationSummaryCard({
   isOwnProfile = false,
   compact = false,
 }: Props) {
-  if (!summary) return null;
-
+  // Hooks must run on every render — call them BEFORE the early return.
+  // The previous order (early return ahead of useWindowDimensions) changed
+  // the component's hook count between renders when `summary` switched
+  // from falsy → truthy (e.g. when SettingsScreen finishes loading it
+  // asynchronously). React 19's reconciler surfaces that as the cryptic
+  // "Expected static flag was missing" internal warning.
   const { width } = useWindowDimensions();
   const isNarrow = width < 700;
+
+  if (!summary) return null;
 
   const primaryMessage = summary.is_discoverable
     ? t('federation.discoverableStatus', {

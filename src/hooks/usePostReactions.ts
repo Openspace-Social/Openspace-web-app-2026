@@ -25,6 +25,7 @@ import type { ReactionGroup } from '../components/PostCard';
 import {
   emitPostReactionUpdate,
   subscribePostReactionUpdate,
+  subscribePostContentUpdate,
   type PostReactionPatch,
 } from '../utils/postUpdates';
 
@@ -177,6 +178,15 @@ export function usePostReactions(
   // routes through this hook, so subscribing here syncs them all.
   useEffect(() => {
     return subscribePostReactionUpdate((postId, patch) => {
+      patchPost(postId, (p: any) => ({ ...p, ...patch }));
+    });
+  }, [patchPost]);
+
+  // Same idea for post-content updates (currently emitted by the dedicated
+  // EditPost screen). Lives here so every list that already uses this hook
+  // also stays in sync on text edits without a per-hook wiring change.
+  useEffect(() => {
+    return subscribePostContentUpdate((postId, patch) => {
       patchPost(postId, (p: any) => ({ ...p, ...patch }));
     });
   }, [patchPost]);

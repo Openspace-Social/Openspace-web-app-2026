@@ -58,6 +58,10 @@ type PopupPos = {
   y: number;
   /** Available space above the anchor (for flip-up logic) */
   spaceAbove: number;
+  /** Width of the input the popup is anchored to (used to center the
+   *  popup under wide inputs on tablets, where the native code path can't
+   *  measure the caret's X within the input). */
+  inputWidth: number;
 };
 
 export type MentionHashtagInputProps = {
@@ -403,17 +407,17 @@ export default function MentionHashtagInput({
       const domEl = getInputDOMEl(inputIdRef.current, textInputRef, containerRef);
       if (!domEl) return;
 
+      const inputRect = domEl.getBoundingClientRect();
       const caret = getCaretViewportPos(domEl, caretPos);
       if (caret) {
-        setPopupPos({ x: caret.x, y: caret.y, spaceAbove: caret.y });
+        setPopupPos({ x: caret.x, y: caret.y, spaceAbove: caret.y, inputWidth: inputRect.width });
       } else {
         // Fallback: position below the input
-        const rect = domEl.getBoundingClientRect();
-        setPopupPos({ x: rect.left + 8, y: rect.bottom, spaceAbove: rect.top });
+        setPopupPos({ x: inputRect.left + 8, y: inputRect.bottom, spaceAbove: inputRect.top, inputWidth: inputRect.width });
       }
     } else {
-      containerRef.current?.measure((_fx, _fy, _w, h, px, py) => {
-        setPopupPos({ x: px, y: py + h, spaceAbove: py });
+      containerRef.current?.measure((_fx, _fy, w, h, px, py) => {
+        setPopupPos({ x: px, y: py + h, spaceAbove: py, inputWidth: w });
       });
     }
   }
@@ -435,8 +439,13 @@ export default function MentionHashtagInput({
       containerRef.current.measureInWindow((x, y, w, h) => {
         if (cancelled) return;
         setPopupPos((prev) => {
-          if (prev && Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - (y + h)) < 0.5) return prev;
-          return { x, y: y + h, spaceAbove: y };
+          if (
+            prev
+            && Math.abs(prev.x - x) < 0.5
+            && Math.abs(prev.y - (y + h)) < 0.5
+            && Math.abs(prev.inputWidth - w) < 0.5
+          ) return prev;
+          return { x, y: y + h, spaceAbove: y, inputWidth: w };
         });
       });
       rafId = requestAnimationFrame(tick);
@@ -469,11 +478,17 @@ export default function MentionHashtagInput({
           : cursorRef.current;
         const caret = getCaretViewportPos(domEl, caretIdx);
         if (caret) {
+          const inputW = domEl.getBoundingClientRect().width;
           setPopupPos((prev) => {
-            if (prev && Math.abs(prev.x - caret.x) < 0.5 && Math.abs(prev.y - caret.y) < 0.5) {
+            if (
+              prev
+              && Math.abs(prev.x - caret.x) < 0.5
+              && Math.abs(prev.y - caret.y) < 0.5
+              && Math.abs(prev.inputWidth - inputW) < 0.5
+            ) {
               return prev;
             }
-            return { x: caret.x, y: caret.y, spaceAbove: caret.y };
+            return { x: caret.x, y: caret.y, spaceAbove: caret.y, inputWidth: inputW };
           });
         }
       }
@@ -561,8 +576,23 @@ export default function MentionHashtagInput({
   const spaceBelow = popupPos ? Math.max(0, visibleBottom - popupPos.y) : 0;
   const openAbove  = !!popupPos && spaceBelow < LIST_MAX_H + GAP && popupPos.spaceAbove > spaceBelow;
 
+  // Tablet / wide-screen popup sizing. The 240px default is right for phone
+  // inputs but looks pinched on iPad — and on the native path, where the
+  // popup anchors to the input's LEFT edge (caret pixel position isn't
+  // exposed by RN's TextInput), a 240px popup on a 700+ px wide input
+  // floats far from where the user is actually typing. Widen on tablets,
+  // and center the popup horizontally under the input on the native path
+  // so it feels associated with the field instead of pinned to a corner.
+  const isWideScreen = screenW >= 700;
+  const popupW = isWideScreen ? 320 : POPUP_W;
+
+  const desiredLeft = popupPos
+    ? (Platform.OS !== 'web' && isWideScreen
+        ? popupPos.x + Math.max(0, (popupPos.inputWidth - popupW) / 2)
+        : popupPos.x)
+    : 0;
   const popupLeft = popupPos
-    ? Math.max(4, Math.min(popupPos.x, screenW - POPUP_W - 4))
+    ? Math.max(4, Math.min(desiredLeft, screenW - popupW - 4))
     : 0;
 
   // "below" anchor: top of popup = bottom-of-caret + gap (viewport pixels)
@@ -654,7 +684,7 @@ export default function MentionHashtagInput({
   );
 
   const panelStyle: any = {
-    width: POPUP_W,
+    width: popupW,
     maxHeight: LIST_MAX_H,
     backgroundColor: surface,
     borderWidth: 1,

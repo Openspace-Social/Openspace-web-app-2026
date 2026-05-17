@@ -1,0 +1,97 @@
+/**
+ * FederationSummaryScreenContainer — dedicated "Federation" page.
+ *
+ * Reached from Settings → Federation tile. Mirrors the LinkedAccounts
+ * pattern: a navigator screen that fetches the authenticated user, pulls
+ * out `federation_summary`, and renders the existing FederationSummaryCard
+ * full-size inside a ScrollView.
+ */
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+
+import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../theme/ThemeContext';
+import { api, type FederationSummary } from '../../api/client';
+import FederationSummaryCard from '../../components/FederationSummaryCard';
+
+export default function FederationSummaryScreenContainer() {
+  const { token } = useAuth();
+  const { theme } = useTheme();
+  const { t } = useTranslation();
+  const c = theme.colors;
+
+  const [summary, setSummary] = useState<FederationSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError('');
+    try {
+      const me: any = await api.getAuthenticatedUser(token);
+      setSummary(me?.federation_summary ?? null);
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          t('federation.loadFailed', {
+            defaultValue: 'Could not load your federation summary right now.',
+          }),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token, t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.background }}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={c.primary} size="small" />
+        </View>
+      ) : error ? (
+        <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
+      ) : summary ? (
+        <FederationSummaryCard c={c} t={t} summary={summary} isOwnProfile />
+      ) : (
+        <Text style={[styles.emptyText, { color: c.textMuted }]}>
+          {t('federation.emptyState', {
+            defaultValue: 'Federation is not yet active for this profile.',
+          })}
+        </Text>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 16,
+    paddingBottom: 48,
+  },
+  centered: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    paddingVertical: 16,
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    paddingVertical: 24,
+    textAlign: 'center',
+  },
+});

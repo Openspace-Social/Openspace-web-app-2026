@@ -141,6 +141,7 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+  const [coverPreviewOpen, setCoverPreviewOpen] = useState(false);
   const isOwnProfile = !!currentUsername && !!username && currentUsername === username;
 
   // ── Profile-action state (Follow / Connect / Subscribe / Block) ──────
@@ -771,6 +772,31 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
           </TouchableOpacity>
         </Pressable>
       </Modal>
+      <Modal
+        visible={coverPreviewOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCoverPreviewOpen(false)}
+      >
+        <Pressable
+          style={styles.avatarPreviewBackdrop}
+          onPress={() => setCoverPreviewOpen(false)}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.closeNoticeAction', { defaultValue: 'Close' })}
+        >
+          {user?.profile?.cover ? (
+            <Image source={{ uri: user.profile.cover }} style={styles.coverPreviewImage} resizeMode="contain" />
+          ) : null}
+          <TouchableOpacity
+            style={styles.avatarPreviewClose}
+            onPress={() => setCoverPreviewOpen(false)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('home.closeNoticeAction', { defaultValue: 'Close' })}
+          >
+            <MaterialCommunityIcons name="close" size={22} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
       <ThemedScrollView
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.scrollContent}
@@ -783,7 +809,14 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
         {/* Cover */}
         <View style={[styles.cover, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
           {user?.profile?.cover ? (
-            <Image source={{ uri: user.profile.cover }} style={styles.coverImage} resizeMode="cover" />
+            <Pressable
+              style={{ width: '100%', height: '100%' }}
+              onPress={() => setCoverPreviewOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.profileCoverPreviewAction', { defaultValue: 'View cover photo' })}
+            >
+              <Image source={{ uri: user.profile.cover }} style={styles.coverImage} resizeMode="cover" />
+            </Pressable>
           ) : null}
           {isOwnProfile ? (
             <TouchableOpacity
@@ -1639,6 +1672,10 @@ const styles = StyleSheet.create({
     height: '100%',
     maxWidth: 600,
     maxHeight: 600,
+  },
+  coverPreviewImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarPreviewFallback: {
     width: 240,

@@ -36,7 +36,7 @@ const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png'
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 
 type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more' | 'federation';
-type ActivityFilterKey = 'community' | 'public' | 'comments';
+type ActivityFilterKey = 'all' | 'community' | 'public' | 'comments';
 
 type Props = {
   styles: any;
@@ -206,6 +206,7 @@ export default function MyProfileScreen({
   const [avatarOptionsOpen, setAvatarOptionsOpen] = React.useState(false);
   // Full-size avatar preview — tapping the avatar opens this lightbox.
   const [avatarPreviewOpen, setAvatarPreviewOpen] = React.useState(false);
+  const [coverPreviewOpen, setCoverPreviewOpen] = React.useState(false);
   const [avatarEditorOpen, setAvatarEditorOpen] = React.useState(false);
   const [avatarEditorUri, setAvatarEditorUri] = React.useState<string | null>(null);
   const [avatarEditorScale, setAvatarEditorScale] = React.useState(1);
@@ -224,7 +225,7 @@ export default function MyProfileScreen({
   const objectUrlRef = React.useRef<string[]>([]);
 
   const [actionsMenuOpen, setActionsMenuOpen] = React.useState(false);
-  const [activityFilter, setActivityFilter] = React.useState<ActivityFilterKey>('community');
+  const [activityFilter, setActivityFilter] = React.useState<ActivityFilterKey>('all');
   const [visibleJoinedCommunities, setVisibleJoinedCommunities] = React.useState(9);
   const [visibleFollowings, setVisibleFollowings] = React.useState(9);
   const safePinnedPosts = Array.isArray(myPinnedPosts) ? myPinnedPosts : [];
@@ -248,6 +249,20 @@ export default function MyProfileScreen({
   }, []);
   const communityActivityPosts = regularProfilePosts.filter((post) => isCommunityActivityPost(post));
   const publicActivityPosts = regularProfilePosts.filter((post) => !isCommunityActivityPost(post));
+  // Active list for the All / Community / Public chips. `regularProfilePosts`
+  // is the pinned-excluded set — pinned posts have their own section above.
+  const activeFilterPosts =
+    activityFilter === 'all'
+      ? regularProfilePosts
+      : activityFilter === 'community'
+        ? communityActivityPosts
+        : publicActivityPosts;
+  const activeFilterEmptyMessage =
+    activityFilter === 'all'
+      ? t('home.profileActivityNoPosts', { defaultValue: 'No recent posts yet.' })
+      : activityFilter === 'community'
+        ? t('home.profileActivityNoCommunityPosts', { defaultValue: 'No recent community posts yet.' })
+        : t('home.profileActivityNoPublicPosts', { defaultValue: 'No recent public posts yet.' });
   const shownJoinedCommunities = safeJoinedCommunities.slice(0, visibleJoinedCommunities);
   const shownFollowings = safeFollowings.slice(0, visibleFollowings);
   const hasHiddenJoinedCommunities = shownJoinedCommunities.length < safeJoinedCommunities.length;
@@ -681,6 +696,51 @@ export default function MyProfileScreen({
         </Pressable>
       </Modal>
 
+      {/* Full-size cover preview lightbox — mirrors the avatar one. */}
+      <Modal
+        visible={coverPreviewOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCoverPreviewOpen(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.92)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onPress={() => setCoverPreviewOpen(false)}
+        >
+          {coverDisplayUri ? (
+            <Image
+              source={{ uri: coverDisplayUri }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          ) : null}
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: Platform.OS === 'ios' ? 56 : 24,
+              right: 16,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.16)',
+            }}
+            onPress={() => setCoverPreviewOpen(false)}
+            activeOpacity={0.85}
+            accessibilityLabel={t('home.closeNoticeAction')}
+          >
+            <MaterialCommunityIcons name="close" size={22} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
+
       <Modal
         visible={isOwnProfile && avatarOptionsOpen}
         animationType="fade"
@@ -1042,11 +1102,18 @@ export default function MyProfileScreen({
           ]}
         >
           {coverDisplayUri ? (
-            <Image
-              source={{ uri: coverDisplayUri }}
-              style={styles.profileCoverImage}
-              resizeMode="cover"
-            />
+            <Pressable
+              style={{ width: '100%', height: '100%' }}
+              onPress={() => setCoverPreviewOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.profileCoverPreviewAction', { defaultValue: 'View cover photo' })}
+            >
+              <Image
+                source={{ uri: coverDisplayUri }}
+                style={styles.profileCoverImage}
+                resizeMode="cover"
+              />
+            </Pressable>
           ) : isProfileLoading ? (
             <View
               style={[
@@ -1754,6 +1821,24 @@ export default function MyProfileScreen({
                   style={[
                     styles.profileActivityFilterChip,
                     {
+                      borderColor: activityFilter === 'all' ? c.primary : c.border,
+                      backgroundColor: activityFilter === 'all' ? `${c.primary}20` : c.surface,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => setActivityFilter('all')}
+                >
+                  <Text style={[
+                    styles.profileActivityFilterChipText,
+                    { color: activityFilter === 'all' ? c.primary : c.textSecondary },
+                  ]}>
+                    {t('home.profileActivityAll', { defaultValue: 'All' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.profileActivityFilterChip,
+                    {
                       borderColor: activityFilter === 'community' ? c.primary : c.border,
                       backgroundColor: activityFilter === 'community' ? `${c.primary}20` : c.surface,
                     },
@@ -1836,15 +1921,13 @@ export default function MyProfileScreen({
                 )
               ) : myProfilePostsLoading ? (
                 <ActivityIndicator color={c.primary} size="small" />
-              ) : (activityFilter === 'community' ? communityActivityPosts : publicActivityPosts).length === 0 ? (
+              ) : activeFilterPosts.length === 0 ? (
                 <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
-                  {activityFilter === 'community'
-                    ? t('home.profileActivityNoCommunityPosts', { defaultValue: 'No recent community posts yet.' })
-                    : t('home.profileActivityNoPublicPosts', { defaultValue: 'No recent public posts yet.' })}
+                  {activeFilterEmptyMessage}
                 </Text>
               ) : (
                 <View style={styles.feedList}>
-                  {(activityFilter === 'community' ? communityActivityPosts : publicActivityPosts).map((post) => (
+                  {activeFilterPosts.map((post) => (
                     <React.Fragment key={`profile-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
                   ))}
                 </View>

@@ -340,6 +340,11 @@ function HomeTabStack() {
           };
         }}
       />
+      <HomeStack.Screen
+        name="EditPost"
+        component={EditPostScreenContainer}
+        options={{ title: 'Edit post' }}
+      />
     </HomeStack.Navigator>
   );
 }
@@ -431,6 +436,11 @@ function CommunitiesTabStack() {
               : 'Posts',
           };
         }}
+      />
+      <CommunitiesStack.Screen
+        name="EditPost"
+        component={EditPostScreenContainer}
+        options={{ title: 'Edit post' }}
       />
     </CommunitiesStack.Navigator>
   );
@@ -565,6 +575,11 @@ function ProfileTabStack() {
               : 'Posts',
           };
         }}
+      />
+      <ProfileStack.Screen
+        name="EditPost"
+        component={EditPostScreenContainer}
+        options={{ title: 'Edit post' }}
       />
     </ProfileStack.Navigator>
   );

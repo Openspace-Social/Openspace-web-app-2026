@@ -602,6 +602,12 @@ export type PostCardProps = {
   onReportComment?: (postUuid: string, commentId: number) => void;
   onEditPost: (post: FeedPost, text: string) => void | Promise<void>;
   onOpenLongPostEdit?: (post: FeedPost) => void;
+  /** When provided, the short-post edit action opens this callback's screen
+   *  instead of rendering the inline edit modal. The native navigator wires
+   *  this to push a dedicated EditPost route — keeps the keyboard from
+   *  covering the Save button. Omitted on the legacy web path, which keeps
+   *  the inline modal. */
+  onOpenPostEdit?: (post: FeedPost) => void;
   onDeletePost: (post: FeedPost) => void | Promise<void>;
   onMovePostCommunities?: (post: FeedPost) => void;
   onTogglePinPost: (post: FeedPost) => void | Promise<void>;
@@ -687,6 +693,7 @@ function PostCard({
   onReportComment,
   onEditPost,
   onOpenLongPostEdit,
+  onOpenPostEdit,
   onDeletePost,
   onMovePostCommunities,
   onTogglePinPost,
@@ -1352,6 +1359,8 @@ function PostCard({
     setPostMenuOpen(false);
     if (postType === 'LP' && onOpenLongPostEdit) {
       onOpenLongPostEdit(post);
+    } else if (onOpenPostEdit) {
+      onOpenPostEdit(post);
     } else {
       setPostEditing(true);
     }
