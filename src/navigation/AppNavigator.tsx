@@ -44,6 +44,8 @@ import ManageCommunitiesScreenContainer from './screens/ManageCommunitiesScreenC
 import ManageCommunityScreenContainer from './screens/ManageCommunityScreenContainer';
 import MutedCommunitiesScreenContainer from './screens/MutedCommunitiesScreenContainer';
 import LinkedAccountsScreenContainer from './screens/LinkedAccountsScreenContainer';
+import EmailPreferencesScreenContainer from './screens/EmailPreferencesScreenContainer';
+import FederationSummaryScreenContainer from './screens/FederationSummaryScreenContainer';
 import ModerationPenaltiesScreenContainer from './screens/ModerationPenaltiesScreenContainer';
 import ModerationTasksScreenContainer from './screens/ModerationTasksScreenContainer';
 import AlertsScreenContainer from './screens/AlertsScreenContainer';
@@ -64,6 +66,7 @@ import RemoteThreadScreenContainer from './screens/RemoteThreadScreenContainer';
 import RemoteCommunityScreenContainer from './screens/RemoteCommunityScreenContainer';
 import ReportPostScreenContainer from './screens/ReportPostScreenContainer';
 import CommunityUserPostsScreenContainer from './screens/CommunityUserPostsScreenContainer';
+import EditPostScreenContainer from './screens/EditPostScreenContainer';
 
 // ── Param lists ──────────────────────────────────────────────────────────────
 // Describe the shape of every navigation.navigate(screen, params) call. Grow
@@ -126,6 +129,16 @@ export type CommunityUserPostsScreenParams = {
   username: string;
 };
 
+// Dedicated "Edit post" page params. Replaces the inline modal that used
+// to render inside PostCard (where the keyboard covered the Save button).
+// `postId` is carried alongside the uuid so the screen can broadcast the
+// post-content update by id once `api.updatePost` succeeds.
+export type EditPostScreenParams = {
+  postUuid: string;
+  postId?: number;
+  initialText?: string;
+};
+
 export type HomeStackParamList = {
   Feed: { feed?: 'home' | 'trending' | 'public' | 'explore' | 'mastodon' } | undefined;
   Post: PostScreenParams;
@@ -146,6 +159,7 @@ export type HomeStackParamList = {
   RemoteThread: { inboundObjectId: number };
   ReportPost: ReportPostScreenParams;
   CommunityUserPosts: CommunityUserPostsScreenParams;
+  EditPost: EditPostScreenParams;
 };
 
 export type CommunitiesStackParamList = {
@@ -156,6 +170,7 @@ export type CommunitiesStackParamList = {
   LongPost: PostScreenParams;
   ReportPost: ReportPostScreenParams;
   CommunityUserPosts: CommunityUserPostsScreenParams;
+  EditPost: EditPostScreenParams;
 };
 
 export type ProfileStackParamList = {
@@ -171,6 +186,8 @@ export type ProfileStackParamList = {
   ManageCommunity: { name: string };
   MutedCommunities: undefined;
   LinkedAccounts: undefined;
+  EmailPreferences: undefined;
+  FederationSummary: undefined;
   ModerationPenalties: undefined;
   ModerationTasks: undefined;
   UserCommunities: { username: string };
@@ -179,6 +196,7 @@ export type ProfileStackParamList = {
   LongPost: PostScreenParams;
   ReportPost: ReportPostScreenParams;
   CommunityUserPosts: CommunityUserPostsScreenParams;
+  EditPost: EditPostScreenParams;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -485,6 +503,16 @@ function ProfileTabStack() {
         options={{ title: 'Linked accounts' }}
       />
       <ProfileStack.Screen
+        name="EmailPreferences"
+        component={EmailPreferencesScreenContainer}
+        options={{ title: 'Email preferences' }}
+      />
+      <ProfileStack.Screen
+        name="FederationSummary"
+        component={FederationSummaryScreenContainer}
+        options={{ title: 'Federation' }}
+      />
+      <ProfileStack.Screen
         name="ModerationPenalties"
         component={ModerationPenaltiesScreenContainer}
         options={{ title: 'Moderation penalties' }}
@@ -650,6 +678,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
               ManageCommunity: 'manage-communities/:name',
               MutedCommunities: 'muted-communities',
               LinkedAccounts: 'linked-accounts',
+              EmailPreferences: 'email-preferences',
+              FederationSummary: 'federation',
               ModerationPenalties: 'moderation-penalties',
               ModerationTasks: 'moderation-tasks',
             },

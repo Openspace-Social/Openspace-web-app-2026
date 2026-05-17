@@ -34,6 +34,7 @@ type Props = {
   federationSummary?: FederationSummary | null;
   onToggleAutoPlayMedia: () => void;
   onOpenLinkedAccounts: () => void;
+  onOpenEmailPreferences: () => void;
   onOpenBlockedUsers: () => void;
   onNotice: (message: string) => void;
   onChangePassword: (currentPassword: string | null, newPassword: string) => Promise<void>;
@@ -43,6 +44,14 @@ type Props = {
   onUpdateNotificationSettings: (patch: Partial<UserNotificationSettings>) => Promise<UserNotificationSettings>;
   onDeleteAccount: () => void;
   onLogout?: () => void;
+  /** When false, suppress the in-screen "Settings" heading — used by the
+   *  native navigator path where the stack header already shows the title.
+   *  Defaults to true so the legacy web HomeScreen embed keeps its heading. */
+  showHeader?: boolean;
+  /** When provided, the Federation summary collapses into a tappable tile
+   *  that opens a dedicated page (native pattern, matching Linked Accounts).
+   *  When omitted the legacy embedded card is rendered inline (web path). */
+  onOpenFederation?: () => void;
 };
 
 const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
@@ -78,6 +87,7 @@ export default function SettingsScreen({
   federationSummary,
   onToggleAutoPlayMedia,
   onOpenLinkedAccounts,
+  onOpenEmailPreferences,
   onOpenBlockedUsers,
   onNotice,
   onChangePassword,
@@ -87,6 +97,8 @@ export default function SettingsScreen({
   onUpdateNotificationSettings,
   onDeleteAccount,
   onLogout,
+  showHeader = true,
+  onOpenFederation,
 }: Props) {
   const s = useStyles(c);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -535,20 +547,36 @@ export default function SettingsScreen({
 
   return (
     <View style={[s.container, { backgroundColor: c.surface, borderColor: c.border }]}> 
-      <View style={[s.header, { borderBottomColor: c.border }]}> 
-        <Text style={[s.title, { color: c.textPrimary }]}>
-          {t('home.sideMenuSettings', { defaultValue: 'Settings' })}
-        </Text>
-      </View>
+      {showHeader ? (
+        <View style={[s.header, { borderBottomColor: c.border }]}>
+          <Text style={[s.title, { color: c.textPrimary }]}>
+            {t('home.sideMenuSettings', { defaultValue: 'Settings' })}
+          </Text>
+        </View>
+      ) : null}
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-        <FederationSummaryCard
-          c={c}
-          t={t}
-          summary={federationSummary}
-          isOwnProfile
-          compact
-        />
+        {federationSummary ? (
+          onOpenFederation ? (
+            <SettingsItem
+              c={c}
+              icon="access-point-network"
+              title={t('settings.federationTile', { defaultValue: 'Federation' })}
+              subtitle={t('settings.federationTileSubtitle', {
+                defaultValue: 'How your profile reaches the fediverse.',
+              })}
+              onPress={onOpenFederation}
+            />
+          ) : (
+            <FederationSummaryCard
+              c={c}
+              t={t}
+              summary={federationSummary}
+              isOwnProfile
+              compact
+            />
+          )
+        ) : null}
 
         <SettingsItem
           c={c}
@@ -607,6 +635,13 @@ export default function SettingsScreen({
           icon="account-cog-outline"
           title={t('home.linkedAccountsTitle')}
           onPress={onOpenLinkedAccounts}
+        />
+
+        <SettingsItem
+          c={c}
+          icon="email-outline"
+          title={t('settings.emailPreferences', { defaultValue: 'Email preferences' })}
+          onPress={onOpenEmailPreferences}
         />
 
         <SettingsItem

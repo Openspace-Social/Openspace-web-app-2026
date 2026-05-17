@@ -14,6 +14,7 @@ import {
   Image,
   ImageBackground,
   Share,
+  Switch,
   useWindowDimensions,
 } from 'react-native';
 import { AntDesign } from '@expo/vector-icons';
@@ -125,6 +126,10 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
   const [signupUsername, setSignupUsername] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  // Defaults to true (opt-out style) — user can untick before submitting. We record the
+  // user's actual choice on the EmailSubscription via the marketing_consent payload field,
+  // which the Django RegisterSerializer wires through apply_signup_marketing_consent().
+  const [signupMarketingConsent, setSignupMarketingConsent] = useState(true);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryIdentifier, setRecoveryIdentifier] = useState('');
   const [passwordResetToken, setPasswordResetToken] = useState('');
@@ -366,6 +371,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
         name: signupUsername.trim(),
         is_of_legal_age: true,
         are_guidelines_accepted: true,
+        marketing_consent: signupMarketingConsent,
         ...(federationReferralToken ? { federation_referral_token: federationReferralToken } : {}),
       });
       setVerificationToken(token);
@@ -1922,6 +1928,27 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
                 returnKeyType="done"
                 onSubmitEditing={handleRegister}
               />
+
+              <View style={styles.marketingConsentRow}>
+                <View style={styles.marketingConsentText}>
+                  <Text style={[styles.marketingConsentTitle, { color: c.textPrimary }]}>
+                    {t('auth.signUpMarketingConsentTitle', {
+                      defaultValue: 'Email me product news and updates',
+                    })}
+                  </Text>
+                  <Text style={[styles.marketingConsentBody, { color: c.textMuted }]}>
+                    {t('auth.signUpMarketingConsentBody', {
+                      defaultValue: 'Occasional emails about new features and community highlights. You can unsubscribe any time.',
+                    })}
+                  </Text>
+                </View>
+                <Switch
+                  value={signupMarketingConsent}
+                  onValueChange={setSignupMarketingConsent}
+                  trackColor={{ false: '#94a3b8', true: c.primary }}
+                  thumbColor="#ffffff"
+                />
+              </View>
 
               <Text style={[styles.agreementText, { color: c.textMuted }]}>
                 <Text style={[styles.agreementAge, { color: c.textPrimary }]}>
@@ -3548,6 +3575,25 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 14,
     marginTop: 4,
+  },
+  marketingConsentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  marketingConsentText: {
+    flex: 1,
+    gap: 2,
+  },
+  marketingConsentTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  marketingConsentBody: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   agreementAge: {
     fontSize: 12,

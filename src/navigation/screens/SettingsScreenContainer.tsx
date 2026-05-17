@@ -118,6 +118,14 @@ export default function SettingsScreenContainer() {
     navigation.navigate('LinkedAccounts');
   }, [navigation]);
 
+  const handleOpenEmailPreferences = useCallback(() => {
+    navigation.navigate('EmailPreferences');
+  }, [navigation]);
+
+  const handleOpenFederation = useCallback(() => {
+    navigation.navigate('FederationSummary');
+  }, [navigation]);
+
   const handleNotice = useCallback((message: string) => {
     showToast(message);
   }, [showToast]);
@@ -126,6 +134,7 @@ export default function SettingsScreenContainer() {
     <SettingsScreen
       c={theme.colors}
       t={t}
+      showHeader={false}
       token={token || undefined}
       currentEmail={currentEmail}
       hasUsablePassword={hasUsablePassword}
@@ -134,6 +143,8 @@ export default function SettingsScreenContainer() {
       federationSummary={federationSummary}
       onToggleAutoPlayMedia={toggleAutoPlayMedia}
       onOpenLinkedAccounts={handleOpenLinkedAccounts}
+      onOpenEmailPreferences={handleOpenEmailPreferences}
+      onOpenFederation={handleOpenFederation}
       onOpenBlockedUsers={handleOpenBlockedUsers}
       onNotice={handleNotice}
       onChangePassword={changePassword}

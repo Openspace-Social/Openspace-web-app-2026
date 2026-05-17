@@ -380,6 +380,7 @@ export type RegisterPayload = {
   token?: string;
   is_of_legal_age?: boolean;
   are_guidelines_accepted?: boolean;
+  marketing_consent?: boolean;
   federation_referral_token?: string;
 };
 
@@ -458,6 +459,18 @@ export type UserNotificationSettings = {
   moderation_task_in_app_notifications: boolean;
   moderation_task_push_notifications: boolean;
 };
+
+// Mirrors openbook_emails.serializers.EmailPreferencesSerializer on the Django API.
+// `suppressed` / `suppressed_reason` are read-only: a user can't un-suppress themselves,
+// that's a deliverability state set by bounce/complaint handling.
+export type EmailPreferences = {
+  promotional: boolean;
+  product_updates: boolean;
+  suppressed: boolean;
+  suppressed_reason: string;
+};
+
+export type UpdateEmailPreferencesPayload = Partial<Pick<EmailPreferences, 'promotional' | 'product_updates'>>;
 
 export type PushProvider = 'apns' | 'fcm';
 export type DevicePlatform = 'ios' | 'android';
@@ -1663,6 +1676,19 @@ export const api = {
 
   updateNotificationSettings: (token: string, payload: Partial<UserNotificationSettings>) =>
     request<UserNotificationSettings>('/api/auth/user/notifications-settings/', {
+      method: 'PATCH',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify(payload),
+    }),
+
+  // Mounted at /email/ (NOT /api/email/) — see openbook/urls.py's `path('email/', include(...))`.
+  getEmailPreferences: (token: string) =>
+    request<EmailPreferences>('/email/preferences/', {
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  updateEmailPreferences: (token: string, payload: UpdateEmailPreferencesPayload) =>
+    request<EmailPreferences>('/email/preferences/', {
       method: 'PATCH',
       headers: { Authorization: `Token ${token}` },
       body: JSON.stringify(payload),

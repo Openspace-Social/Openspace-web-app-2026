@@ -698,6 +698,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [manageCommunitiesRefreshKey, setManageCommunitiesRefreshKey] = useState(0);
   const [myProfilePosts, setMyProfilePosts] = useState<FeedPost[]>([]);
   const [myProfilePostsLoading, setMyProfilePostsLoading] = useState(false);
+  const [myProfilePostsLoadingMore, setMyProfilePostsLoadingMore] = useState(false);
+  const [myProfilePostsHasMore, setMyProfilePostsHasMore] = useState(true);
   const [myProfileComments, setMyProfileComments] = useState<ProfileCommentActivity[]>([]);
   const [myProfileCommentsLoading, setMyProfileCommentsLoading] = useState(false);
   const [myPinnedPosts, setMyPinnedPosts] = useState<FeedPost[]>([]);
@@ -716,6 +718,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [profileUserLoading, setProfileUserLoading] = useState(false);
   const [profilePosts, setProfilePosts] = useState<FeedPost[]>([]);
   const [profilePostsLoading, setProfilePostsLoading] = useState(false);
+  const [profilePostsLoadingMore, setProfilePostsLoadingMore] = useState(false);
+  const [profilePostsHasMore, setProfilePostsHasMore] = useState(true);
   const [profileComments, setProfileComments] = useState<ProfileCommentActivity[]>([]);
   const [profileCommentsLoading, setProfileCommentsLoading] = useState(false);
   const [profilePinnedPosts, setProfilePinnedPosts] = useState<FeedPost[]>([]);
@@ -1546,6 +1550,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setMyProfilePostsLoading(true);
     setMyProfileCommentsLoading(true);
     setMyPinnedPostsLoading(true);
+    setMyProfilePostsHasMore(true);
     Promise.allSettled([
       api.getUserPosts(token, user.username, 10),
       api.getUserComments(token, user.username, 10),
@@ -1560,6 +1565,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         const safeComments = Array.isArray(comments) ? comments : [];
         const safePinned = Array.isArray(pinned) ? pinned : [];
         setMyProfilePosts(safePosts);
+        setMyProfilePostsHasMore(safePosts.length === 10);
         setMyProfileComments(safeComments);
         setMyPinnedPosts(safePinned);
         void hydrateLongPostsForRichRendering(safePosts).then((hydrated) => {
@@ -1734,6 +1740,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setProfileFollowingsMaxId(undefined);
     setProfileJoinedCommunitiesHasMore(true);
     setProfileFollowingsHasMore(true);
+    setProfilePostsHasMore(true);
 
     // --- Stage 1 (critical path): user + posts — renders the profile immediately ---
     Promise.allSettled([
@@ -1756,6 +1763,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           setFollowStateByUsername((prev) => ({ ...prev, [nextUser.username]: nextUser.is_following }));
         }
         setProfilePosts(safeProfilePosts);
+        setProfilePostsHasMore(safeProfilePosts.length === 10);
         setProfileUserLoading(false);
         setProfilePostsLoading(false);
 
@@ -1771,6 +1779,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         if (!active) return;
         setProfileUser(null);
         setProfilePosts([]);
+        setProfilePostsHasMore(false);
         setProfileUserLoading(false);
         setProfilePostsLoading(false);
       });
@@ -1848,6 +1857,76 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       active = false;
     };
   }, [route, token]);
+
+  // Profile post pagination — `api.getUserPosts` takes a `max_id` cursor
+  // (the id of the last post in the previous page). The native app already
+  // paginates via useUserPostsData; this brings the web profile in line so
+  // scrolling to the bottom loads the next page.
+  async function loadMoreMyProfilePosts() {
+    if (!user?.username) return;
+    if (myProfilePostsLoading || myProfilePostsLoadingMore || !myProfilePostsHasMore) return;
+    const last = myProfilePosts[myProfilePosts.length - 1];
+    const cursor = typeof last?.id === 'number' ? last.id : undefined;
+    if (typeof cursor !== 'number') {
+      setMyProfilePostsHasMore(false);
+      return;
+    }
+    setMyProfilePostsLoadingMore(true);
+    try {
+      const more = await api.getUserPosts(token, user.username, 10, cursor);
+      const safe = Array.isArray(more) ? more : [];
+      setMyProfilePosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id).filter((id): id is number => typeof id === 'number'));
+        const deduped = safe.filter((p) => typeof p.id === 'number' && !seen.has(p.id));
+        return [...prev, ...deduped];
+      });
+      setMyProfilePostsHasMore(safe.length === 10);
+      void hydrateLongPostsForRichRendering(safe).then((hydrated) => {
+        if (hydrated.length === 0) return;
+        setMyProfilePosts((prev) => {
+          const byId = new Map(hydrated.map((p) => [p.id, p]));
+          return prev.map((p) => byId.get(p.id) || p);
+        });
+      });
+    } catch {
+      // leave existing items; user can retry by scrolling again
+    } finally {
+      setMyProfilePostsLoadingMore(false);
+    }
+  }
+
+  async function loadMoreProfilePosts() {
+    if (route.screen !== 'profile' || !route.username) return;
+    if (profilePostsLoading || profilePostsLoadingMore || !profilePostsHasMore) return;
+    const last = profilePosts[profilePosts.length - 1];
+    const cursor = typeof last?.id === 'number' ? last.id : undefined;
+    if (typeof cursor !== 'number') {
+      setProfilePostsHasMore(false);
+      return;
+    }
+    setProfilePostsLoadingMore(true);
+    try {
+      const more = await api.getUserPosts(token, route.username, 10, cursor);
+      const safe = Array.isArray(more) ? more : [];
+      setProfilePosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id).filter((id): id is number => typeof id === 'number'));
+        const deduped = safe.filter((p) => typeof p.id === 'number' && !seen.has(p.id));
+        return [...prev, ...deduped];
+      });
+      setProfilePostsHasMore(safe.length === 10);
+      void hydrateLongPostsForRichRendering(safe).then((hydrated) => {
+        if (hydrated.length === 0) return;
+        setProfilePosts((prev) => {
+          const byId = new Map(hydrated.map((p) => [p.id, p]));
+          return prev.map((p) => byId.get(p.id) || p);
+        });
+      });
+    } catch {
+      // leave existing items; user can retry by scrolling again
+    } finally {
+      setProfilePostsLoadingMore(false);
+    }
+  }
 
   async function loadMoreProfileFollowings() {
     if (route.screen !== 'profile' || !route.username) return;
@@ -2288,7 +2367,16 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       }
       topBarScrollHandlerRef.current(scrollTop);
       if (distFromBottom < 600) {
-        void loadMoreFeed();
+        // Profile routes paginate their own posts; otherwise fall back to
+        // the main feed loader. Mirrors the native onScroll handler.
+        const screen = displayRouteScreenRef.current;
+        if (screen === 'me') {
+          void loadMoreMyProfilePostsRef.current();
+        } else if (screen === 'profile') {
+          void loadMoreProfilePostsRef.current();
+        } else {
+          void loadMoreFeed();
+        }
       }
     };
 
@@ -6235,6 +6323,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // The web DOM scroll listener is registered once with stale closures; we
   // call through this ref so it always hits the latest handler.
   const topBarScrollHandlerRef = useRef<(y: number) => void>(() => {});
+  // Same pattern for profile pagination — the DOM listener decides which
+  // load-more to fire based on the current route, and pulls the latest
+  // function via these refs so it doesn't fight a stale closure.
+  const loadMoreMyProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
+  const loadMoreProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
+  const displayRouteScreenRef = useRef<string | undefined>(displayRoute?.screen);
 
   function handleTopBarOnScroll(currentY: number) {
     if (!showBottomTabs) return;
@@ -6274,6 +6368,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // Keep the ref pointing at the latest closure (captures fresh topChromeHeight
   // and showBottomTabs) for the DOM scroll listener to call.
   topBarScrollHandlerRef.current = handleTopBarOnScroll;
+  loadMoreMyProfilePostsRef.current = loadMoreMyProfilePosts;
+  loadMoreProfilePostsRef.current = loadMoreProfilePosts;
+  displayRouteScreenRef.current = displayRoute?.screen;
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
@@ -9322,7 +9419,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           handleTopBarOnScroll(contentOffset.y);
           feedViewport.setScrollY(contentOffset.y);
           const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
-          if (nearBottom && feedHasMore && !feedLoadingMore && !feedLoading) {
+          if (!nearBottom) return;
+          // Profile routes paginate their own posts list; everywhere else
+          // we fall back to the main feed loader. Matches the native
+          // navigator's per-screen pagination behaviour.
+          if (displayRoute.screen === 'me') {
+            void loadMoreMyProfilePosts();
+          } else if (displayRoute.screen === 'profile') {
+            void loadMoreProfilePosts();
+          } else if (feedHasMore && !feedLoadingMore && !feedLoading) {
             void loadMoreFeed();
           }
         }}
@@ -9630,6 +9735,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   void handleToggleAutoPlayMedia();
                 }}
                 onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
+                onOpenEmailPreferences={() => setNotice(
+                  t('emailPreferences.openInNewApp', {
+                    defaultValue: 'Email preferences are available in the latest app — open /email-preferences in the address bar.',
+                  })
+                )}
                 onOpenBlockedUsers={() => setBlockedUsersDrawerOpen(true)}
                 onNotice={setNotice}
                 onChangePassword={handleChangePassword}
@@ -10096,22 +10206,6 @@ const styles = StyleSheet.create({
   },
   backToFeedButtonText: {
     fontSize: 12,
-  },
-  searchResultsWideLayout: {
-    width: '100%',
-    maxWidth: 1400,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 20,
-    marginBottom: 20,
-  },
-  searchResultsLeftReserve: {
-    width: 260,
-    minHeight: 1,
-  },
-  searchResultsMainCard: {
-    flex: 1,
-    maxWidth: 1120,
   },
   searchMainHeader: {
     position: 'relative',
