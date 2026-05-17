@@ -1475,8 +1475,7 @@
     "suppressedTitle": "Email delivery is paused",
     "suppressedBody": "We stopped sending email to your address because it bounced or was marked as spam. Update your account email in Settings to re-enable delivery.",
     "loadFailed": "Could not load your email preferences.",
-    "saveFailed": "Could not save the change. Please try again.",
-    "openInNewApp": "Email preferences are available in the latest app — open /email-preferences in the address bar."
+    "saveFailed": "Could not save the change. Please try again."
   },
   "settings": {
     "blockedUsers": "Blocked users",

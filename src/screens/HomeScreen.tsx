@@ -77,6 +77,7 @@ import RemoteProfileScreen from './RemoteProfileScreen';
 import RemoteThreadScreen from './RemoteThreadScreen';
 import RemoteCommunityScreen from './RemoteCommunityScreen';
 import LinkedAccountsScreenContainer from '../navigation/screens/LinkedAccountsScreenContainer';
+import EmailPreferencesScreenContainer from '../navigation/screens/EmailPreferencesScreenContainer';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
 import EditProfileDrawer from '../components/EditProfileDrawer';
@@ -881,6 +882,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [blockedUsersDrawerOpen, setBlockedUsersDrawerOpen] = useState(false);
   const [linkedAccountsDrawerMounted, setLinkedAccountsDrawerMounted] = useState(false);
   const [blockedUsersDrawerMounted, setBlockedUsersDrawerMounted] = useState(false);
+  const [emailPreferencesOpen, setEmailPreferencesOpen] = useState(false);
+  const [emailPreferencesDrawerMounted, setEmailPreferencesDrawerMounted] = useState(false);
   const [moderationTasksOpen, setModerationTasksOpen] = useState(false);
   const [moderationTasksDrawerMounted, setModerationTasksDrawerMounted] = useState(false);
   const [moderationTasksStatus, setModerationTasksStatus] = useState<'P' | 'A' | 'R'>('P');
@@ -928,6 +931,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const linkedAccountsDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const blockedUsersDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const blockedUsersDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const emailPreferencesDrawerTranslateX = useRef(new Animated.Value(0)).current;
+  const emailPreferencesDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const menuDrawerTranslateX = useRef(new Animated.Value(0)).current;
   const menuDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   const moderationTasksDrawerTranslateX = useRef(new Animated.Value(0)).current;
@@ -1421,6 +1426,38 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       ]).start(() => setLinkedAccountsDrawerMounted(false));
     }
   }, [linkedAccountsOpen, linkedAccountsDrawerBackdropOpacity, linkedAccountsDrawerTranslateX, sideDrawerWidth]);
+
+  useEffect(() => {
+    if (emailPreferencesOpen) {
+      setEmailPreferencesDrawerMounted(true);
+      emailPreferencesDrawerTranslateX.setValue(sideDrawerWidth);
+      Animated.parallel([
+        Animated.timing(emailPreferencesDrawerTranslateX, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(emailPreferencesDrawerBackdropOpacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(emailPreferencesDrawerTranslateX, {
+          toValue: sideDrawerWidth,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(emailPreferencesDrawerBackdropOpacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setEmailPreferencesDrawerMounted(false));
+    }
+  }, [emailPreferencesOpen, emailPreferencesDrawerBackdropOpacity, emailPreferencesDrawerTranslateX, sideDrawerWidth]);
 
   useEffect(() => {
     if (blockedUsersDrawerOpen) {
@@ -6926,6 +6963,40 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       </Modal>
 
       <Modal
+        visible={emailPreferencesDrawerMounted}
+        transparent
+        animationType="none"
+        onRequestClose={() => setEmailPreferencesOpen(false)}
+      >
+        <Animated.View
+          style={[
+            styles.drawerBackdrop,
+            { opacity: emailPreferencesDrawerBackdropOpacity },
+          ]}
+          pointerEvents="auto"
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setEmailPreferencesOpen(false)} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.drawerPanel,
+            {
+              width: sideDrawerWidth,
+              backgroundColor: c.surface,
+              transform: [{ translateX: emailPreferencesDrawerTranslateX }],
+            },
+          ]}
+        >
+          <View style={styles.settingsDrawerHeader}>
+            <Text style={[styles.settingsDrawerTitle, { color: c.textPrimary }]}>
+              {t('settings.emailPreferences', { defaultValue: 'Email preferences' })}
+            </Text>
+          </View>
+          <EmailPreferencesScreenContainer />
+        </Animated.View>
+      </Modal>
+
+      <Modal
         visible={blockedUsersDrawerMounted}
         transparent
         animationType="none"
@@ -9735,11 +9806,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   void handleToggleAutoPlayMedia();
                 }}
                 onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
-                onOpenEmailPreferences={() => setNotice(
-                  t('emailPreferences.openInNewApp', {
-                    defaultValue: 'Email preferences are available in the latest app — open /email-preferences in the address bar.',
-                  })
-                )}
+                onOpenEmailPreferences={() => setEmailPreferencesOpen(true)}
                 onOpenBlockedUsers={() => setBlockedUsersDrawerOpen(true)}
                 onNotice={setNotice}
                 onChangePassword={handleChangePassword}
