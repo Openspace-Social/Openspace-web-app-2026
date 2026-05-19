@@ -193,6 +193,8 @@ type Props = {
   onOpenThread: (inboundObjectId: number) => void;
 };
 
+type ItemFilter = 'all' | 'posts' | 'replies' | 'touches';
+
 export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread }: Props) {
   const { theme } = useTheme();
   const { t } = useTranslation();
@@ -203,6 +205,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   const [payload, setPayload] = useState<FederatedRemoteActorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [followSubmitting, setFollowSubmitting] = useState(false);
+  const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
 
   const load = useCallback(async () => {
     if (!token || !remoteActorId) return;
@@ -230,6 +233,14 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   const hasLinkedMastodonAccount = !!payload?.acting_linked_account?.id;
   const isFollowing = !!relationship?.following;
   const isRequested = !!relationship?.requested;
+  const recentItems = payload?.recent_items || [];
+  const touchCount = recentItems.filter((item) => !!item.local_post?.uuid).length;
+  const filteredItems = recentItems.filter((item) => {
+    if (itemFilter === 'posts') return !item.in_reply_to_uri;
+    if (itemFilter === 'replies') return !!item.in_reply_to_uri;
+    if (itemFilter === 'touches') return !!item.local_post?.uuid;
+    return true;
+  });
 
   const handleToggleFollow = useCallback(async () => {
     if (!token || !remoteActorId || followSubmitting) return;
@@ -357,6 +368,10 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
             <MaterialCommunityIcons name="reply-outline" size={14} color={c.textSecondary} />
             <Text style={styles.pillText}>{formatCount(payload?.counts?.cached_replies)} replies</Text>
           </View>
+          <View style={styles.pill}>
+            <MaterialCommunityIcons name="link-variant" size={14} color={c.textSecondary} />
+            <Text style={styles.pillText}>{formatCount(touchCount)} touching OpenSpace</Text>
+          </View>
         </View>
         <Text style={styles.sectionHint}>
           {t(
@@ -381,6 +396,29 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
         <Text style={styles.sectionTitle}>
           {t('home.federatedRecentActivity', { defaultValue: 'Recent federated activity' })}
         </Text>
+        <View style={styles.pillRow}>
+          {([
+            { key: 'all', label: t('home.filterAll', { defaultValue: 'All' }) },
+            { key: 'posts', label: t('home.remotePostsFilter', { defaultValue: 'Posts' }) },
+            { key: 'replies', label: t('home.remoteRepliesFilter', { defaultValue: 'Replies' }) },
+            { key: 'touches', label: t('home.remoteTouchesFilter', { defaultValue: 'Touches OpenSpace' }) },
+          ] as const).map((option) => {
+            const active = itemFilter === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => setItemFilter(option.key)}
+                style={({ pressed }) => [
+                  styles.pill,
+                  active ? { borderColor: c.primary, backgroundColor: `${c.primary}18` } : null,
+                  pressed ? { opacity: 0.88 } : null,
+                ]}
+              >
+                <Text style={[styles.pillText, active ? { color: c.primary } : null]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <Text style={styles.sectionHint}>
           {t(
             'home.federatedRecentActivityHint',
@@ -389,8 +427,8 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
         </Text>
       </View>
 
-      {payload?.recent_items?.length ? (
-        payload.recent_items.map((item) => (
+      {filteredItems.length ? (
+        filteredItems.map((item) => (
           <RemoteObjectCard
             key={item.id}
             item={item}
@@ -401,10 +439,15 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
       ) : (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>
-            {t(
-              'home.federatedRemoteProfileEmpty',
-              { defaultValue: 'OpenSpace has not cached any visible fediverse activity for this actor yet.' },
-            )}
+            {recentItems.length
+              ? t(
+                  'home.remoteProfileFilterEmpty',
+                  { defaultValue: 'No cached fediverse items match this filter yet.' },
+                )
+              : t(
+                  'home.federatedRemoteProfileEmpty',
+                  { defaultValue: 'OpenSpace has not cached any visible fediverse activity for this actor yet.' },
+                )}
           </Text>
         </View>
       )}

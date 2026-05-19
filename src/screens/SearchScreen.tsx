@@ -24,6 +24,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   api,
+  type FederatedDiscoverySuggestions,
   type FederatedDiscoverySearchResult,
   type SearchCommunityResult,
   type SearchHashtagResult,
@@ -65,7 +66,7 @@ export default function SearchScreen({
   const [communities, setCommunities] = useState<SearchCommunityResult[]>([]);
   const [hashtags, setHashtags] = useState<SearchHashtagResult[]>([]);
   const [federated, setFederated] = useState<FederatedDiscoverySearchResult | null>(null);
-  const [savedFederatedCommunities, setSavedFederatedCommunities] = useState<FederatedDiscoverySearchResult['communities']>([]);
+  const [suggestions, setSuggestions] = useState<FederatedDiscoverySuggestions | null>(null);
   const seqRef = useRef(0);
   const inputRef = useRef<TextInput>(null);
 
@@ -79,13 +80,13 @@ export default function SearchScreen({
     let cancelled = false;
     (async () => {
       try {
-        const response = await api.getFederatedRemoteCommunitySubscriptions(token);
+        const response = await api.getFederatedDiscoverySuggestions(token);
         if (!cancelled) {
-          setSavedFederatedCommunities(response.communities || []);
+          setSuggestions(response);
         }
       } catch {
         if (!cancelled) {
-          setSavedFederatedCommunities([]);
+          setSuggestions(null);
         }
       }
     })();
@@ -187,13 +188,45 @@ export default function SearchScreen({
       >
         {!trimmed ? (
           <>
-            {savedFederatedCommunities.length ? (
+            {suggestions?.actors?.length ? (
+              <Section
+                c={c}
+                title={t('home.recentFediversePeople', { defaultValue: 'Recent fediverse people' })}
+                icon="earth"
+              >
+                {suggestions.actors.map((actor) => (
+                  <TouchableOpacity
+                    key={`suggested-fediverse-actor-${actor.id}`}
+                    style={[s.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenRemoteProfile(actor.id)}
+                  >
+                    <View style={[s.avatar, { backgroundColor: c.primary }]}>
+                      {actor.profile?.avatar ? (
+                        <Image source={{ uri: actor.profile.avatar }} style={s.avatarImage} resizeMode="cover" />
+                      ) : (
+                        <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                        {actor.display_name || actor.profile?.name || actor.handle}
+                      </Text>
+                      <Text style={[s.rowSub, { color: c.textMuted }]} numberOfLines={1}>
+                        {actor.handle}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </Section>
+            ) : null}
+            {suggestions?.communities?.length ? (
               <Section
                 c={c}
                 title={t('home.savedFediverseCommunities', { defaultValue: 'Saved fediverse communities' })}
                 icon="bookmark-outline"
               >
-                {savedFederatedCommunities.map((community) => (
+                {suggestions.communities.map((community) => (
                   <TouchableOpacity
                     key={`saved-fediverse-community-${community.id}`}
                     style={[s.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -213,6 +246,30 @@ export default function SearchScreen({
                     </View>
                   </TouchableOpacity>
                 ))}
+              </Section>
+            ) : null}
+            {suggestions?.top_instances?.length ? (
+              <Section
+                c={c}
+                title={t('home.activeFediverseInstances', { defaultValue: 'Active remote instances' })}
+                icon="server-network"
+              >
+                <View style={s.instanceWrap}>
+                  {suggestions.top_instances.map((instance) => (
+                    <View
+                      key={`fediverse-instance-${instance.domain}`}
+                      style={[s.instanceChip, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    >
+                      <MaterialCommunityIcons name="earth" size={14} color={c.textMuted} />
+                      <Text style={[s.instanceText, { color: c.textPrimary }]} numberOfLines={1}>
+                        {instance.domain}
+                      </Text>
+                      <Text style={[s.instanceCount, { color: c.textMuted }]}>
+                        {instance.count}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
               </Section>
             ) : null}
             <View style={s.placeholderWrap}>
@@ -481,6 +538,19 @@ const makeStyles = (c: any) =>
       borderRadius: 12,
       padding: 10,
     },
+    instanceWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    instanceChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      maxWidth: '100%',
+    },
+    instanceText: { fontSize: 12, fontWeight: '700', maxWidth: 180 },
+    instanceCount: { fontSize: 11, fontWeight: '700' },
     avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     avatarImage: { width: '100%', height: '100%' },
     avatarLetter: { color: '#fff', fontWeight: '900', fontSize: 18 },

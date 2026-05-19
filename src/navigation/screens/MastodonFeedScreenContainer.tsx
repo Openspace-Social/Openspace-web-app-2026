@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, RefreshControl, View } from 'react-native';
-import { useIsFocused, useScrollToTop } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,7 @@ import {
   type FederatedTimelineStatus,
 } from '../../api/client';
 import MastodonFeedScreen from '../../components/MastodonFeedScreen';
+import { openExternalLink } from '../../utils/openExternalLink';
 
 const FEED_PAGE_SIZE = 20;
 type FeedSource = 'home' | 'posts' | 'notifications';
@@ -19,6 +20,7 @@ export default function MastodonFeedScreenContainer() {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const { token } = useAuth();
+  const navigation = useNavigation<any>();
   const c = theme.colors;
 
   // Scroll-to-top wiring. `useScrollToTop` handles the bottom-tab `tabPress`
@@ -143,6 +145,42 @@ export default function MastodonFeedScreenContainer() {
     }
   }, [token, linkedAccount, nextMaxId, loadingMore, hasMore, feedSource]);
 
+  const handleOpenResolvedRemoteProfile = useCallback(async (query: string, fallbackUrl?: string) => {
+    if (!token || !query) {
+      if (fallbackUrl) {
+        void openExternalLink(fallbackUrl);
+      }
+      return;
+    }
+    try {
+      const resolved = await api.resolveFederatedDiscoveryEntity(token, query);
+      if (resolved.kind === 'community') {
+        navigation.navigate('RemoteCommunity', { remoteCommunityId: resolved.community.id });
+        return;
+      }
+      navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
+    } catch {
+      if (fallbackUrl) {
+        void openExternalLink(fallbackUrl);
+      }
+    }
+  }, [navigation, token]);
+
+  const handleOpenResolvedRemoteThread = useCallback(async (url: string) => {
+    if (!token || !url) {
+      if (url) {
+        void openExternalLink(url);
+      }
+      return;
+    }
+    try {
+      const resolved = await api.resolveFederatedRemoteThread(token, url);
+      navigation.navigate('RemoteThread', { inboundObjectId: resolved.inbound_object_id });
+    } catch {
+      void openExternalLink(url);
+    }
+  }, [navigation, token]);
+
   return (
     <ScrollView
       ref={scrollViewRef}
@@ -174,6 +212,8 @@ export default function MastodonFeedScreenContainer() {
           hasMore={hasMore}
           feedSource={feedSource}
           onChangeFeedSource={setFeedSource}
+          onOpenRemoteProfile={handleOpenResolvedRemoteProfile}
+          onOpenRemoteThread={handleOpenResolvedRemoteThread}
         />
       </View>
     </ScrollView>

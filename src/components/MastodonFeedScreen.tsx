@@ -39,6 +39,8 @@ type Props = {
   onOpenLinkedAccounts?: () => void;
   feedSource?: 'home' | 'posts' | 'notifications';
   onChangeFeedSource?: (value: 'home' | 'posts' | 'notifications') => void;
+  onOpenRemoteProfile?: (query: string, fallbackUrl?: string) => void;
+  onOpenRemoteThread?: (url: string) => void;
 };
 
 // Per-status local overrides — populated optimistically on tap and
@@ -112,6 +114,8 @@ export default function MastodonFeedScreen({
   onOpenLinkedAccounts,
   feedSource = 'home',
   onChangeFeedSource,
+  onOpenRemoteProfile,
+  onOpenRemoteThread,
 }: Props) {
   const styles = useMemo(() => makeStyles(c), [c]);
 
@@ -480,28 +484,40 @@ export default function MastodonFeedScreen({
                 >
                   <View style={postCardStyles.feedPostHeader}>
                     <View style={postCardStyles.feedHeaderLeft}>
-                      {account?.avatar_url ? (
-                        <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
-                          <Image source={{ uri: account.avatar_url }} style={postCardStyles.feedAvatarImage} resizeMode="cover" />
-                        </View>
-                      ) : (
-                        <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
-                          <Text style={postCardStyles.feedAvatarLetter}>
-                            {(displayName || 'M').slice(0, 1).toUpperCase()}
+                      <TouchableOpacity
+                        activeOpacity={account?.acct || account?.profile_url ? 0.8 : 1}
+                        disabled={!(account?.acct || account?.profile_url) || !onOpenRemoteProfile}
+                        style={postCardStyles.feedHeaderLeft}
+                        onPress={() => {
+                          const query = account?.profile_url || (account?.acct ? `@${account.acct}` : '');
+                          if (query && onOpenRemoteProfile) {
+                            onOpenRemoteProfile(query, account?.profile_url || status?.url || undefined);
+                          }
+                        }}
+                      >
+                        {account?.avatar_url ? (
+                          <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
+                            <Image source={{ uri: account.avatar_url }} style={postCardStyles.feedAvatarImage} resizeMode="cover" />
+                          </View>
+                        ) : (
+                          <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
+                            <Text style={postCardStyles.feedAvatarLetter}>
+                              {(displayName || 'M').slice(0, 1).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={postCardStyles.feedHeaderMeta}>
+                          <Text numberOfLines={1} style={[postCardStyles.feedAuthor, { color: c.textPrimary }]}>
+                            {displayName}
+                          </Text>
+                          <Text numberOfLines={1} style={[postCardStyles.feedDate, { color: c.textMuted }]}>
+                            @{handle}
+                            {relativeTime ? ` · ${relativeTime}` : ''}
+                            {' · '}
+                            <Text style={{ color: '#6364FF', fontWeight: '700' }}>{typeLabel}</Text>
                           </Text>
                         </View>
-                      )}
-                      <View style={postCardStyles.feedHeaderMeta}>
-                        <Text numberOfLines={1} style={[postCardStyles.feedAuthor, { color: c.textPrimary }]}>
-                          {displayName}
-                        </Text>
-                        <Text numberOfLines={1} style={[postCardStyles.feedDate, { color: c.textMuted }]}>
-                          @{handle}
-                          {relativeTime ? ` · ${relativeTime}` : ''}
-                          {' · '}
-                          <Text style={{ color: '#6364FF', fontWeight: '700' }}>{typeLabel}</Text>
-                        </Text>
-                      </View>
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -513,6 +529,17 @@ export default function MastodonFeedScreen({
 
                   {status?.url ? (
                     <View style={[postCardStyles.feedActionsRow, styles.actionsRowTight]}>
+                      {onOpenRemoteThread ? (
+                        <ActionChip
+                          c={c}
+                          iconActive="source-branch"
+                          iconInactive="source-branch"
+                          activeColor={c.primary}
+                          active={false}
+                          label={t('home.mastodonActionOpenHere', { defaultValue: 'Open here' })}
+                          onPress={() => onOpenRemoteThread(status.url!)}
+                        />
+                      ) : null}
                       <ActionChip
                         c={c}
                         iconActive="open-in-new"
@@ -590,7 +617,17 @@ export default function MastodonFeedScreen({
                 ) : null}
 
                 <View style={postCardStyles.feedPostHeader}>
-                  <View style={postCardStyles.feedHeaderLeft}>
+                  <TouchableOpacity
+                    activeOpacity={account?.acct || account?.profile_url ? 0.8 : 1}
+                    disabled={!(account?.acct || account?.profile_url) || !onOpenRemoteProfile}
+                    style={postCardStyles.feedHeaderLeft}
+                    onPress={() => {
+                      const query = account?.profile_url || (account?.acct ? `@${account.acct}` : '');
+                      if (query && onOpenRemoteProfile) {
+                        onOpenRemoteProfile(query, account?.profile_url || status?.url || undefined);
+                      }
+                    }}
+                  >
                     {account?.avatar_url ? (
                       <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
                         <Image source={{ uri: account.avatar_url }} style={postCardStyles.feedAvatarImage} resizeMode="cover" />
@@ -613,7 +650,7 @@ export default function MastodonFeedScreen({
                         <Text style={{ color: '#6364FF', fontWeight: '700' }}>via Mastodon</Text>
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 {(spoiler || text) ? (
@@ -700,6 +737,17 @@ export default function MastodonFeedScreen({
                 ) : null}
 
                 <View style={[postCardStyles.feedActionsRow, styles.actionsRowTight]}>
+                  {status.url && onOpenRemoteThread ? (
+                    <ActionChip
+                      c={c}
+                      iconActive="source-branch"
+                      iconInactive="source-branch"
+                      activeColor={c.primary}
+                      active={false}
+                      label={t('home.mastodonActionOpenHere', { defaultValue: 'Open here' })}
+                      onPress={() => onOpenRemoteThread(status.url!)}
+                    />
+                  ) : null}
                   <ActionChip
                     c={c}
                     iconActive="star"

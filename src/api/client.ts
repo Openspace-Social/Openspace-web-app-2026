@@ -732,6 +732,19 @@ export type PostMediaItem = {
   };
 };
 
+export type FederatedDiscoverySuggestions = {
+  actors: FederatedRemoteActor[];
+  communities: FederatedRemoteCommunity[];
+  top_instances: Array<{
+    domain: string;
+    count: number;
+  }>;
+};
+
+export type FederatedDiscoveryResolvedEntity =
+  | { kind: 'actor'; actor: FederatedRemoteActor }
+  | { kind: 'community'; community: FederatedRemoteCommunity };
+
 export type FeedPost = {
   id: number;
   uuid?: string;
@@ -2160,11 +2173,35 @@ export const api = {
     );
   },
 
+  getFederatedDiscoverySuggestions: (token: string) =>
+    request<FederatedDiscoverySuggestions>(
+      '/api/auth/user/federation/discovery/suggestions/',
+      { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  resolveFederatedDiscoveryEntity: (token: string, query: string) => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    return request<FederatedDiscoveryResolvedEntity>(
+      `/api/auth/user/federation/discovery/resolve/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+  },
+
   getFederatedRemoteThread: (token: string, inboundObjectId: number) =>
     request<FederatedRemoteThread>(
       `/api/auth/user/federation/inbound-objects/${inboundObjectId}/thread/`,
       { headers: { Authorization: `Token ${token}` } },
     ),
+
+  resolveFederatedRemoteThread: (token: string, url: string) => {
+    const params = new URLSearchParams();
+    params.set('url', url);
+    return request<{ inbound_object_id: number }>(
+      `/api/auth/user/federation/inbound-objects/resolve/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+  },
 
   replyToFederatedInboundObject: (
     token: string,
