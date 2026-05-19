@@ -34,6 +34,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { normalizeImageForUpload } from '../../utils/normalizeImage';
+import { shareProfile } from '../../utils/shareProfile';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -291,6 +292,23 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
     },
     [token, refreshUser, showToast, t],
   );
+
+  const handleShareProfile = useCallback(async () => {
+    const handle = user?.username || username;
+    if (!handle) return;
+    const result = await shareProfile({
+      username: handle,
+      displayName: user?.profile?.name,
+    });
+    if (result.kind === 'copied') {
+      showToast(t('home.profileShareLinkCopied', { defaultValue: 'Profile link copied to clipboard.' }), { type: 'success' });
+    } else if (result.kind === 'failed') {
+      showToast(
+        t('home.profileShareFailed', { defaultValue: 'Could not share profile right now.' }),
+        { type: 'error' },
+      );
+    }
+  }, [user?.username, user?.profile?.name, username, showToast, t]);
 
   // ── Profile-action handlers ─────────────────────────────────────────
   // Each handler optimistically flips the relevant flag(s) on the user
@@ -896,16 +914,28 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
               </Text>
               <UserBadge badges={user?.profile?.badges} size={20} />
               {isOwnProfile ? (
-                <TouchableOpacity
-                  style={[styles.editProfileBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-                  activeOpacity={0.85}
-                  onPress={() => setEditOpen(true)}
-                >
-                  <MaterialCommunityIcons name="pencil-outline" size={14} color={c.textSecondary} />
-                  <Text style={[styles.editProfileText, { color: c.textPrimary }]}>
-                    {t('home.profileEditProfileAction', { defaultValue: 'Edit' })}
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={[styles.editProfileBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => setEditOpen(true)}
+                  >
+                    <MaterialCommunityIcons name="pencil-outline" size={14} color={c.textSecondary} />
+                    <Text style={[styles.editProfileText, { color: c.textPrimary }]}>
+                      {t('home.profileEditProfileAction', { defaultValue: 'Edit' })}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editProfileBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                    activeOpacity={0.85}
+                    onPress={() => { void handleShareProfile(); }}
+                  >
+                    <MaterialCommunityIcons name="share-variant-outline" size={14} color={c.textSecondary} />
+                    <Text style={[styles.editProfileText, { color: c.textPrimary }]}>
+                      {t('home.profileShareAction', { defaultValue: 'Share' })}
+                    </Text>
+                  </TouchableOpacity>
+                </>
               ) : null}
             </View>
             <Text numberOfLines={1} style={[styles.handle, { color: c.textMuted }]}>
@@ -1062,6 +1092,15 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
                   </Text>
                 </>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtnIcon, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              activeOpacity={0.85}
+              onPress={() => { void handleShareProfile(); }}
+              accessibilityLabel={t('home.profileShareAction', { defaultValue: 'Share' })}
+            >
+              <MaterialCommunityIcons name="share-variant-outline" size={18} color={c.textSecondary} />
             </TouchableOpacity>
 
             {/* More menu — Subscribe / Disconnect / Block */}

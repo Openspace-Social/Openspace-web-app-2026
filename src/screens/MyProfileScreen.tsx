@@ -33,6 +33,7 @@ import ProfileActionsMenu from '../components/ProfileActionsMenu';
 import UserBadge from '../components/UserBadge';
 import ProfileSkeleton from '../components/ProfileSkeleton';
 import { PostCardSkeletonList } from '../components/PostCardSkeleton';
+import { shareProfile } from '../utils/shareProfile';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
@@ -1331,6 +1332,26 @@ export default function MyProfileScreen({
               <MaterialCommunityIcons name="pencil-outline" size={16} color={c.textSecondary} />
               <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>{t('home.profileEditProfileAction')}</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+              activeOpacity={0.85}
+              onPress={async () => {
+                const result = await shareProfile({
+                  username: user?.username || profileRouteUsername,
+                  displayName: user?.profile?.name,
+                });
+                if (result.kind === 'copied') {
+                  onNotice(t('home.profileShareLinkCopied', { defaultValue: 'Profile link copied to clipboard.' }));
+                } else if (result.kind === 'failed') {
+                  onNotice(t('home.profileShareFailed', { defaultValue: 'Could not share profile right now.' }));
+                }
+              }}
+            >
+              <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+              <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>
+                {t('home.profileShareAction', { defaultValue: 'Share' })}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={[
@@ -1492,6 +1513,27 @@ export default function MyProfileScreen({
                 )}
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity
+              style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
+              activeOpacity={0.85}
+              onPress={async () => {
+                const result = await shareProfile({
+                  username: user?.username || profileRouteUsername,
+                  displayName: user?.profile?.name,
+                });
+                if (result.kind === 'copied') {
+                  onNotice(t('home.profileShareLinkCopied', { defaultValue: 'Profile link copied to clipboard.' }));
+                } else if (result.kind === 'failed') {
+                  onNotice(t('home.profileShareFailed', { defaultValue: 'Could not share profile right now.' }));
+                }
+              }}
+            >
+              <MaterialCommunityIcons name="share-variant-outline" size={16} color={c.textSecondary} />
+              <Text style={[styles.profileSecondaryBtnText, { color: c.textPrimary }]}>
+                {t('home.profileShareAction', { defaultValue: 'Share' })}
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border, paddingHorizontal: 10 }]}
