@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { api, type FederatedInboundObject, type FederatedRemoteThread } from '../api/client';
+import { api, type FederatedInboundObject, type FederatedRemoteThread, type FederatedTimelineStatus } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { useAppToast } from '../toast/AppToastContext';
 import { openExternalLink } from '../utils/openExternalLink';
@@ -71,6 +72,19 @@ function makeStyles(c: any) {
       gap: 10,
     },
     row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    actorAvatar: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: `${c.primary}22`,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    actorAvatarImage: { width: '100%', height: '100%' },
+    actorAvatarLetter: { color: c.primary, fontSize: 14, fontWeight: '800' },
     sectionTitle: { color: c.textPrimary, fontSize: 18, fontWeight: '800' },
     sectionHint: { color: c.textMuted, fontSize: 13, lineHeight: 18 },
     handle: { color: c.textPrimary, fontSize: 15, fontWeight: '700', flexShrink: 1 },
@@ -123,6 +137,32 @@ function makeStyles(c: any) {
     replyButtonText: { color: '#fff', fontSize: 14, fontWeight: '800' },
     dividerLabel: { color: c.textMuted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
     link: { color: c.primary, fontSize: 13, fontWeight: '700' },
+    actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    actionButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.inputBackground,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    actionButtonActive: {
+      borderColor: `${c.primary}44`,
+      backgroundColor: `${c.primary}14`,
+    },
+    actionButtonText: { color: c.textSecondary, fontSize: 13, fontWeight: '800' },
+    actionButtonTextActive: { color: c.primary },
+    inlineComposer: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.inputBackground,
+      padding: 12,
+      gap: 10,
+    },
   });
 }
 
@@ -142,9 +182,22 @@ function ThreadObjectCard({
   return (
     <View style={[styles.card, highlighted ? { borderColor: c.primary, backgroundColor: `${c.primary}10` } : null]}>
       <View style={styles.row}>
-        <Pressable onPress={onPressActor} disabled={!onPressActor} style={({ pressed }) => [pressed ? { opacity: 0.8 } : null]}>
+        <Pressable
+          onPress={onPressActor}
+          disabled={!onPressActor}
+          style={({ pressed }) => [styles.authorRow, pressed ? { opacity: 0.8 } : null]}
+        >
+          <View style={styles.actorAvatar}>
+            {item.actor.profile?.avatar ? (
+              <Image source={{ uri: item.actor.profile.avatar }} style={styles.actorAvatarImage} resizeMode="cover" />
+            ) : (
+              <Text style={styles.actorAvatarLetter}>
+                {((item.actor.display_name || item.actor.profile?.name || item.actor.handle || 'F').replace(/^@/, '').trim()[0] || 'F').toUpperCase()}
+              </Text>
+            )}
+          </View>
           <Text style={styles.handle} numberOfLines={1}>
-            {item.actor.handle || item.actor.preferred_username || item.actor.actor_uri}
+            {item.actor.display_name || item.actor.profile?.name || item.actor.handle || item.actor.preferred_username || item.actor.actor_uri}
           </Text>
         </Pressable>
         <Text style={styles.meta}>{formatRelativeTime(item.published_at)}</Text>
@@ -188,6 +241,11 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
   const [loading, setLoading] = useState(true);
   const [replyDraft, setReplyDraft] = useState('');
   const [replying, setReplying] = useState(false);
+  const [mastodonStatus, setMastodonStatus] = useState<FederatedTimelineStatus | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [mastodonReplyDraft, setMastodonReplyDraft] = useState('');
+  const [mastodonReplying, setMastodonReplying] = useState(false);
+  const [showMastodonReplyComposer, setShowMastodonReplyComposer] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !inboundObjectId) return;
@@ -195,12 +253,16 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
     try {
       const next = await api.getFederatedRemoteThread(token, inboundObjectId);
       setPayload(next);
+      setMastodonStatus(next.resolved_status || null);
+      setMastodonReplyDraft('');
+      setShowMastodonReplyComposer(false);
     } catch (e: any) {
       showToast(
         e?.message || t('home.federatedRemoteThreadLoadError', { defaultValue: 'Could not load fediverse thread.' }),
         { type: 'error' },
       );
       setPayload(null);
+      setMastodonStatus(null);
     } finally {
       setLoading(false);
     }
@@ -232,7 +294,81 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
     }
   }, [token, inboundObjectId, replyDraft, replying, showToast, t]);
 
+  const runStatusToggle = useCallback(async (
+    action: 'favourite' | 'reblog' | 'bookmark',
+    shouldEnable: boolean,
+  ) => {
+    const linkedAccountId = payload?.acting_linked_account?.id;
+    const statusId = mastodonStatus?.id;
+    if (!token || !linkedAccountId || !statusId) return;
+
+    const loadingKey = `${statusId}:${action}`;
+    setActionLoading((prev) => ({ ...prev, [loadingKey]: true }));
+    try {
+      const updated = action === 'favourite'
+        ? (shouldEnable
+            ? await api.favouriteFederatedStatus(token, linkedAccountId, statusId)
+            : await api.unfavouriteFederatedStatus(token, linkedAccountId, statusId))
+        : action === 'reblog'
+          ? (shouldEnable
+              ? await api.reblogFederatedStatus(token, linkedAccountId, statusId)
+              : await api.unreblogFederatedStatus(token, linkedAccountId, statusId))
+          : (shouldEnable
+              ? await api.bookmarkFederatedStatus(token, linkedAccountId, statusId)
+              : await api.unbookmarkFederatedStatus(token, linkedAccountId, statusId));
+      setMastodonStatus(updated);
+    } catch (e: any) {
+      showToast(
+        e?.message || t('home.mastodonStatusActionFailed', { defaultValue: 'Could not update this Mastodon action.' }),
+        { type: 'error' },
+      );
+    } finally {
+      setActionLoading((prev) => {
+        const next = { ...prev };
+        delete next[loadingKey];
+        return next;
+      });
+    }
+  }, [mastodonStatus?.id, payload?.acting_linked_account?.id, showToast, t, token]);
+
+  const handleMastodonReply = useCallback(async () => {
+    const linkedAccountId = payload?.acting_linked_account?.id;
+    const statusId = mastodonStatus?.id;
+    const trimmed = mastodonReplyDraft.trim();
+    if (!token || !linkedAccountId || !statusId || !trimmed || mastodonReplying) return;
+    setMastodonReplying(true);
+    try {
+      const created = await api.replyToFederatedStatus(token, linkedAccountId, statusId, trimmed);
+      setMastodonReplyDraft('');
+      setShowMastodonReplyComposer(false);
+      setMastodonStatus((prev) => {
+        if (!prev) return created;
+        const currentReplies = typeof prev.replies_count === 'number' ? prev.replies_count : 0;
+        return { ...prev, replies_count: currentReplies + 1 };
+      });
+      showToast(
+        t('home.mastodonReplySuccess', { defaultValue: 'Reply posted through Mastodon.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      showToast(
+        e?.message || t('home.mastodonReplyFailed', { defaultValue: 'Could not post reply.' }),
+        { type: 'error' },
+      );
+    } finally {
+      setMastodonReplying(false);
+    }
+  }, [mastodonReplyDraft, mastodonReplying, mastodonStatus?.id, payload?.acting_linked_account?.id, showToast, t, token]);
+
   const subject = payload?.subject;
+  const resolvedStatus = mastodonStatus;
+  const canUseMastodonActions = !!resolvedStatus?.id && !!payload?.acting_linked_account?.id;
+  const isFavourited = !!resolvedStatus?.favourited;
+  const isReblogged = !!resolvedStatus?.reblogged;
+  const isBookmarked = !!resolvedStatus?.bookmarked;
+  const favouriteCount = typeof resolvedStatus?.favourites_count === 'number' ? resolvedStatus.favourites_count : 0;
+  const reblogCount = typeof resolvedStatus?.reblogs_count === 'number' ? resolvedStatus.reblogs_count : 0;
+  const replyCount = typeof resolvedStatus?.replies_count === 'number' ? resolvedStatus.replies_count : 0;
 
   if (loading && !payload) {
     return (
@@ -285,6 +421,115 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
             highlighted
             onPressActor={() => onOpenProfile(subject.actor.id)}
           />
+          {canUseMastodonActions ? (
+            <>
+              <View style={styles.actionRow}>
+                <Pressable
+                  onPress={() => void runStatusToggle('favourite', !isFavourited)}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    isFavourited ? styles.actionButtonActive : null,
+                    pressed ? { opacity: 0.88 } : null,
+                    actionLoading[`${resolvedStatus?.id}:favourite`] ? { opacity: 0.65 } : null,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={isFavourited ? 'star' : 'star-outline'}
+                    size={16}
+                    color={isFavourited ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[styles.actionButtonText, isFavourited ? styles.actionButtonTextActive : null]}>
+                    {favouriteCount > 0 ? `${favouriteCount}` : t('home.mastodonActionFavourite', { defaultValue: 'Fav' })}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowMastodonReplyComposer((prev) => !prev)}
+                  style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.88 } : null]}
+                >
+                  <MaterialCommunityIcons name="reply-outline" size={16} color={c.textSecondary} />
+                  <Text style={styles.actionButtonText}>
+                    {replyCount > 0 ? `${replyCount}` : t('home.mastodonActionComments', { defaultValue: 'Reply' })}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void runStatusToggle('reblog', !isReblogged)}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    isReblogged ? styles.actionButtonActive : null,
+                    pressed ? { opacity: 0.88 } : null,
+                    actionLoading[`${resolvedStatus?.id}:reblog`] ? { opacity: 0.65 } : null,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="repeat"
+                    size={16}
+                    color={isReblogged ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[styles.actionButtonText, isReblogged ? styles.actionButtonTextActive : null]}>
+                    {reblogCount > 0 ? `${reblogCount}` : t('home.mastodonActionBoost', { defaultValue: 'Boost' })}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void runStatusToggle('bookmark', !isBookmarked)}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    isBookmarked ? styles.actionButtonActive : null,
+                    pressed ? { opacity: 0.88 } : null,
+                    actionLoading[`${resolvedStatus?.id}:bookmark`] ? { opacity: 0.65 } : null,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
+                    size={16}
+                    color={isBookmarked ? c.primary : c.textSecondary}
+                  />
+                  <Text style={[styles.actionButtonText, isBookmarked ? styles.actionButtonTextActive : null]}>
+                    {t('home.mastodonActionSave', { defaultValue: 'Save' })}
+                  </Text>
+                </Pressable>
+              </View>
+              {showMastodonReplyComposer ? (
+                <View style={styles.inlineComposer}>
+                  <Text style={styles.sectionHint}>
+                    {t('home.replyFromMastodonHint', {
+                      defaultValue: 'Reply through your linked Mastodon account so the conversation continues there too.',
+                    })}
+                  </Text>
+                  <TextInput
+                    value={mastodonReplyDraft}
+                    onChangeText={setMastodonReplyDraft}
+                    placeholder={t('home.writeReplyPlaceholder', { defaultValue: 'Write a reply…' })}
+                    placeholderTextColor={c.textMuted}
+                    multiline
+                    style={styles.input}
+                  />
+                  <TouchableOpacity
+                    disabled={mastodonReplying || !mastodonReplyDraft.trim()}
+                    onPress={() => void handleMastodonReply()}
+                    activeOpacity={0.88}
+                    style={[styles.replyButton, (!mastodonReplyDraft.trim() || mastodonReplying) ? { opacity: 0.6 } : null]}
+                  >
+                    {mastodonReplying ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="send" size={16} color="#fff" />
+                        <Text style={styles.replyButtonText}>
+                          {t('home.sendMastodonReply', { defaultValue: 'Reply through Mastodon' })}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </>
+          ) : payload?.acting_linked_account ? (
+            <Text style={styles.sectionHint}>
+              {t('home.remoteThreadActionsPending', {
+                defaultValue: 'OpenSpace found the fediverse thread, but Mastodon has not resolved this post for actions yet.',
+              })}
+            </Text>
+          ) : null}
           <View style={styles.row}>
             <Pressable onPress={() => subject.url && void openExternalLink(subject.url)}>
               <Text style={styles.link}>{t('home.openOnRemoteServer', { defaultValue: 'Open on remote server' })}</Text>

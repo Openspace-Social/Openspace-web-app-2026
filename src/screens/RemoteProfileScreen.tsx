@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -68,6 +69,19 @@ function makeStyles(c: any) {
       backgroundColor: c.card || c.inputBackground,
       gap: 12,
     },
+    heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    heroAvatar: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: `${c.primary}20`,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    heroAvatarImage: { width: '100%', height: '100%' },
+    heroAvatarLetter: { color: c.primary, fontSize: 28, fontWeight: '800' },
     pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     pill: {
       borderRadius: 999,
@@ -282,9 +296,20 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
     <ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent}>
       <View style={styles.hero}>
         <View style={styles.row}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.title}>{actor?.profile?.name || actor?.display_name || 'Fediverse profile'}</Text>
-            <Text style={styles.subtitle}>{actor?.handle || actor?.actor_uri}</Text>
+          <View style={[styles.heroHeader, { flex: 1 }]}>
+            <View style={styles.heroAvatar}>
+              {actor?.profile?.avatar ? (
+                <Image source={{ uri: actor.profile.avatar }} style={styles.heroAvatarImage} resizeMode="cover" />
+              ) : (
+                <Text style={styles.heroAvatarLetter}>
+                  {((actor?.display_name || actor?.profile?.name || actor?.handle || 'F').replace(/^@/, '').trim()[0] || 'F').toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.title}>{actor?.profile?.name || actor?.display_name || 'Fediverse profile'}</Text>
+              <Text style={styles.subtitle}>{actor?.handle || actor?.actor_uri}</Text>
+            </View>
           </View>
         </View>
         <View style={styles.actionsRow}>
@@ -339,6 +364,9 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
             { defaultValue: 'This is a cached fediverse profile built from the remote content OpenSpace already knows about.' },
           )}
         </Text>
+        {actor?.summary ? (
+          <Text style={styles.sectionHint}>{stripHtml(actor.summary)}</Text>
+        ) : null}
         {!hasLinkedMastodonAccount ? (
           <Text style={styles.sectionHint}>
             {t(

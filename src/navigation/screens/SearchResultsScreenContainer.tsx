@@ -181,11 +181,12 @@ export default function SearchResultsScreenContainer() {
           const isCommunity = !!(item as any).handle && String((item as any).handle).startsWith('!');
           const label = isCommunity
             ? ((item as any).title || (item as any).handle)
-            : ((item as any).profile?.name || (item as any).handle);
+            : ((item as any).display_name || (item as any).profile?.name || (item as any).handle);
           const sub = (item as any).handle || (item as any).actor_uri;
           const subLine = isCommunity && (item as any).is_subscribed
             ? `${sub} · Saved in OpenSpace`
             : sub;
+          const avatar = !isCommunity ? (item as any).profile?.avatar : null;
           return (
             <TouchableOpacity
               style={[styles.row, { borderColor: c.border, backgroundColor: c.inputBackground }]}
@@ -197,11 +198,15 @@ export default function SearchResultsScreenContainer() {
               )}
             >
               <View style={[styles.avatar, { backgroundColor: c.primary }]}>
-                <MaterialCommunityIcons
-                  name={isCommunity ? 'account-group-outline' : 'account-outline'}
-                  size={20}
-                  color="#fff"
-                />
+                {!isCommunity && avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.avatarImage} resizeMode="cover" />
+                ) : (
+                  <MaterialCommunityIcons
+                    name={isCommunity ? 'account-group-outline' : 'account-outline'}
+                    size={20}
+                    color="#fff"
+                  />
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>{label}</Text>

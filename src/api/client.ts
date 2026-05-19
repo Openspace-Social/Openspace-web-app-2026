@@ -272,6 +272,7 @@ export type FederatedRemoteActor = {
   domain?: string | null;
   handle?: string;
   display_name?: string;
+  summary?: string | null;
   profile_url?: string | null;
   inbox_url?: string | null;
   outbox_url?: string | null;
@@ -361,6 +362,8 @@ export type FederatedRemoteThread = {
     creator?: { id?: number; username?: string } | null;
     media_thumbnail?: string | null;
   } | null;
+  acting_linked_account?: FederatedLinkedAccount | null;
+  resolved_status?: FederatedTimelineStatus | null;
 };
 
 export type FederatedRemoteCommunity = {

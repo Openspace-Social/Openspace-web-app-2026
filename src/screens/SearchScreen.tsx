@@ -381,11 +381,15 @@ export default function SearchScreen({
                     onPress={() => handleOpenRemoteProfile(actor.id)}
                   >
                     <View style={[s.avatar, { backgroundColor: c.primary }]}>
-                      <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                      {actor.profile?.avatar ? (
+                        <Image source={{ uri: actor.profile.avatar }} style={s.avatarImage} resizeMode="cover" />
+                      ) : (
+                        <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                      )}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[s.rowTitle, { color: c.textPrimary }]} numberOfLines={1}>
-                        {actor.profile?.name || actor.handle}
+                        {actor.display_name || actor.profile?.name || actor.handle}
                       </Text>
                       <Text style={[s.rowSub, { color: c.textMuted }]} numberOfLines={1}>
                         {actor.handle}
