@@ -22,6 +22,7 @@ import FederationSummaryCard from '../components/FederationSummaryCard';
 import { passwordPolicyHint, validatePasswordAgainstBackendPolicy } from '../utils/passwordPolicy';
 import type { FederationSummary, UserNotificationSettings } from '../api/client';
 import { api } from '../api/client';
+import SettingsSkeleton from '../components/SettingsSkeleton';
 
 type Props = {
   c: any;
@@ -52,6 +53,16 @@ type Props = {
    *  that opens a dedicated page (native pattern, matching Linked Accounts).
    *  When omitted the legacy embedded card is rendered inline (web path). */
   onOpenFederation?: () => void;
+  /** When provided, an "Edit profile" tile is shown at the top of Settings.
+   *  Tapping it opens the same EditProfileModal that lives on the profile
+   *  page — duplicated entry point so users can reach profile-level fields
+   *  (display name, bio, location, privacy) from Settings as well. */
+  onOpenEditProfile?: () => void;
+  /** While true, render a SettingsSkeleton instead of the tile list. Used
+   *  by callers (web HomeScreen / native container) to show a properly
+   *  shaped placeholder while user / federation / password-policy data is
+   *  still being fetched. */
+  dataLoading?: boolean;
 };
 
 const EMAIL_CHANGE_PENDING_KEY = '@openspace/settings/email-change-pending-v1';
@@ -99,6 +110,8 @@ export default function SettingsScreen({
   onLogout,
   showHeader = true,
   onOpenFederation,
+  onOpenEditProfile,
+  dataLoading = false,
 }: Props) {
   const s = useStyles(c);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -556,6 +569,19 @@ export default function SettingsScreen({
       ) : null}
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        {dataLoading ? <SettingsSkeleton /> : (<>
+        {onOpenEditProfile ? (
+          <SettingsItem
+            c={c}
+            icon="account-edit-outline"
+            title={t('home.profileEditProfileAction', { defaultValue: 'Edit profile' })}
+            subtitle={t('settings.editProfileSubtitle', {
+              defaultValue: 'Display name, bio, location, and privacy.',
+            })}
+            onPress={onOpenEditProfile}
+          />
+        ) : null}
+
         {federationSummary ? (
           onOpenFederation ? (
             <SettingsItem
@@ -668,6 +694,7 @@ export default function SettingsScreen({
           onPress={() => setDeleteConfirmOpen(true)}
           danger
         />
+        </>)}
       </ScrollView>
 
       <SettingsRightDrawerModal

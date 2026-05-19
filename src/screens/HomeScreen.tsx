@@ -60,6 +60,17 @@ import PostCard from '../components/PostCard';
 import FeedScreen from './FeedScreen';
 import MastodonFeedScreen from '../components/MastodonFeedScreen';
 import PostDetailModal from '../components/PostDetailModal';
+import { PostCardSkeletonList } from '../components/PostCardSkeleton';
+import ProfileSkeleton from '../components/ProfileSkeleton';
+import PostDetailSkeleton from '../components/PostDetailSkeleton';
+import CommunitySkeleton from '../components/CommunitySkeleton';
+import ListPageSkeleton from '../components/ListPageSkeleton';
+import SettingsSkeleton from '../components/SettingsSkeleton';
+import SearchResultsSkeleton from '../components/SearchResultsSkeleton';
+import {
+  SidebarListRowSkeletonList,
+  SidebarProfileStatsSkeleton,
+} from '../components/SidebarWidgetSkeleton';
 import LongPostDetailWebView from '../components/LongPostDetailWebView';
 import RouteSummaryCard from '../components/RouteSummaryCard';
 import HashtagFeedSection from '../components/HashtagFeedSection';
@@ -3089,6 +3100,44 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }));
   }
 
+  function attachDraftCommentImageFile(postId: number, file: File) {
+    if (!file.type.startsWith('image/')) return;
+    const preview = URL.createObjectURL(file);
+    setDraftCommentMediaByPostId((prev) => ({
+      ...prev,
+      [postId]: {
+        kind: 'image',
+        file,
+        uri: preview,
+        name: file.name || 'comment-image.jpg',
+      },
+    }));
+  }
+
+  function attachDraftReplyImageFile(commentId: number, file: File) {
+    if (!file.type.startsWith('image/')) return;
+    const preview = URL.createObjectURL(file);
+    setDraftReplyMediaByCommentId((prev) => ({
+      ...prev,
+      [commentId]: {
+        kind: 'image',
+        file,
+        uri: preview,
+        name: file.name || 'reply-image.jpg',
+      },
+    }));
+  }
+
+  function handleWebPasteCommentImages(postId: number, files: File[]) {
+    const first = files.find((file) => file.type.startsWith('image/'));
+    if (first) attachDraftCommentImageFile(postId, first);
+  }
+
+  function handleWebPasteReplyImages(commentId: number, files: File[]) {
+    const first = files.find((file) => file.type.startsWith('image/'));
+    if (first) attachDraftReplyImageFile(commentId, first);
+  }
+
   function pickDraftCommentImage(postId: number) {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
       setError(t('home.mediaUploadUnsupported', { defaultValue: 'Media upload is currently available on web only.' }));
@@ -5565,6 +5614,36 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     await deleteLongPostDraft(targetUuid);
   }
 
+  function appendComposerImageFiles(files: File[]) {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, 5);
+    if (!imageFiles.length) return;
+
+    setComposerVideo((prev) => {
+      if (prev?.previewUri?.startsWith('blob:') && typeof URL !== 'undefined') {
+        try {
+          URL.revokeObjectURL(prev.previewUri);
+        } catch {
+          // best-effort cleanup for browser object URLs
+        }
+      }
+      return null;
+    });
+
+    setComposerImages((prev) => {
+      const remaining = Math.max(0, 5 - prev.length);
+      if (remaining <= 0) {
+        setNotice(t('home.postComposerMaxImagesReached', { count: 5, defaultValue: 'You can upload up to 5 photos.' }));
+        return prev;
+      }
+      const nextFiles = imageFiles.slice(0, remaining);
+      const nextEntries: ComposerImageSelection[] = nextFiles.map((file) => ({
+        file: file as Blob & { name?: string; type?: string },
+        previewUri: typeof URL !== 'undefined' ? URL.createObjectURL(file) : undefined,
+      }));
+      return [...prev, ...nextEntries];
+    });
+  }
+
   function openComposerMediaPicker(kind: ComposerMediaType) {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
       setNotice(t('home.postComposerMediaUnsupported', { defaultValue: 'Media upload is currently available on web.' }));
@@ -5610,33 +5689,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         return;
       }
 
-      const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, 5);
-      if (!imageFiles.length) return;
-
-      setComposerVideo((prev) => {
-        if (prev?.previewUri?.startsWith('blob:') && typeof URL !== 'undefined') {
-          try {
-            URL.revokeObjectURL(prev.previewUri);
-          } catch {
-            // best-effort cleanup for browser object URLs
-          }
-        }
-        return null;
-      });
-
-      setComposerImages((prev) => {
-        const remaining = Math.max(0, 5 - prev.length);
-        if (remaining <= 0) {
-          setNotice(t('home.postComposerMaxImagesReached', { count: 5, defaultValue: 'You can upload up to 5 photos.' }));
-          return prev;
-        }
-        const nextFiles = imageFiles.slice(0, remaining);
-        const nextEntries: ComposerImageSelection[] = nextFiles.map((file) => ({
-          file: file as Blob & { name?: string; type?: string },
-          previewUri: typeof URL !== 'undefined' ? URL.createObjectURL(file) : undefined,
-        }));
-        return [...prev, ...nextEntries];
-      });
+      appendComposerImageFiles(files);
     };
     input.click();
   }
@@ -6356,6 +6409,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onOpenLink={openLink}
         onPickDraftCommentImage={pickDraftCommentImage}
         onPickDraftReplyImage={pickDraftReplyImage}
+        onWebPasteCommentImages={handleWebPasteCommentImages}
+        onWebPasteReplyImages={handleWebPasteReplyImages}
         onSetDraftCommentGif={setDraftCommentGif}
         onSetDraftReplyGif={setDraftReplyGif}
         onClearDraftCommentMedia={clearDraftCommentMedia}
@@ -7638,6 +7693,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     textAlignVertical="top"
                     maxLength={SHORT_POST_MAX_LENGTH}
                     editable={!composerSubmitting && !composerDestinationsLoading}
+                    onWebPasteImages={appendComposerImageFiles}
                   />
 
                   {/* Shared post preview in compose step */}
@@ -8571,6 +8627,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         onOpenLink={openLink}
         onPickDraftCommentImage={pickDraftCommentImage}
         onPickDraftReplyImage={pickDraftReplyImage}
+        onWebPasteCommentImages={handleWebPasteCommentImages}
+        onWebPasteReplyImages={handleWebPasteReplyImages}
         onSetDraftCommentGif={setDraftCommentGif}
         onSetDraftReplyGif={setDraftReplyGif}
         onClearDraftCommentMedia={clearDraftCommentMedia}
@@ -9443,48 +9501,54 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           >
             {/* Profile card */}
             <View style={[styles.sidebarWidget, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-              <View style={styles.sidebarProfileRow}>
-                <View style={[styles.sidebarAvatar, { backgroundColor: c.primary }]}>
-                  {user?.profile?.avatar ? (
-                    <Image source={{ uri: user.profile.avatar }} style={styles.sidebarAvatarImage} resizeMode="cover" />
-                  ) : (
-                    <Text style={[styles.sidebarAvatarLetter, { color: '#fff' }]}>
-                      {(user?.username?.[0] || 'O').toUpperCase()}
+              {!user?.username ? (
+                <SidebarProfileStatsSkeleton />
+              ) : (
+                <>
+                  <View style={styles.sidebarProfileRow}>
+                    <View style={[styles.sidebarAvatar, { backgroundColor: c.primary }]}>
+                      {user?.profile?.avatar ? (
+                        <Image source={{ uri: user.profile.avatar }} style={styles.sidebarAvatarImage} resizeMode="cover" />
+                      ) : (
+                        <Text style={[styles.sidebarAvatarLetter, { color: '#fff' }]}>
+                          {(user?.username?.[0] || 'O').toUpperCase()}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.sidebarProfileName, { color: c.textPrimary }]} numberOfLines={1}>
+                        {user?.profile?.name || user?.username || ''}
+                      </Text>
+                      <Text style={[styles.sidebarProfileUsername, { color: c.textMuted }]} numberOfLines={1}>
+                        @{user?.username}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.sidebarProfileStats}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.posts_count ?? 0}</Text>
+                      <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatPosts', { defaultValue: 'Posts' })}</Text>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.followers_count ?? 0}</Text>
+                      <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowers', { defaultValue: 'Followers' })}</Text>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.following_count ?? 0}</Text>
+                      <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowing', { defaultValue: 'Following' })}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.sidebarViewProfileBtn, { borderColor: c.primary }]}
+                    activeOpacity={0.85}
+                    onPress={() => onNavigate({ screen: 'me' })}
+                  >
+                    <Text style={[styles.sidebarViewProfileBtnText, { color: c.primary }]}>
+                      {t('home.sidebarViewProfile', { defaultValue: 'View Profile' })}
                     </Text>
-                  )}
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.sidebarProfileName, { color: c.textPrimary }]} numberOfLines={1}>
-                    {user?.profile?.name || user?.username || ''}
-                  </Text>
-                  <Text style={[styles.sidebarProfileUsername, { color: c.textMuted }]} numberOfLines={1}>
-                    @{user?.username}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.sidebarProfileStats}>
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.posts_count ?? 0}</Text>
-                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatPosts', { defaultValue: 'Posts' })}</Text>
-                </View>
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.followers_count ?? 0}</Text>
-                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowers', { defaultValue: 'Followers' })}</Text>
-                </View>
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={[styles.sidebarStatNumber, { color: c.textPrimary }]}>{user?.following_count ?? 0}</Text>
-                  <Text style={[styles.sidebarStatLabel, { color: c.textMuted }]}>{t('home.sidebarStatFollowing', { defaultValue: 'Following' })}</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={[styles.sidebarViewProfileBtn, { borderColor: c.primary }]}
-                activeOpacity={0.85}
-                onPress={() => onNavigate({ screen: 'me' })}
-              >
-                <Text style={[styles.sidebarViewProfileBtnText, { color: c.primary }]}>
-                  {t('home.sidebarViewProfile', { defaultValue: 'View Profile' })}
-                </Text>
-              </TouchableOpacity>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Joined communities */}
@@ -9500,7 +9564,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 </TouchableOpacity>
               </View>
               {sidebarLoading && !sidebarDataLoaded ? (
-                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+                <SidebarListRowSkeletonList count={3} leadingShape="circle" />
               ) : sidebarCommunities.length === 0 ? (
                 <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
                   {t('home.sidebarCommunitiesEmpty', { defaultValue: 'Join communities to see them here.' })}
@@ -9585,7 +9649,58 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         }}
       >
         {loading ? (
-          <ActivityIndicator color={c.primary} size="large" />
+          // Route-matched skeleton during initial auth/user fetch — runs
+          // before any of the inner screens (FeedScreen, MyProfileScreen,
+          // PostDetailModal) get to render their own loading branches. The
+          // shape mirrors what'll appear once `loading` flips false, so the
+          // swap into real content doesn't feel like a layout jump.
+          // Width matches what the real screen for this route renders at —
+          // without this, the wrapper shrinks to its content's intrinsic
+          // width (the parent rootContent style is `alignItems: 'center'`),
+          // producing a narrow "mobile-styled" skeleton on desktop.
+          (() => {
+            const profileLike =
+              displayRoute.screen === 'me' ||
+              displayRoute.screen === 'profile' ||
+              displayRoute.screen === 'community';
+            const settingsLike = displayRoute.screen === 'settings';
+            const listLike =
+              displayRoute.screen === 'circles' ||
+              displayRoute.screen === 'lists' ||
+              displayRoute.screen === 'followers' ||
+              displayRoute.screen === 'following' ||
+              displayRoute.screen === 'blocked';
+            const wrapperMaxWidth = settingsLike
+              ? 1280
+              : profileLike
+                ? 1220
+                : listLike
+                  ? 980
+                  : 760;
+            return (
+              <View style={{ width: '100%', maxWidth: wrapperMaxWidth, alignSelf: 'center' }}>
+                {displayRoute.screen === 'me' || displayRoute.screen === 'profile' ? (
+                  <ProfileSkeleton isEdgeToEdge={isEdgeToEdge} />
+                ) : displayRoute.screen === 'community' ? (
+                  <CommunitySkeleton isEdgeToEdge={isEdgeToEdge} />
+                ) : displayRoute.screen === 'post' ? (
+                  <PostDetailSkeleton />
+                ) : displayRoute.screen === 'settings' ? (
+                  <SettingsSkeleton />
+                ) : displayRoute.screen === 'circles' ? (
+                  <ListPageSkeleton count={4} leadingShape="dot" />
+                ) : displayRoute.screen === 'lists' ? (
+                  <ListPageSkeleton count={4} leadingShape="avatar" />
+                ) : displayRoute.screen === 'followers'
+                  || displayRoute.screen === 'following'
+                  || displayRoute.screen === 'blocked' ? (
+                  <ListPageSkeleton count={6} leadingShape="avatar" />
+                ) : (
+                  <PostCardSkeletonList count={3} />
+                )}
+              </View>
+            );
+          })()
         ) : (
           <>
             {displayRoute.screen === 'me' ? (
@@ -9601,6 +9716,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onSetProfileActiveTab={setProfileActiveTab}
                 myProfilePosts={myProfilePosts}
                 myProfilePostsLoading={myProfilePostsLoading}
+                myProfilePostsLoadingMore={myProfilePostsLoadingMore}
                 myProfileComments={myProfileComments}
                 myProfileCommentsLoading={myProfileCommentsLoading}
                 myPinnedPosts={myPinnedPosts}
@@ -9645,6 +9761,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onSetProfileActiveTab={setProfileActiveTab}
                 myProfilePosts={profilePosts}
                 myProfilePostsLoading={profilePostsLoading}
+                myProfilePostsLoadingMore={profilePostsLoadingMore}
                 myProfileComments={profileComments}
                 myProfileCommentsLoading={profileCommentsLoading}
                 myPinnedPosts={profilePinnedPosts}
@@ -9878,6 +9995,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 c={c}
                 t={t}
                 token={token}
+                dataLoading={!user?.username}
                 currentEmail={user?.email || ''}
                 hasUsablePassword={resolvedHasUsablePassword || passwordInitializedOverride}
                 requiresCurrentPassword={effectiveRequiresCurrentPassword}
@@ -9890,6 +10008,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 onOpenEmailPreferences={() => setEmailPreferencesOpen(true)}
                 onOpenFederation={() => setFederationDrawerOpen(true)}
                 onOpenBlockedUsers={() => setBlockedUsersDrawerOpen(true)}
+                onOpenEditProfile={openEditProfileDrawer}
                 onNotice={setNotice}
                 onChangePassword={handleChangePassword}
                 onRequestEmailChange={handleRequestEmailChange}
@@ -10015,7 +10134,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 </TouchableOpacity>
               </View>
               {sidebarLoading && !sidebarDataLoaded ? (
-                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+                <SidebarListRowSkeletonList count={3} leadingShape="dot" />
               ) : sidebarCircles.length === 0 ? (
                 <View style={{ paddingBottom: 4 }}>
                   <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
@@ -10059,7 +10178,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 {t('home.sidebarTrendingTitle', { defaultValue: 'Trending' })}
               </Text>
               {sidebarLoading && !sidebarDataLoaded ? (
-                <ActivityIndicator size="small" color={c.primary} style={{ marginVertical: 12 }} />
+                <SidebarListRowSkeletonList count={4} leadingShape="hashtag" />
               ) : sidebarHashtags.length === 0 ? (
                 <Text style={[styles.sidebarEmptyText, { color: c.textMuted }]}>
                   {t('home.sidebarTrendingEmpty', { defaultValue: 'Trending topics will appear here as the community grows.' })}

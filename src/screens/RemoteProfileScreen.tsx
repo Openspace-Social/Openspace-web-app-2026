@@ -114,6 +114,23 @@ function makeStyles(c: any) {
     },
     emptyText: { color: c.textSecondary, fontSize: 14, lineHeight: 21 },
     link: { color: c.primary, fontSize: 13, fontWeight: '700' },
+    actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+    actionButton: {
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: c.primary,
+      backgroundColor: c.primary,
+    },
+    actionButtonSecondary: {
+      backgroundColor: c.inputBackground,
+    },
+    actionButtonDisabled: {
+      opacity: 0.55,
+    },
+    actionButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+    actionButtonTextSecondary: { color: c.primary },
   });
 }
 
@@ -171,6 +188,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
 
   const [payload, setPayload] = useState<FederatedRemoteActorDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [followSubmitting, setFollowSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !remoteActorId) return;
@@ -194,6 +212,63 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   }, [load]);
 
   const actor = payload?.actor;
+  const relationship = payload?.relationship;
+  const hasLinkedMastodonAccount = !!payload?.acting_linked_account?.id;
+  const isFollowing = !!relationship?.following;
+  const isRequested = !!relationship?.requested;
+
+  const handleToggleFollow = useCallback(async () => {
+    if (!token || !remoteActorId || followSubmitting) return;
+    if (!hasLinkedMastodonAccount) {
+      showToast(
+        t('home.federatedFollowRequiresLinkedMastodon', {
+          defaultValue: 'Link a Mastodon account before following fediverse profiles.',
+        }),
+        { type: 'error' },
+      );
+      return;
+    }
+
+    setFollowSubmitting(true);
+    try {
+      const next = isFollowing
+        ? await api.unfollowFederatedRemoteActor(token, remoteActorId)
+        : await api.followFederatedRemoteActor(token, remoteActorId);
+      setPayload((prev) => (
+        prev
+          ? {
+              ...prev,
+              acting_linked_account: next.acting_linked_account ?? prev.acting_linked_account,
+              resolved_account: next.resolved_account ?? prev.resolved_account,
+              relationship: next.relationship ?? prev.relationship,
+            }
+          : prev
+      ));
+      showToast(
+        isFollowing
+          ? t('home.federatedUnfollowSuccess', { defaultValue: 'Unfollowed on Mastodon.' })
+          : t('home.federatedFollowSuccess', { defaultValue: 'Following on Mastodon.' }),
+        { type: 'success' },
+      );
+    } catch (e: any) {
+      showToast(
+        e?.message || t('home.federatedFollowActionError', {
+          defaultValue: 'OpenSpace could not update that fediverse follow right now.',
+        }),
+        { type: 'error' },
+      );
+    } finally {
+      setFollowSubmitting(false);
+    }
+  }, [
+    followSubmitting,
+    hasLinkedMastodonAccount,
+    isFollowing,
+    remoteActorId,
+    showToast,
+    t,
+    token,
+  ]);
 
   if (loading && !payload) {
     return (
@@ -211,6 +286,31 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
             <Text style={styles.title}>{actor?.profile?.name || actor?.display_name || 'Fediverse profile'}</Text>
             <Text style={styles.subtitle}>{actor?.handle || actor?.actor_uri}</Text>
           </View>
+        </View>
+        <View style={styles.actionsRow}>
+          <Pressable
+            onPress={() => void handleToggleFollow()}
+            disabled={followSubmitting || !hasLinkedMastodonAccount || isRequested}
+            style={({ pressed }) => [
+              styles.actionButton,
+              (isFollowing || isRequested) ? styles.actionButtonSecondary : null,
+              (followSubmitting || !hasLinkedMastodonAccount || isRequested) ? styles.actionButtonDisabled : null,
+              pressed ? { opacity: 0.9 } : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.actionButtonText,
+                (isFollowing || isRequested) ? styles.actionButtonTextSecondary : null,
+              ]}
+            >
+              {isRequested
+                ? t('home.federatedFollowRequested', { defaultValue: 'Requested' })
+                : isFollowing
+                  ? t('home.federatedFollowing', { defaultValue: 'Following' })
+                  : t('home.federatedFollow', { defaultValue: 'Follow on Mastodon' })}
+            </Text>
+          </Pressable>
           <Pressable onPress={() => actor?.profile_url && void openExternalLink(actor.profile_url)}>
             <Text style={styles.link}>{t('home.openExternal', { defaultValue: 'Open' })}</Text>
           </Pressable>
@@ -239,6 +339,14 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
             { defaultValue: 'This is a cached fediverse profile built from the remote content OpenSpace already knows about.' },
           )}
         </Text>
+        {!hasLinkedMastodonAccount ? (
+          <Text style={styles.sectionHint}>
+            {t(
+              'home.federatedRemoteProfileLinkHint',
+              { defaultValue: 'Link a Mastodon account to follow remote profiles and interact across the fediverse.' },
+            )}
+          </Text>
+        ) : null}
       </View>
 
       <View style={{ gap: 8 }}>

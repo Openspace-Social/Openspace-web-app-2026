@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api, type FederationSummary } from '../../api/client';
 import FederationSummaryCard from '../../components/FederationSummaryCard';
+import ScreenError from '../../components/ScreenError';
 
 export default function FederationSummaryScreenContainer() {
   const { token } = useAuth();
@@ -60,7 +61,7 @@ export default function FederationSummaryScreenContainer() {
           <ActivityIndicator color={c.primary} size="small" />
         </View>
       ) : error ? (
-        <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
+        <ScreenError message={error} c={c} t={t} onRetry={load} retrying={loading} />
       ) : summary ? (
         <FederationSummaryCard c={c} t={t} summary={summary} isOwnProfile />
       ) : (

@@ -14,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, FederationRemoteFollower, FollowingUserResult } from '../api/client';
 import { useAppToast } from '../toast/AppToastContext';
+import ListPageSkeleton from '../components/ListPageSkeleton';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -400,7 +401,7 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
 
       {/* Body */}
       {loading ? (
-        <ActivityIndicator color={c.primary} size="large" style={{ marginTop: 48 }} />
+        <ListPageSkeleton count={6} leadingShape="avatar" />
       ) : error ? (
         <View style={s.centreBox}>
           <Text style={[s.errorText, { color: c.errorText }]}>{error}</Text>

@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { api, FederatedLinkedAccount, FederatedTimelineStatus } from '../api/client';
+import { api, FederatedLinkedAccount, FederatedTimelineNotification, FederatedTimelineStatus } from '../api/client';
 import { openExternalLink } from '../utils/openExternalLink';
 import { postCardStyles } from '../styles/postCardStyles';
 import NativeInlineVideo, { type NativeInlineVideoHandle } from './NativeInlineVideo';
@@ -32,10 +32,13 @@ type Props = {
   loading: boolean;
   error: string;
   items: FederatedTimelineStatus[];
+  notifications?: FederatedTimelineNotification[];
   linkedAccount: FederatedLinkedAccount | null;
   loadingMore?: boolean;
   hasMore?: boolean;
   onOpenLinkedAccounts?: () => void;
+  feedSource?: 'home' | 'posts' | 'notifications';
+  onChangeFeedSource?: (value: 'home' | 'posts' | 'notifications') => void;
 };
 
 // Per-status local overrides — populated optimistically on tap and
@@ -102,10 +105,13 @@ export default function MastodonFeedScreen({
   loading,
   error,
   items,
+  notifications = [],
   linkedAccount,
   loadingMore = false,
   hasMore = false,
   onOpenLinkedAccounts,
+  feedSource = 'home',
+  onChangeFeedSource,
 }: Props) {
   const styles = useMemo(() => makeStyles(c), [c]);
 
@@ -319,6 +325,7 @@ export default function MastodonFeedScreen({
   };
 
   const showConnectBanner = !linkedAccount;
+  const activeItemCount = feedSource === 'notifications' ? notifications.length : items.length;
 
   // On web, wrap the whole feed in a `feedCard`-equivalent outer card
   // so the Mastodon column matches the OpenSpace one (HomeScreen uses
@@ -387,23 +394,142 @@ export default function MastodonFeedScreen({
         </View>
       ) : null}
 
+      {linkedAccount && onChangeFeedSource ? (
+        <View style={styles.chromeInset}>
+          <View style={[styles.sourceTabs, { borderColor: c.border, backgroundColor: c.surface }]}>
+            {([
+              { key: 'home', label: t('home.mastodonFeedHomeTab', { defaultValue: 'Home' }) },
+              { key: 'posts', label: t('home.mastodonFeedPostsTab', { defaultValue: 'Your posts' }) },
+              { key: 'notifications', label: t('home.mastodonFeedNotificationsTab', { defaultValue: 'Notifications' }) },
+            ] as const).map((tab) => {
+              const active = feedSource === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  activeOpacity={0.88}
+                  onPress={() => onChangeFeedSource(tab.key)}
+                  style={[
+                    styles.sourceTabButton,
+                    {
+                      backgroundColor: active ? c.primary : c.inputBackground,
+                      borderColor: active ? c.primary : c.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.sourceTabText, { color: active ? '#fff' : c.textSecondary }]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
       {loading ? (
         <ActivityIndicator color={c.primary} size="small" style={styles.loading} />
       ) : error ? (
         <View style={styles.chromeInset}>
           <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
         </View>
-      ) : items.length === 0 ? (
+      ) : activeItemCount === 0 ? (
         <View style={styles.chromeInset}>
           <Text style={[styles.emptyText, { color: c.textMuted }]}>
             {linkedAccount
-              ? t('home.mastodonFeedEmpty', { defaultValue: 'No Mastodon posts in this timeline yet.' })
+              ? (
+                feedSource === 'posts'
+                  ? t('home.mastodonPostsEmpty', { defaultValue: 'No Mastodon posts from this account yet.' })
+                  : feedSource === 'notifications'
+                    ? t('home.mastodonNotificationsEmpty', { defaultValue: 'No Mastodon notifications yet.' })
+                    : t('home.mastodonFeedEmpty', { defaultValue: 'No Mastodon posts in this timeline yet.' })
+              )
               : t('home.mastodonFeedNeedsAccount', { defaultValue: 'Link a Mastodon account to view this feed.' })}
           </Text>
         </View>
       ) : (
         <View style={styles.list}>
-          {items.map((item) => {
+          {feedSource === 'notifications' ? (
+            notifications.map((item) => {
+              const account = item.account || null;
+              const status = item.status || null;
+              const displayName = account?.display_name || account?.username || 'Mastodon';
+              const handle = account?.acct || account?.username || linkedAccount?.instance_domain || '';
+              const relativeTime = formatRelativeTime(item.created_at);
+              const typeLabel = item.type === 'mention'
+                ? t('home.mastodonNotificationMention', { defaultValue: 'mentioned you' })
+                : item.type === 'reblog'
+                  ? t('home.mastodonNotificationReblog', { defaultValue: 'boosted your post' })
+                  : item.type === 'favourite'
+                    ? t('home.mastodonNotificationFavourite', { defaultValue: 'favorited your post' })
+                    : item.type === 'follow'
+                      ? t('home.mastodonNotificationFollow', { defaultValue: 'followed you' })
+                      : item.type === 'poll'
+                        ? t('home.mastodonNotificationPoll', { defaultValue: 'updated a poll' })
+                        : item.type === 'status'
+                          ? t('home.mastodonNotificationStatus', { defaultValue: 'posted' })
+                          : item.type || t('home.mastodonNotificationGeneric', { defaultValue: 'sent an update' });
+              const text = stripHtml(status?.content);
+
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    cardStyle,
+                    { borderColor: c.border, backgroundColor: c.surface },
+                  ]}
+                >
+                  <View style={postCardStyles.feedPostHeader}>
+                    <View style={postCardStyles.feedHeaderLeft}>
+                      {account?.avatar_url ? (
+                        <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
+                          <Image source={{ uri: account.avatar_url }} style={postCardStyles.feedAvatarImage} resizeMode="cover" />
+                        </View>
+                      ) : (
+                        <View style={[postCardStyles.feedAvatar, { backgroundColor: c.primary }]}>
+                          <Text style={postCardStyles.feedAvatarLetter}>
+                            {(displayName || 'M').slice(0, 1).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={postCardStyles.feedHeaderMeta}>
+                        <Text numberOfLines={1} style={[postCardStyles.feedAuthor, { color: c.textPrimary }]}>
+                          {displayName}
+                        </Text>
+                        <Text numberOfLines={1} style={[postCardStyles.feedDate, { color: c.textMuted }]}>
+                          @{handle}
+                          {relativeTime ? ` · ${relativeTime}` : ''}
+                          {' · '}
+                          <Text style={{ color: '#6364FF', fontWeight: '700' }}>{typeLabel}</Text>
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {text ? (
+                    <View style={postCardStyles.feedTextWrap}>
+                      <Text style={[postCardStyles.feedText, { color: c.textPrimary }]}>{text}</Text>
+                    </View>
+                  ) : null}
+
+                  {status?.url ? (
+                    <View style={[postCardStyles.feedActionsRow, styles.actionsRowTight]}>
+                      <ActionChip
+                        c={c}
+                        iconActive="open-in-new"
+                        iconInactive="open-in-new"
+                        activeColor={c.textSecondary}
+                        active={false}
+                        label={t('home.mastodonActionOpen', { defaultValue: 'Open' })}
+                        onPress={() => void openExternalLink(status.url)}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
+          ) : null}
+
+          {feedSource !== 'notifications' ? items.map((item) => {
             const status = item.reblog || item;
             const account = status.account || item.account || null;
             const media = status.media_attachments || [];
@@ -693,7 +819,7 @@ export default function MastodonFeedScreen({
                 ) : null}
               </View>
             );
-          })}
+          }) : null}
 
           {loadingMore ? (
             <ActivityIndicator color={c.primary} size="small" style={styles.loadingMore} />
@@ -1065,6 +1191,28 @@ function makeStyles(c: any) {
       color: '#fff',
       fontSize: 12,
       fontWeight: '700',
+    },
+    sourceTabs: {
+      marginTop: 12,
+      marginBottom: 4,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 6,
+      flexDirection: 'row',
+      gap: 8,
+    },
+    sourceTabButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sourceTabText: {
+      fontSize: 13,
+      fontWeight: '800',
     },
     loading: {
       paddingVertical: 32,

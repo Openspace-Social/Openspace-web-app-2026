@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import SettingsScreen from '../../screens/SettingsScreen';
+import EditProfileModal, { type ProfileVisibility } from '../../components/EditProfileModal';
 import { api, type UserNotificationSettings } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -34,6 +35,43 @@ export default function SettingsScreenContainer() {
   const [requiresCurrentPassword, setRequiresCurrentPassword] = useState<boolean>(true);
   const [autoPlayMedia, setAutoPlayMedia] = useState<boolean>(false);
   const [federationSummary, setFederationSummary] = useState<any>(null);
+  const [profileData, setProfileData] = useState<{
+    name?: string;
+    bio?: string;
+    location?: string;
+    url?: string;
+    followersCountVisible: boolean;
+    communityPostsVisible: boolean;
+    profileVisibility: ProfileVisibility;
+  }>({
+    followersCountVisible: true,
+    communityPostsVisible: true,
+    profileVisibility: 'P',
+  });
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+
+  const refreshAuthenticatedUser = useCallback(async () => {
+    if (!token) return;
+    try {
+      const user: any = await api.getAuthenticatedUser(token);
+      setCurrentEmail(user?.email ?? undefined);
+      setHasUsablePassword(user?.has_usable_password !== false);
+      setRequiresCurrentPassword(user?.requires_current_password !== false);
+      setFederationSummary(user?.federation_summary ?? null);
+      const visibility = user?.visibility;
+      setProfileData({
+        name: user?.profile?.name,
+        bio: user?.profile?.bio,
+        location: user?.profile?.location,
+        url: user?.profile?.url,
+        followersCountVisible: user?.followers_count_visible !== false,
+        communityPostsVisible: user?.community_posts_visible !== false,
+        profileVisibility: visibility === 'O' || visibility === 'T' ? visibility : 'P',
+      });
+    } catch {
+      // Leave defaults — Settings still renders, just without populated fields.
+    }
+  }, [token]);
 
   // Load user data + persisted autoplay preference on mount.
   useEffect(() => {
@@ -47,20 +85,38 @@ export default function SettingsScreenContainer() {
       }
     })();
     if (!token) return () => { active = false; };
-    (async () => {
-      try {
-        const user: any = await api.getAuthenticatedUser(token);
-        if (!active) return;
-        setCurrentEmail(user?.email ?? undefined);
-        setHasUsablePassword(user?.has_usable_password !== false);
-        setRequiresCurrentPassword(user?.requires_current_password !== false);
-        setFederationSummary(user?.federation_summary ?? null);
-      } catch {
-        // Leave defaults — Settings still renders, just without populated fields.
-      }
-    })();
+    void refreshAuthenticatedUser();
     return () => { active = false; };
-  }, [token]);
+  }, [token, refreshAuthenticatedUser]);
+
+  const saveProfileFields = useCallback(
+    async (next: {
+      name: string;
+      bio: string;
+      location: string;
+      url: string;
+      followersCountVisible: boolean;
+      communityPostsVisible: boolean;
+      profileVisibility: ProfileVisibility;
+    }) => {
+      if (!token) return;
+      await api.updateAuthenticatedUser(token, {
+        name: next.name,
+        bio: next.bio,
+        location: next.location,
+        url: next.url,
+        followers_count_visible: next.followersCountVisible,
+        community_posts_visible: next.communityPostsVisible,
+        visibility: next.profileVisibility,
+      });
+      await refreshAuthenticatedUser();
+      showToast(
+        t('home.profileUpdated', { defaultValue: 'Profile updated' }),
+        { type: 'success' },
+      );
+    },
+    [token, refreshAuthenticatedUser, showToast, t],
+  );
 
   const toggleAutoPlayMedia = useCallback(() => {
     const next = !autoPlayMedia;
@@ -131,29 +187,38 @@ export default function SettingsScreenContainer() {
   }, [showToast]);
 
   return (
-    <SettingsScreen
-      c={theme.colors}
-      t={t}
-      showHeader={false}
-      token={token || undefined}
-      currentEmail={currentEmail}
-      hasUsablePassword={hasUsablePassword}
-      requiresCurrentPassword={requiresCurrentPassword}
-      autoPlayMedia={autoPlayMedia}
-      federationSummary={federationSummary}
-      onToggleAutoPlayMedia={toggleAutoPlayMedia}
-      onOpenLinkedAccounts={handleOpenLinkedAccounts}
-      onOpenEmailPreferences={handleOpenEmailPreferences}
-      onOpenFederation={handleOpenFederation}
-      onOpenBlockedUsers={handleOpenBlockedUsers}
-      onNotice={handleNotice}
-      onChangePassword={changePassword}
-      onRequestEmailChange={requestEmailChange}
-      onConfirmEmailChange={confirmEmailChange}
-      onGetNotificationSettings={getNotificationSettings}
-      onUpdateNotificationSettings={updateNotificationSettings}
-      onDeleteAccount={handleDeleteAccount}
-      onLogout={onLogout}
-    />
+    <>
+      <SettingsScreen
+        c={theme.colors}
+        t={t}
+        showHeader={false}
+        token={token || undefined}
+        currentEmail={currentEmail}
+        hasUsablePassword={hasUsablePassword}
+        requiresCurrentPassword={requiresCurrentPassword}
+        autoPlayMedia={autoPlayMedia}
+        federationSummary={federationSummary}
+        onToggleAutoPlayMedia={toggleAutoPlayMedia}
+        onOpenLinkedAccounts={handleOpenLinkedAccounts}
+        onOpenEmailPreferences={handleOpenEmailPreferences}
+        onOpenFederation={handleOpenFederation}
+        onOpenBlockedUsers={handleOpenBlockedUsers}
+        onOpenEditProfile={() => setEditProfileOpen(true)}
+        onNotice={handleNotice}
+        onChangePassword={changePassword}
+        onRequestEmailChange={requestEmailChange}
+        onConfirmEmailChange={confirmEmailChange}
+        onGetNotificationSettings={getNotificationSettings}
+        onUpdateNotificationSettings={updateNotificationSettings}
+        onDeleteAccount={handleDeleteAccount}
+        onLogout={onLogout}
+      />
+      <EditProfileModal
+        visible={editProfileOpen}
+        onClose={() => setEditProfileOpen(false)}
+        initial={profileData}
+        onSave={saveProfileFields}
+      />
+    </>
   );
 }

@@ -40,6 +40,7 @@ import MentionHashtagInput from './MentionHashtagInput';
 import { GifPickerOverlay } from './GifPickerProvider';
 import { MentionPopupOverlay } from './MentionPopupProvider';
 import ReactionPickerDrawer from './ReactionPickerDrawer';
+import PostDetailSkeleton from './PostDetailSkeleton';
 
 // Native video player. Lazy-required only on native so the web bundle
 // doesn't pull in any of expo-video's iOS/Android-only modules.
@@ -522,6 +523,10 @@ type Props = {
   onOpenLink: (url?: string) => void;
   onPickDraftCommentImage: (postId: number) => void;
   onPickDraftReplyImage: (commentId: number) => void;
+  onWebPasteCommentImages?: (postId: number, files: File[]) => void;
+  onWebPasteReplyImages?: (commentId: number, files: File[]) => void;
+  onPasteDraftCommentImage?: (postId: number) => void;
+  onPasteDraftReplyImage?: (commentId: number) => void;
   onSetDraftCommentGif: (postId: number) => void;
   onSetDraftReplyGif: (commentId: number) => void;
   onClearDraftCommentMedia: (postId: number) => void;
@@ -607,6 +612,10 @@ export default function PostDetailModal({
   onOpenLink,
   onPickDraftCommentImage,
   onPickDraftReplyImage,
+  onWebPasteCommentImages,
+  onWebPasteReplyImages,
+  onPasteDraftCommentImage,
+  onPasteDraftReplyImage,
   onSetDraftCommentGif,
   onSetDraftReplyGif,
   onClearDraftCommentMedia,
@@ -1393,6 +1402,21 @@ export default function PostDetailModal({
                   {t('home.photoAction', { defaultValue: 'Photo' })}
                 </Text>
               </TouchableOpacity>
+              {Platform.OS !== 'web' && (onPasteDraftCommentImage || onPasteDraftReplyImage) ? (
+                <TouchableOpacity
+                  style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                  onPress={() => {
+                    if (isReply && replyCommentId) onPasteDraftReplyImage?.(replyCommentId);
+                    else onPasteDraftCommentImage?.(activePost.id);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="content-paste" size={14} color={c.textSecondary} />
+                  <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                    {t('home.pasteAction', { defaultValue: 'Paste' })}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
                 onPress={() => {
@@ -1444,6 +1468,13 @@ export default function PostDetailModal({
               c={c}
               multiline
               autoFocus
+              onWebPasteImages={(files) => {
+                if (isReply && replyCommentId) {
+                  onWebPasteReplyImages?.(replyCommentId, files);
+                } else if (activePost) {
+                  onWebPasteCommentImages?.(activePost.id, files);
+                }
+              }}
             />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 14 }}>
@@ -3395,8 +3426,8 @@ export default function PostDetailModal({
           </View>
         )
       ) : (
-        <View style={[styles.postDetailRoot, { backgroundColor: c.background, alignItems: 'center', justifyContent: 'center' }]}>
-          <ActivityIndicator color={c.primary} size="large" />
+        <View style={[styles.postDetailRoot, { backgroundColor: c.background }]}>
+          <PostDetailSkeleton />
         </View>
       )}
       </View>

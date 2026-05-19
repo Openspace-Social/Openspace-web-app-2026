@@ -22,6 +22,7 @@ import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import ReactionListDrawer from '../../components/ReactionListDrawer';
+import ScreenError from '../../components/ScreenError';
 import ThemedFlatList from '../../components/ThemedFlatList';
 import MovePostCommunitiesSheet from '../../components/MovePostCommunitiesSheet';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
@@ -276,8 +277,14 @@ export default function HashtagScreenContainer() {
 
   if (error && posts.length === 0) {
     return (
-      <View style={[styles.centered, { backgroundColor: c.background }]}>
-        <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
+      <View style={{ flex: 1, backgroundColor: c.background }}>
+        <ScreenError
+          message={error}
+          c={c}
+          t={t}
+          onRetry={refresh}
+          retrying={refreshing}
+        />
       </View>
     );
   }

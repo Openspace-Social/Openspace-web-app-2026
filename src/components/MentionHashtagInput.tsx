@@ -83,6 +83,10 @@ export type MentionHashtagInputProps = {
   /** Kept for API compat — placement is now auto-detected */
   suggestionListAbove?: boolean;
   c?: any;
+  /** Web only: invoked when the user pastes one or more images directly
+   *  into the input. The default DOM paste is preventDefault'd so the
+   *  binary blob doesn't get stringified into the text. No-op on native. */
+  onWebPasteImages?: (files: File[]) => void;
 };
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -265,6 +269,7 @@ export default function MentionHashtagInput({
   maxLength,
   autoFocus,
   c,
+  onWebPasteImages,
 }: MentionHashtagInputProps) {
   const { height: screenH, width: screenW } = useWindowDimensions();
   const mentionPopup = useMentionPopup();
@@ -299,6 +304,49 @@ export default function MentionHashtagInput({
       hideSub.remove();
     };
   }, []);
+
+  // ─── web paste-image listener ───────────────────────────────────────────
+  // Attach a `paste` listener directly to the underlying <textarea>/<input>
+  // so the user can Cmd/Ctrl+V an image (or screenshot) into a composer and
+  // have it attached just like they'd picked it from the file picker.
+  // Scoped to the input element — global document-level listeners would
+  // fight with other paste targets on the page.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !onWebPasteImages) return undefined;
+    let raf = 0;
+    let domEl: HTMLTextAreaElement | HTMLInputElement | null = null;
+    const handler = (event: Event) => {
+      const ce = event as ClipboardEvent;
+      const items = ce.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length === 0) return;
+      ce.preventDefault();
+      onWebPasteImages(files);
+    };
+    // The DOM element isn't available on the first render; retry on the
+    // next frame until it appears (typically 1 frame).
+    const attach = () => {
+      domEl = getInputDOMEl(inputIdRef.current, textInputRef, containerRef);
+      if (domEl) {
+        domEl.addEventListener('paste', handler as EventListener);
+      } else {
+        raf = requestAnimationFrame(attach);
+      }
+    };
+    attach();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (domEl) domEl.removeEventListener('paste', handler as EventListener);
+    };
+  }, [onWebPasteImages]);
 
   const containerRef   = useRef<View>(null);
   const textInputRef   = useRef<any>(null);

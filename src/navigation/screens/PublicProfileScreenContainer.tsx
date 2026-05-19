@@ -48,6 +48,7 @@ import { useAutoPlayMedia } from '../../hooks/useAutoPlayMedia';
 import ConnectedPostCard from '../../components/ConnectedPostCard';
 import ReactionPickerDrawer from '../../components/ReactionPickerDrawer';
 import ReactionListDrawer from '../../components/ReactionListDrawer';
+import ScreenError from '../../components/ScreenError';
 import { ThemedScrollView } from '../../components/ThemedFlatList';
 import EditProfileModal from '../../components/EditProfileModal';
 import FederationSummaryCard from '../../components/FederationSummaryCard';
@@ -92,6 +93,11 @@ type PublicUser = {
   is_blocked?: boolean;
   connected_circles?: Array<{ id: number; name?: string; color?: string }> | null;
   federation_summary?: FederationSummary | null;
+  // Privacy / visibility settings — only present on the authenticated
+  // user's own response, used to seed the edit-profile form.
+  followers_count_visible?: boolean;
+  community_posts_visible?: boolean;
+  visibility?: 'P' | 'O' | 'T' | string;
 };
 
 type CommunityLite = {
@@ -258,13 +264,24 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
   );
 
   const saveProfileFields = useCallback(
-    async (next: { name: string; bio: string; location: string; url: string }) => {
+    async (next: {
+      name: string;
+      bio: string;
+      location: string;
+      url: string;
+      followersCountVisible: boolean;
+      communityPostsVisible: boolean;
+      profileVisibility: 'P' | 'O' | 'T';
+    }) => {
       if (!token) return;
       await api.updateAuthenticatedUser(token, {
         name: next.name,
         bio: next.bio,
         location: next.location,
         url: next.url,
+        followers_count_visible: next.followersCountVisible,
+        community_posts_visible: next.communityPostsVisible,
+        visibility: next.profileVisibility,
       });
       await refreshUser();
       showToast(
@@ -739,6 +756,12 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
             bio: user?.profile?.bio,
             location: user?.profile?.location,
             url: user?.profile?.url,
+            followersCountVisible: user?.followers_count_visible !== false,
+            communityPostsVisible: user?.community_posts_visible !== false,
+            profileVisibility:
+              user?.visibility === 'O' || user?.visibility === 'T'
+                ? user.visibility
+                : 'P',
           }}
           onSave={saveProfileFields}
         />
@@ -1259,7 +1282,13 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
           ) : loading && posts.length === 0 ? (
             <ActivityIndicator color={c.primary} size="small" />
           ) : error && posts.length === 0 ? (
-            <Text style={[styles.emptyRow, { color: c.errorText }]}>{error}</Text>
+            <ScreenError
+              message={error}
+              c={c}
+              t={t}
+              onRetry={refresh}
+              retrying={refreshing}
+            />
           ) : activePostFeed.length === 0 ? (
             <Text style={[styles.emptyRow, { color: c.textMuted }]}>
               {activityFilter === 'community'

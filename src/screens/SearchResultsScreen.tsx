@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SearchCommunityResult, SearchHashtagResult, SearchUserResult } from '../api/client';
+import SearchResultsSkeleton from '../components/SearchResultsSkeleton';
 
 type Props = {
   styles: any;
@@ -74,7 +75,7 @@ export default function SearchResultsScreen({
         </View>
 
         {searchResultsLoading ? (
-          <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+          <SearchResultsSkeleton />
         ) : (
           <View style={styles.searchMainSections}>
             <View style={styles.searchSection}>

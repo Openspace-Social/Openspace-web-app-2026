@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, CircleDetailResult, CircleResult, ConnectionResult } from '../api/client';
+import ListPageSkeleton from '../components/ListPageSkeleton';
 
 // ─── Preset colours ───────────────────────────────────────────────────────────
 
@@ -378,7 +379,7 @@ export default function CirclesScreen({ token, c, t, onNotice }: Props) {
 
       {/* ── Circles list ─────────────────────────────────────────────────────── */}
       {listLoading ? (
-        <ActivityIndicator color={c.primary} size="large" style={{ marginTop: 40 }} />
+        <ListPageSkeleton count={4} leadingShape="dot" />
       ) : listError ? (
         <View style={s.centreBox}>
           <Text style={[s.errorText, { color: c.errorText }]}>{listError}</Text>

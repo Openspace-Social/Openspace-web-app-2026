@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api, type ModerationPenalty } from '../../api/client';
+import ScreenError from '../../components/ScreenError';
 import ThemedFlatList from '../../components/ThemedFlatList';
 
 function formatExpiration(value: string | null, fallback: string) {
@@ -109,7 +110,7 @@ export default function ModerationPenaltiesScreenContainer() {
       )}
       ListEmptyComponent={
         error ? (
-          <Text style={[styles.emptyText, { color: c.errorText }]}>{error}</Text>
+          <ScreenError message={error} c={c} t={t} onRetry={() => void load()} retrying={loading} />
         ) : (
           <View style={styles.emptyWrap}>
             <MaterialCommunityIcons name="shield-check-outline" size={28} color={c.textMuted} />

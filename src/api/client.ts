@@ -282,6 +282,32 @@ export type FederatedRemoteActor = {
   } | null;
 };
 
+export type FederatedResolvedAccount = {
+  id: string;
+  username?: string;
+  display_name?: string;
+  acct?: string;
+  avatar_url?: string | null;
+  header_url?: string | null;
+  profile_url?: string | null;
+  note?: string | null;
+  followers_count?: number;
+  following_count?: number;
+  statuses_count?: number;
+  locked?: boolean;
+  bot?: boolean;
+  discoverable?: boolean;
+};
+
+export type FederatedRemoteActorRelationship = {
+  id: string;
+  following: boolean;
+  requested: boolean;
+  followed_by: boolean;
+  blocking: boolean;
+  muting: boolean;
+};
+
 export type FederatedInboundObject = {
   id: number;
   object_uri: string;
@@ -317,6 +343,9 @@ export type FederatedRemoteActorDetail = {
     cached_replies?: number;
     cached_items?: number;
   };
+  acting_linked_account?: FederatedLinkedAccount | null;
+  resolved_account?: FederatedResolvedAccount | null;
+  relationship?: FederatedRemoteActorRelationship | null;
   recent_items: FederatedInboundObject[];
 };
 
@@ -580,6 +609,15 @@ export type FederatedTimelineStatus = {
   reblog?: FederatedTimelineStatus | null;
 };
 
+export type FederatedTimelineNotification = {
+  id: string;
+  type?: string;
+  created_at?: string;
+  account?: FederatedTimelineAccount | null;
+  status?: FederatedTimelineStatus | null;
+  report?: Record<string, unknown> | null;
+};
+
 export type FederatedTimelinePaging = {
   limit?: number;
   max_id?: string | null;
@@ -590,6 +628,12 @@ export type FederatedTimelinePaging = {
 export type FederatedTimelineResponse = {
   linked_account: FederatedLinkedAccount;
   items: FederatedTimelineStatus[];
+  paging?: FederatedTimelinePaging;
+};
+
+export type FederatedTimelineNotificationsResponse = {
+  linked_account: FederatedLinkedAccount;
+  items: FederatedTimelineNotification[];
   paging?: FederatedTimelinePaging;
 };
 
@@ -1955,6 +1999,48 @@ export const api = {
     );
   },
 
+  getFederatedAccountPosts: (
+    token: string,
+    linkedAccountId: number,
+    count = 20,
+    maxId?: string,
+    sinceId?: string,
+    minId?: string,
+  ) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(count));
+    if (maxId) params.set('max_id', maxId);
+    if (sinceId) params.set('since_id', sinceId);
+    if (minId) params.set('min_id', minId);
+    return request<FederatedTimelineResponse>(
+      `/api/auth/user/federation/link/${linkedAccountId}/posts/?${params.toString()}`,
+      {
+        headers: { Authorization: `Token ${token}` },
+      },
+    );
+  },
+
+  getFederatedNotifications: (
+    token: string,
+    linkedAccountId: number,
+    count = 20,
+    maxId?: string,
+    sinceId?: string,
+    minId?: string,
+  ) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(count));
+    if (maxId) params.set('max_id', maxId);
+    if (sinceId) params.set('since_id', sinceId);
+    if (minId) params.set('min_id', minId);
+    return request<FederatedTimelineNotificationsResponse>(
+      `/api/auth/user/federation/link/${linkedAccountId}/notifications/?${params.toString()}`,
+      {
+        headers: { Authorization: `Token ${token}` },
+      },
+    );
+  },
+
   startFederatedLink: (token: string, payload: FederatedLinkStartPayload) =>
     request<FederatedLinkStartResult>('/api/auth/user/federation/link/start/', {
       method: 'POST',
@@ -1989,6 +2075,35 @@ export const api = {
     request<FederatedRemoteActorDetail>(
       `/api/auth/user/federation/remote-actors/${remoteActorId}/`,
       { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  followFederatedRemoteActor: (token: string, remoteActorId: number) =>
+    request<{
+      actor: FederatedRemoteActor;
+      acting_linked_account?: FederatedLinkedAccount | null;
+      resolved_account?: FederatedResolvedAccount | null;
+      relationship?: FederatedRemoteActorRelationship | null;
+    }>(
+      `/api/auth/user/federation/remote-actors/${remoteActorId}/follow/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({}),
+      },
+    ),
+
+  unfollowFederatedRemoteActor: (token: string, remoteActorId: number) =>
+    request<{
+      actor: FederatedRemoteActor;
+      acting_linked_account?: FederatedLinkedAccount | null;
+      resolved_account?: FederatedResolvedAccount | null;
+      relationship?: FederatedRemoteActorRelationship | null;
+    }>(
+      `/api/auth/user/federation/remote-actors/${remoteActorId}/follow/`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Token ${token}` },
+      },
     ),
 
   getFederatedRemoteCommunityDetail: (token: string, remoteCommunityId: number) =>

@@ -12,6 +12,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CommunityMember, CommunityOwner, FeedPost, SearchCommunityResult } from '../api/client';
 import LinkifyText from '../components/LinkifyText';
+import CommunitySkeleton from '../components/CommunitySkeleton';
+import { PostCardSkeletonList } from '../components/PostCardSkeleton';
 
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
@@ -128,17 +130,7 @@ export default function CommunityProfileScreen({
     : [];
 
   if (communityLoading && !community) {
-    return (
-      <View
-        style={[
-          styles.profilePageCard,
-          { backgroundColor: c.surface, borderColor: c.border, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
-          isEdgeToEdge && { borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, marginBottom: 0 },
-        ]}
-      >
-        <ActivityIndicator color={c.primary} size="large" />
-      </View>
-    );
+    return <CommunitySkeleton isEdgeToEdge={isEdgeToEdge} />;
   }
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -704,7 +696,9 @@ export default function CommunityProfileScreen({
       ) : null}
 
       {postsLoading ? (
-        <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+        <View style={styles.feedList}>
+          <PostCardSkeletonList count={3} />
+        </View>
       ) : postsError ? (
         <Text style={[styles.feedErrorText, { color: c.errorText }]}>{postsError}</Text>
       ) : posts.length === 0 ? (

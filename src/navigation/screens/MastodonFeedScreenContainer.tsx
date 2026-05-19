@@ -4,10 +4,16 @@ import { useIsFocused, useScrollToTop } from '@react-navigation/native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { api, type FederatedLinkedAccount, type FederatedTimelineStatus } from '../../api/client';
+import {
+  api,
+  type FederatedLinkedAccount,
+  type FederatedTimelineNotification,
+  type FederatedTimelineStatus,
+} from '../../api/client';
 import MastodonFeedScreen from '../../components/MastodonFeedScreen';
 
 const FEED_PAGE_SIZE = 20;
+type FeedSource = 'home' | 'posts' | 'notifications';
 
 export default function MastodonFeedScreenContainer() {
   const { theme } = useTheme();
@@ -26,12 +32,14 @@ export default function MastodonFeedScreenContainer() {
 
   const [linkedAccount, setLinkedAccount] = useState<FederatedLinkedAccount | null>(null);
   const [items, setItems] = useState<FederatedTimelineStatus[]>([]);
+  const [notifications, setNotifications] = useState<FederatedTimelineNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextMaxId, setNextMaxId] = useState<string | undefined>(undefined);
   const [error, setError] = useState('');
+  const [feedSource, setFeedSource] = useState<FeedSource>('home');
 
   const loadFeed = useCallback(async (silent = false) => {
     if (!token) return;
@@ -45,26 +53,42 @@ export default function MastodonFeedScreenContainer() {
       setLinkedAccount(primaryAccount);
       if (!primaryAccount) {
         setItems([]);
+        setNotifications([]);
         return;
       }
-      const payload = await api.getFederatedHomeFeed(token, primaryAccount.id, FEED_PAGE_SIZE);
-      const nextItems = Array.isArray(payload.items) ? payload.items : [];
-      setItems(nextItems);
-      // Mastodon paginates with `max_id=X` meaning "give me items older
-      // than X". The server's `paging` block on this endpoint just
-      // echoes the request params, so we derive the next-page cursor
-      // from the id of the LAST (oldest) item in this page.
-      const lastItem = nextItems[nextItems.length - 1];
-      const nextCursor = lastItem?.id;
-      setNextMaxId(nextCursor);
-      setHasMore(!!nextCursor && nextItems.length >= FEED_PAGE_SIZE);
+      if (feedSource === 'notifications') {
+        const payload = await api.getFederatedNotifications(token, primaryAccount.id, FEED_PAGE_SIZE);
+        const nextItems = Array.isArray(payload.items) ? payload.items : [];
+        setNotifications(nextItems);
+        setItems([]);
+        const lastItem = nextItems[nextItems.length - 1];
+        const nextCursor = lastItem?.id;
+        setNextMaxId(nextCursor);
+        setHasMore(!!nextCursor && nextItems.length >= FEED_PAGE_SIZE);
+      } else {
+        const payload = feedSource === 'posts'
+          ? await api.getFederatedAccountPosts(token, primaryAccount.id, FEED_PAGE_SIZE)
+          : await api.getFederatedHomeFeed(token, primaryAccount.id, FEED_PAGE_SIZE);
+        const nextItems = Array.isArray(payload.items) ? payload.items : [];
+        setItems(nextItems);
+        setNotifications([]);
+        // Mastodon paginates with `max_id=X` meaning "give me items older
+        // than X". The server's `paging` block on this endpoint just
+        // echoes the request params, so we derive the next-page cursor
+        // from the id of the LAST (oldest) item in this page.
+        const lastItem = nextItems[nextItems.length - 1];
+        const nextCursor = lastItem?.id;
+        setNextMaxId(nextCursor);
+        setHasMore(!!nextCursor && nextItems.length >= FEED_PAGE_SIZE);
+      }
     } catch (e: any) {
       setItems([]);
+      setNotifications([]);
       setError(e?.message || t('home.feedLoadError', { defaultValue: 'Could not load the feed.' }));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [t, token]);
+  }, [feedSource, t, token]);
 
   useEffect(() => {
     void loadFeed(false);
@@ -84,13 +108,24 @@ export default function MastodonFeedScreenContainer() {
     if (!token || !linkedAccount || !nextMaxId || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const payload = await api.getFederatedHomeFeed(token, linkedAccount.id, FEED_PAGE_SIZE, nextMaxId);
+      const payload = feedSource === 'notifications'
+        ? await api.getFederatedNotifications(token, linkedAccount.id, FEED_PAGE_SIZE, nextMaxId)
+        : feedSource === 'posts'
+          ? await api.getFederatedAccountPosts(token, linkedAccount.id, FEED_PAGE_SIZE, nextMaxId)
+          : await api.getFederatedHomeFeed(token, linkedAccount.id, FEED_PAGE_SIZE, nextMaxId);
       const moreItems = Array.isArray(payload.items) ? payload.items : [];
       if (moreItems.length > 0) {
-        setItems((prev) => {
-          const existingIds = new Set(prev.map((item) => item.id));
-          return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
-        });
+        if (feedSource === 'notifications') {
+          setNotifications((prev) => {
+            const existingIds = new Set(prev.map((item) => item.id));
+            return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
+          });
+        } else {
+          setItems((prev) => {
+            const existingIds = new Set(prev.map((item) => item.id));
+            return [...prev, ...moreItems.filter((item) => !existingIds.has(item.id))];
+          });
+        }
         // Same client-side cursor derivation as the initial load —
         // last item's id is the next request's max_id.
         const lastItem = moreItems[moreItems.length - 1];
@@ -106,7 +141,7 @@ export default function MastodonFeedScreenContainer() {
     } finally {
       setLoadingMore(false);
     }
-  }, [token, linkedAccount, nextMaxId, loadingMore, hasMore]);
+  }, [token, linkedAccount, nextMaxId, loadingMore, hasMore, feedSource]);
 
   return (
     <ScrollView
@@ -133,9 +168,12 @@ export default function MastodonFeedScreenContainer() {
           loading={loading}
           error={error}
           items={items}
+          notifications={notifications}
           linkedAccount={linkedAccount}
           loadingMore={loadingMore}
           hasMore={hasMore}
+          feedSource={feedSource}
+          onChangeFeedSource={setFeedSource}
         />
       </View>
     </ScrollView>

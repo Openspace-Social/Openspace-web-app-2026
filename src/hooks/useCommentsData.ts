@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, type FeedPost, type PostComment } from '../api/client';
 import { useGifPicker } from '../components/GifPickerProvider';
@@ -86,6 +87,10 @@ export type UseCommentsDataResult = {
   reactToComment: (postId: number, commentId: number, emojiId?: number) => Promise<void>;
   pickDraftCommentImage: (postId: number) => Promise<void>;
   pickDraftReplyImage: (commentId: number) => Promise<void>;
+  /** Read an image off the system clipboard and attach it as the draft.
+   *  No-op (with a notice) when the clipboard has no image. */
+  pasteDraftCommentImage: (postId: number) => Promise<void>;
+  pasteDraftReplyImage: (commentId: number) => Promise<void>;
   setDraftCommentGif: (postId: number) => void;
   setDraftReplyGif: (commentId: number) => void;
   clearDraftCommentMedia: (postId: number) => void;
@@ -375,6 +380,31 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     }
   }, []);
 
+  // Pull an image off the OS clipboard (iOS UIPasteboard / Android
+  // ClipboardManager) and normalize it through the same JPEG/cap pipeline
+  // we use for picked images, so backends never see HEIC or 20-MP payloads.
+  const pasteImageFromClipboard = useCallback(async (): Promise<DraftMedia | null> => {
+    try {
+      const hasImage = await Clipboard.hasImageAsync();
+      if (!hasImage) {
+        Alert.alert(
+          'Paste image',
+          'No image found in clipboard. Copy an image first.',
+        );
+        return null;
+      }
+      const result = await Clipboard.getImageAsync({ format: 'jpeg' });
+      if (!result?.data) return null;
+      // Expo Clipboard returns `data` already prefixed as a data URL,
+      // which expo-image-manipulator accepts as an input URI.
+      const normalizedUri = await normalizeImageForUpload(result.data);
+      return { kind: 'image', uri: normalizedUri, type: 'image/jpeg', name: 'pasted-image.jpg' };
+    } catch (e) {
+      Alert.alert('Paste image', (e as any)?.message || 'Could not read image from clipboard.');
+      return null;
+    }
+  }, []);
+
   // Giphy search modal — exposed via the app-level GifPickerProvider so it
   // works the same in comment composers, reply composers, and any future
   // caller (the post composer would slot in trivially).
@@ -394,6 +424,16 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     const media = await pickImage();
     if (media) setDraftReplyMediaByCommentId((prev) => ({ ...prev, [commentId]: media }));
   }, [pickImage]);
+
+  const pasteDraftCommentImage = useCallback(async (postId: number) => {
+    const media = await pasteImageFromClipboard();
+    if (media) setDraftCommentMediaByPostId((prev) => ({ ...prev, [postId]: media }));
+  }, [pasteImageFromClipboard]);
+
+  const pasteDraftReplyImage = useCallback(async (commentId: number) => {
+    const media = await pasteImageFromClipboard();
+    if (media) setDraftReplyMediaByCommentId((prev) => ({ ...prev, [commentId]: media }));
+  }, [pasteImageFromClipboard]);
 
   const setDraftCommentGif = useCallback(async (postId: number) => {
     const url = await promptGifUrl();
@@ -566,6 +606,8 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     draftReplyMediaByCommentId,
     pickDraftCommentImage,
     pickDraftReplyImage,
+    pasteDraftCommentImage,
+    pasteDraftReplyImage,
     setDraftCommentGif,
     setDraftReplyGif,
     clearDraftCommentMedia,

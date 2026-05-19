@@ -21,6 +21,8 @@ export const lightTheme = {
     errorText: '#DC2626',
     logoutBorder: '#E2E8F0',
     logoutText: '#64748B',
+    skeletonBase: '#E5E7EB',
+    skeletonHighlight: '#F3F4F6',
   },
 };
 
@@ -45,5 +47,7 @@ export const darkTheme: Theme = {
     errorText: '#FCA5A5',
     logoutBorder: '#334155',
     logoutText: '#94A3B8',
+    skeletonBase: '#334155',
+    skeletonHighlight: '#475569',
   },
 };

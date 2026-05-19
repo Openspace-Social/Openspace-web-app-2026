@@ -300,6 +300,8 @@ export function useNativePostInteractions({
       },
       onPickDraftCommentImage: comments.pickDraftCommentImage,
       onPickDraftReplyImage: comments.pickDraftReplyImage,
+      onPasteDraftCommentImage: comments.pasteDraftCommentImage,
+      onPasteDraftReplyImage: comments.pasteDraftReplyImage,
       onSetDraftCommentGif: comments.setDraftCommentGif,
       onSetDraftReplyGif: comments.setDraftReplyGif,
       onClearDraftCommentMedia: comments.clearDraftCommentMedia,

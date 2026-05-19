@@ -588,6 +588,15 @@ export type PostCardProps = {
   onOpenLink: (url?: string) => void;
   onPickDraftCommentImage: (postId: number) => void;
   onPickDraftReplyImage: (commentId: number) => void;
+  /** Web only: invoked when the user pastes an image directly into the
+   *  comment or reply input. No-op on native. */
+  onWebPasteCommentImages?: (postId: number, files: File[]) => void;
+  onWebPasteReplyImages?: (commentId: number, files: File[]) => void;
+  /** Native only: invoked when the user taps the explicit "Paste" button to
+   *  attach an image from the OS clipboard. No-op on web (web has invisible
+   *  Cmd/Ctrl+V via onWebPasteCommentImages). */
+  onPasteDraftCommentImage?: (postId: number) => void;
+  onPasteDraftReplyImage?: (commentId: number) => void;
   onSetDraftCommentGif: (postId: number) => void;
   onSetDraftReplyGif: (commentId: number) => void;
   onClearDraftCommentMedia: (postId: number) => void;
@@ -679,6 +688,10 @@ function PostCard({
   onOpenLink,
   onPickDraftCommentImage,
   onPickDraftReplyImage,
+  onWebPasteCommentImages,
+  onWebPasteReplyImages,
+  onPasteDraftCommentImage,
+  onPasteDraftReplyImage,
   onSetDraftCommentGif,
   onSetDraftReplyGif,
   onClearDraftCommentMedia,
@@ -3428,6 +3441,18 @@ function PostCard({
                             {t('home.photoAction', { defaultValue: 'Photo' })}
                           </Text>
                         </TouchableOpacity>
+                        {Platform.OS !== 'web' && onPasteDraftReplyImage ? (
+                          <TouchableOpacity
+                            style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                            onPress={() => onPasteDraftReplyImage(comment.id)}
+                            activeOpacity={0.85}
+                          >
+                            <MaterialCommunityIcons name="content-paste" size={14} color={c.textSecondary} />
+                            <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                              {t('home.pasteAction', { defaultValue: 'Paste' })}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
                         <TouchableOpacity
                           style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
                           onPress={() => onSetDraftReplyGif(comment.id)}
@@ -3461,6 +3486,11 @@ function PostCard({
                       token={token}
                       c={c}
                       multiline
+                      onWebPasteImages={
+                        onWebPasteReplyImages
+                          ? (files) => onWebPasteReplyImages(comment.id, files)
+                          : undefined
+                      }
                     />
                   </View>
                 </View>
@@ -3482,6 +3512,18 @@ function PostCard({
                     {t('home.photoAction', { defaultValue: 'Photo' })}
                   </Text>
                 </TouchableOpacity>
+                {Platform.OS !== 'web' && onPasteDraftCommentImage ? (
+                  <TouchableOpacity
+                    style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
+                    onPress={() => onPasteDraftCommentImage(post.id)}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="content-paste" size={14} color={c.textSecondary} />
+                    <Text style={[styles.commentSendText, { color: c.textSecondary }]}>
+                      {t('home.pasteAction', { defaultValue: 'Paste' })}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
                   style={[styles.commentReplySendButton, { backgroundColor: c.inputBackground, borderColor: c.border, borderWidth: 1 }]}
                   onPress={() => onSetDraftCommentGif(post.id)}
@@ -3512,6 +3554,11 @@ function PostCard({
               token={token}
               c={c}
               multiline
+              onWebPasteImages={
+                onWebPasteCommentImages
+                  ? (files) => onWebPasteCommentImages(post.id, files)
+                  : undefined
+              }
             />
           </View>
         </View>

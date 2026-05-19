@@ -23,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { api } from '../../api/client';
 import ThemedFlatList from '../../components/ThemedFlatList';
+import ScreenError from '../../components/ScreenError';
 import type { HomeStackParamList } from '../AppNavigator';
 
 type Community = {
@@ -138,7 +139,7 @@ export default function UserCommunitiesScreenContainer() {
       refreshTintColor={c.textPrimary}
       ListEmptyComponent={
         error ? (
-          <Text style={[styles.emptyText, { color: c.errorText }]}>{error}</Text>
+          <ScreenError message={error} c={c} t={t} onRetry={onRefresh} retrying={refreshing} />
         ) : (
           <Text style={[styles.emptyText, { color: c.textMuted }]}>
             {t('home.profileJoinedCommunitiesEmpty', { defaultValue: 'No joined communities yet.' })}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
+import { PostCardSkeletonList } from '../components/PostCardSkeleton';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost } from '../api/client';
 
@@ -112,7 +113,9 @@ export default function FeedScreen({
       )}
 
       {feedLoading ? (
-        <ActivityIndicator color={c.primary} size="small" style={styles.feedLoading} />
+        <View style={styles.feedList}>
+          <PostCardSkeletonList count={3} />
+        </View>
       ) : feedError ? (
         <Text style={[styles.feedErrorText, { color: c.errorText }]}>{feedError}</Text>
       ) : feedPosts.length === 0 ? (

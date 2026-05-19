@@ -13,6 +13,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import PublicPostScreen from './src/screens/PublicPostScreen';
 import PublicProfileLandingScreen from './src/screens/PublicProfileLandingScreen';
 import CookieConsentBanner from './src/components/CookieConsentBanner';
+import RateAppPrompt from './src/components/RateAppPrompt';
 import { AppRoute, defaultAuthedRoute, isLegalDrawerRoute, parsePathToRoute, routeToPath } from './src/routing';
 import { AppToastProvider } from './src/toast/AppToastContext';
 import { GifPickerProvider } from './src/components/GifPickerProvider';
@@ -275,6 +276,9 @@ function Root() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AuthProvider value={authValue}>
         {renderContent()}
+        {/* "Rate Openspace" ask — self-gates on platform + auth + cooldown,
+            so it's safe to mount unconditionally here. */}
+        <RateAppPrompt />
       </AuthProvider>
       <CookieConsentBanner />
     </RootContainer>

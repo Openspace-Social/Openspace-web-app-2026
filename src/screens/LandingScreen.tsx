@@ -285,12 +285,17 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
     loadFederationVisitorAttribution()
       .then((context) => {
         if (cancelled || !context?.visitorToken) return;
+        // We still capture the federation token + preferred mode so the
+        // Mastodon-flow screens (mastodonChooseFlow / continueMastodon)
+        // can render their welcome card and route attribution properly.
+        // We deliberately DO NOT auto-switch the authMode here anymore:
+        // landing on a tracked link from email / a mail-app's in-app
+        // browser was incorrectly flipping the page from Sign in to
+        // Get started with the fediverse card prominently displayed.
+        // The user always sees Sign in first; the fediverse context only
+        // appears once they click "Continue with Mastodon".
         setFederationReferralToken(context.visitorToken);
         setFederationVisitorMode(context.preferredAuthMode || 'signup');
-        setAuthMode((currentMode) => {
-          if (currentMode !== 'login') return currentMode;
-          return context.preferredAuthMode === 'mastodon' ? 'mastodonChooseFlow' : 'signup';
-        });
       })
       .catch(() => {});
     return () => {
@@ -1646,7 +1651,11 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
             </View>
           )}
 
-          {!!federationReferralToken && (
+          {!!federationReferralToken
+            && (authMode === 'mastodonChooseFlow'
+              || authMode === 'continueMastodon'
+              || authMode === 'linkMastodon'
+              || authMode === 'mastodonSetupChecklist') && (
             <View
               style={[
                 styles.fediverseVisitorCard,

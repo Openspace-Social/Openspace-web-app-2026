@@ -21,6 +21,7 @@ import {
   ListResult,
   SearchUserResult,
 } from '../api/client';
+import ListPageSkeleton from '../components/ListPageSkeleton';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -401,7 +402,7 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
 
       {/* ── Lists ──────────────────────────────────────────────────────────── */}
       {listsLoading ? (
-        <ActivityIndicator color={c.primary} size="large" style={{ marginTop: 40 }} />
+        <ListPageSkeleton count={4} leadingShape="avatar" />
       ) : listsError ? (
         <View style={s.centreBox}>
           <Text style={[s.errorText, { color: c.errorText }]}>{listsError}</Text>

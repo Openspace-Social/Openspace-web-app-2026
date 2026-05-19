@@ -31,6 +31,8 @@ import {
 import FederationSummaryCard from '../components/FederationSummaryCard';
 import ProfileActionsMenu from '../components/ProfileActionsMenu';
 import UserBadge from '../components/UserBadge';
+import ProfileSkeleton from '../components/ProfileSkeleton';
+import { PostCardSkeletonList } from '../components/PostCardSkeleton';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
@@ -50,6 +52,9 @@ type Props = {
   onSetProfileActiveTab: (tab: TabKey) => void;
   myProfilePosts: FeedPost[];
   myProfilePostsLoading: boolean;
+  /** Append-paginating: true while the next page is in flight. Drives the
+   *  inline footer spinner so the user sees that more posts are loading. */
+  myProfilePostsLoadingMore?: boolean;
   myProfileComments: ProfileCommentActivity[];
   myProfileCommentsLoading: boolean;
   myPinnedPosts: FeedPost[];
@@ -120,6 +125,7 @@ export default function MyProfileScreen({
   onSetProfileActiveTab,
   myProfilePosts,
   myProfilePostsLoading,
+  myProfilePostsLoadingMore = false,
   myProfileComments,
   myProfileCommentsLoading,
   myPinnedPosts,
@@ -638,6 +644,18 @@ export default function MyProfileScreen({
     } finally {
       setCoverSaving(false);
     }
+  }
+
+  // While the user's profile is still being fetched (public-profile path —
+  // own profiles always have a cached user), show a layout-matched skeleton
+  // instead of an empty card with two small inner spinners.
+  if (isProfileLoading) {
+    return (
+      <ProfileSkeleton
+        isCompactProfileLayout={isCompactProfileLayout}
+        isEdgeToEdge={isEdgeToEdge}
+      />
+    );
   }
 
   return (
@@ -1920,7 +1938,9 @@ export default function MyProfileScreen({
                   </View>
                 )
               ) : myProfilePostsLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
+                <View style={styles.feedList}>
+                  <PostCardSkeletonList count={2} />
+                </View>
               ) : activeFilterPosts.length === 0 ? (
                 <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>
                   {activeFilterEmptyMessage}
@@ -1930,6 +1950,11 @@ export default function MyProfileScreen({
                   {activeFilterPosts.map((post) => (
                     <React.Fragment key={`profile-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
                   ))}
+                  {myProfilePostsLoadingMore ? (
+                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                      <ActivityIndicator color={c.primary} size="small" />
+                    </View>
+                  ) : null}
                 </View>
               )}
             </View>

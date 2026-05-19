@@ -30,6 +30,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Clipboard from 'expo-clipboard';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
 import {
   api,
@@ -575,6 +576,45 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       });
     } catch {
       onError(t('home.profileImagePickerFailed', { defaultValue: 'Could not open the photo library.' }));
+    }
+  }, [submitting, composerVideo, remainingImageSlots, onError, onNotice, t]);
+
+  const pasteMedia = useCallback(async () => {
+    if (submitting) return;
+    if (composerVideo) {
+      onError(t('home.composerVideoExclusive', {
+        defaultValue: 'Remove the video first to add photos.',
+      }));
+      return;
+    }
+    if (remainingImageSlots <= 0) {
+      onError(t('home.composerMaxImagesReached', {
+        count: MAX_IMAGES,
+        defaultValue: `You can attach up to ${MAX_IMAGES} images.`,
+      }));
+      return;
+    }
+    try {
+      const hasImage = await Clipboard.hasImageAsync();
+      if (!hasImage) {
+        onNotice(t('home.composerPasteNoImage', {
+          defaultValue: 'No image found in clipboard. Copy an image first.',
+        }));
+        return;
+      }
+      const result = await Clipboard.getImageAsync({ format: 'jpeg' });
+      if (!result?.data) return;
+      // Clipboard image is a data URL; expo-image-manipulator accepts it and
+      // outputs a file:// URI on disk, which is what FormData uploads need.
+      const normalized = await normalizeImageForUpload(result.data);
+      setImageUris((prev) => {
+        if (prev.length >= MAX_IMAGES) return prev;
+        return [...prev, normalized];
+      });
+    } catch (e: any) {
+      onError(e?.message || t('home.composerPasteFailed', {
+        defaultValue: 'Could not paste image from clipboard.',
+      }));
     }
   }, [submitting, composerVideo, remainingImageSlots, onError, onNotice, t]);
 
@@ -1428,7 +1468,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       {mode === 'short' ? (
         <View style={[s.toolbar, { borderTopColor: c.border, backgroundColor: c.surface }]}>
           <TouchableOpacity
-            style={[s.toolbarBtn, { backgroundColor: c.inputBackground }]}
+            style={[s.toolbarBtn, { backgroundColor: c.inputBackground, flex: 1 }]}
             activeOpacity={0.85}
             onPress={() => void pickMedia()}
             disabled={submitting}
@@ -1447,6 +1487,18 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
                       max: MAX_IMAGES,
                       defaultValue: `${imageUris.length}/${MAX_IMAGES} images`,
                     })}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.toolbarBtn, { backgroundColor: c.inputBackground }]}
+            activeOpacity={0.85}
+            onPress={() => void pasteMedia()}
+            disabled={submitting || !!composerVideo}
+            accessibilityLabel={t('home.pasteFromClipboard', { defaultValue: 'Paste image from clipboard' })}
+          >
+            <MaterialCommunityIcons name="content-paste" size={20} color={c.textSecondary} />
+            <Text style={[s.toolbarBtnText, { color: c.textPrimary }]}>
+              {t('home.pasteAction', { defaultValue: 'Paste' })}
             </Text>
           </TouchableOpacity>
         </View>

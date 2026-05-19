@@ -31,6 +31,7 @@ import {
   type SearchUserResult,
 } from '../../api/client';
 import type { HomeStackParamList } from '../AppNavigator';
+import ScreenError from '../../components/ScreenError';
 
 // Backend caps each search endpoint at 10 results per request. Until the
 // API exposes pagination cursors, we ask for the max it allows.
@@ -238,7 +239,7 @@ export default function SearchResultsScreenContainer() {
       }}
       ListEmptyComponent={
         error ? (
-          <Text style={[styles.emptyText, { color: c.errorText }]}>{error}</Text>
+          <ScreenError message={error} c={c} t={t} onRetry={() => void load()} retrying={loading} />
         ) : (
           <Text style={[styles.emptyText, { color: c.textMuted }]}>
             {t('home.searchNoResults', { defaultValue: 'No results match that search.' })}

@@ -25,6 +25,7 @@ import {
   type SocialProvider,
 } from '../../api/client';
 import { nativeSocialIdToken } from '../../utils/nativeSocialAuth';
+import ScreenError from '../../components/ScreenError';
 
 const PROVIDERS: SocialProvider[] = ['google', 'apple'];
 
@@ -466,7 +467,7 @@ export default function LinkedAccountsScreenContainer() {
             <ActivityIndicator color={c.primary} size="small" />
           </View>
         ) : error ? (
-          <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
+          <ScreenError message={error} c={c} t={t} onRetry={load} retrying={loading} />
         ) : (
           <View style={styles.list}>
             <View style={[styles.sectionCard, { backgroundColor: c.surface, borderColor: c.border }]}>

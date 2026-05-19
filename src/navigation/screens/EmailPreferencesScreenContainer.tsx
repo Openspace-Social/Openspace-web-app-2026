@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAppToast } from '../../toast/AppToastContext';
 import { api, type EmailPreferences } from '../../api/client';
+import ScreenError from '../../components/ScreenError';
 
 type ToggleKey = 'promotional' | 'product_updates';
 
@@ -94,7 +95,7 @@ export default function EmailPreferencesScreenContainer() {
             <ActivityIndicator color={c.primary} size="small" />
           </View>
         ) : error ? (
-          <Text style={[styles.errorText, { color: c.errorText }]}>{error}</Text>
+          <ScreenError message={error} c={c} t={t} onRetry={load} retrying={loading} />
         ) : prefs ? (
           <View style={styles.list}>
             {suppressed ? (

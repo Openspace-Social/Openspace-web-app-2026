@@ -29,8 +29,10 @@ import {
   $isRangeSelection,
   $isRootOrShadowRoot,
   $isTextNode,
+  COMMAND_PRIORITY_LOW,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  PASTE_COMMAND,
   REDO_COMMAND,
   UNDO_COMMAND,
 } from 'lexical';
@@ -395,6 +397,45 @@ function ToolbarPlugin({
     previewUrl: string;
   } | null>(null);
   const [rotating, setRotating] = React.useState(false);
+
+  // Image-paste support: hook into Lexical's PASTE_COMMAND so the user can
+  // Cmd/Ctrl+V a screenshot or copied image and have it surface in the same
+  // pending-upload preview the toolbar's "Upload Image" button uses (rotate +
+  // confirm). Caps at maxImages — extra images are skipped silently.
+  React.useEffect(() => {
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (event: ClipboardEvent | unknown) => {
+        const ce = event as ClipboardEvent;
+        const items = ce?.clipboardData?.items;
+        if (!items || items.length === 0) return false;
+        const imageItems: File[] = [];
+        for (let i = 0; i < items.length; i += 1) {
+          const item = items[i];
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) imageItems.push(file);
+          }
+        }
+        if (imageItems.length === 0) return false;
+        if (currentImageCount >= maxImages) {
+          onNotify?.(`You can add up to ${maxImages} images in a long post.`);
+          ce.preventDefault();
+          return true;
+        }
+        const file = imageItems[0];
+        const previewUrl = URL.createObjectURL(file);
+        setPendingUpload({
+          blob: file as Blob & { name?: string; type?: string },
+          previewUrl,
+        });
+        ce.preventDefault();
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor, currentImageCount, maxImages, onNotify]);
+
   const [tableRows, setTableRows] = React.useState('3');
   const [tableCols, setTableCols] = React.useState('3');
   const [tableHeaders, setTableHeaders] = React.useState(true);
