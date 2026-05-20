@@ -350,6 +350,12 @@ export type FederatedRemoteActorDetail = {
   recent_items: FederatedInboundObject[];
 };
 
+export type FederatedRemoteActorHydrateResult = {
+  actor: FederatedRemoteActor;
+  imported_items: number;
+  resolved_account?: FederatedResolvedAccount | null;
+};
+
 export type FederatedRemoteThread = {
   subject: FederatedInboundObject;
   ancestors: FederatedInboundObject[];
@@ -2091,6 +2097,16 @@ export const api = {
     request<FederatedRemoteActorDetail>(
       `/api/auth/user/federation/remote-actors/${remoteActorId}/`,
       { headers: { Authorization: `Token ${token}` } },
+    ),
+
+  hydrateFederatedRemoteActor: (token: string, remoteActorId: number) =>
+    request<FederatedRemoteActorHydrateResult>(
+      `/api/auth/user/federation/remote-actors/${remoteActorId}/hydrate/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({}),
+      },
     ),
 
   followFederatedRemoteActor: (token: string, remoteActorId: number) =>

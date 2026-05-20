@@ -206,13 +206,25 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   const [loading, setLoading] = useState(true);
   const [followSubmitting, setFollowSubmitting] = useState(false);
   const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
+  const [hydrateAttempted, setHydrateAttempted] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !remoteActorId) return;
     setLoading(true);
     try {
       const next = await api.getFederatedRemoteActorDetail(token, remoteActorId);
-      setPayload(next);
+      if (!hydrateAttempted && next.acting_linked_account?.id && (next.recent_items || []).length === 0) {
+        setHydrateAttempted(true);
+        try {
+          await api.hydrateFederatedRemoteActor(token, remoteActorId);
+          const hydrated = await api.getFederatedRemoteActorDetail(token, remoteActorId);
+          setPayload(hydrated);
+        } catch {
+          setPayload(next);
+        }
+      } else {
+        setPayload(next);
+      }
     } catch (e: any) {
       showToast(
         e?.message || t('home.federatedRemoteProfileLoadError', { defaultValue: 'Could not load fediverse profile.' }),
@@ -222,11 +234,12 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
     } finally {
       setLoading(false);
     }
-  }, [token, remoteActorId, showToast, t]);
+  }, [token, remoteActorId, showToast, t, hydrateAttempted]);
 
   useEffect(() => {
+    setHydrateAttempted(false);
     void load();
-  }, [load]);
+  }, [load, remoteActorId]);
 
   const actor = payload?.actor;
   const relationship = payload?.relationship;
@@ -278,7 +291,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
     } catch (e: any) {
       showToast(
         e?.message || t('home.federatedFollowActionError', {
-          defaultValue: 'OpenSpace could not update that fediverse follow right now.',
+          defaultValue: 'Openspace could not update that fediverse follow right now.',
         }),
         { type: 'error' },
       );
@@ -370,13 +383,13 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
           </View>
           <View style={styles.pill}>
             <MaterialCommunityIcons name="link-variant" size={14} color={c.textSecondary} />
-            <Text style={styles.pillText}>{formatCount(touchCount)} touching OpenSpace</Text>
+            <Text style={styles.pillText}>{formatCount(touchCount)} touching Openspace</Text>
           </View>
         </View>
         <Text style={styles.sectionHint}>
           {t(
             'home.federatedRemoteProfileHint',
-            { defaultValue: 'This is a cached fediverse profile built from the remote content OpenSpace already knows about.' },
+            { defaultValue: 'This is a cached fediverse profile built from the remote content Openspace already knows about.' },
           )}
         </Text>
         {actor?.summary ? (
@@ -422,7 +435,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
         <Text style={styles.sectionHint}>
           {t(
             'home.federatedRecentActivityHint',
-            { defaultValue: 'Tap any item to open the cached thread view inside OpenSpace.' },
+            { defaultValue: 'Tap any item to open the cached thread view inside Openspace.' },
           )}
         </Text>
       </View>
@@ -446,7 +459,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
                 )
               : t(
                   'home.federatedRemoteProfileEmpty',
-                  { defaultValue: 'OpenSpace has not cached any visible fediverse activity for this actor yet.' },
+                  { defaultValue: 'Openspace has not cached any visible fediverse activity for this actor yet.' },
                 )}
           </Text>
         </View>
