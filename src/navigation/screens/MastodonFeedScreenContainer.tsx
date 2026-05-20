@@ -173,13 +173,19 @@ export default function MastodonFeedScreenContainer() {
       }
       return;
     }
+    setError('');
     try {
       const resolved = await api.resolveFederatedRemoteThread(token, url);
       navigation.navigate('RemoteThread', { inboundObjectId: resolved.inbound_object_id });
     } catch {
-      void openExternalLink(url);
+      setError(
+        t(
+          'home.mastodonOpenHereUnavailable',
+          { defaultValue: 'This Mastodon post is not cached in OpenSpace yet. Use Open to view it on Mastodon.' }
+        )
+      );
     }
-  }, [navigation, token]);
+  }, [navigation, t, token]);
 
   return (
     <ScrollView

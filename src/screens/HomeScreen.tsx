@@ -10174,12 +10174,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   }}
                   onOpenRemoteThread={(url) => {
                     if (!url) return;
+                    setFeedError('');
                     api.resolveFederatedRemoteThread(token, url)
                       .then((resolved) => {
                         onNavigate({ screen: 'remote-thread', inboundObjectId: resolved.inbound_object_id } as any);
                       })
                       .catch(() => {
-                        void openExternalLink(url);
+                        setFeedError(
+                          t(
+                            'home.mastodonOpenHereUnavailable',
+                            { defaultValue: 'This Mastodon post is not cached in OpenSpace yet. Use Open to view it on Mastodon.' }
+                          )
+                        );
                       });
                   }}
                 />
