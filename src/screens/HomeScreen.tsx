@@ -40,6 +40,7 @@ import {
   ModeratedObjectReport,
   PostComment,
   ProfileCommentActivity,
+  FederatedDiscoverySearchResult,
   SearchCommunityResult,
   SearchHashtagResult,
   SearchUserResult,
@@ -50,7 +51,7 @@ import {
 } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { feedViewport } from '../utils/feedViewport';
-import { AppRoute } from '../routing';
+import { AppRoute, parseInternalOpenspaceUrl } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
 import PublicProfileScreen from './PublicProfileScreen';
@@ -854,7 +855,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   // Tab in the composer destination picker. Mirrors the native
   // AudienceSheet so the two surfaces feel the same. Defaults to
   // 'communities' since that's where the new pin feature lives.
-  const [composerAudienceTab, setComposerAudienceTab] = useState<'communities' | 'circles'>('communities');
+  // Default tab is Circles so the "Public (no circle)" option (the default
+  // selection in this tab) is visible on first open. Defaulting to the
+  // Communities tab made users think they had to pick at least one
+  // community before they could publish — even though the API gladly
+  // accepts no-community / no-circle as a public post.
+  const [composerAudienceTab, setComposerAudienceTab] = useState<'communities' | 'circles'>('circles');
   const [composerCommunitySearch, setComposerCommunitySearch] = useState('');
   const [composerDestinationsLoading, setComposerDestinationsLoading] = useState(false);
   const [sidebarCommunities, setSidebarCommunities] = useState<SearchCommunityResult[]>([]);
@@ -879,6 +885,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [searchUsers, setSearchUsers] = useState<SearchUserResult[]>([]);
   const [searchCommunities, setSearchCommunities] = useState<SearchCommunityResult[]>([]);
   const [searchHashtags, setSearchHashtags] = useState<SearchHashtagResult[]>([]);
+  const [searchFederatedActors, setSearchFederatedActors] = useState<FederatedDiscoverySearchResult['actors']>([]);
+  const [searchFederatedCommunities, setSearchFederatedCommunities] = useState<FederatedDiscoverySearchResult['communities']>([]);
   const [searchResultsActive, setSearchResultsActive] = useState(false);
   const [searchResultsLoading, setSearchResultsLoading] = useState(false);
   const [searchResultsQuery, setSearchResultsQuery] = useState('');
@@ -2132,10 +2140,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     setSearchError('');
 
     try {
-      const [usersResult, communitiesResult, hashtagsResult] = await Promise.allSettled([
+      const [usersResult, communitiesResult, hashtagsResult, federatedResult] = await Promise.allSettled([
         api.searchUsers(token, query, Math.min(count, 10)),
         api.searchCommunities(token, query, count),
         api.searchHashtags(token, query, Math.min(count, 10)),
+        api.searchFederatedDiscovery(token, query, Math.min(count, 10)),
       ]);
 
       if (requestSeq !== requestSeqRef.current) return;
@@ -2143,15 +2152,19 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       const users = usersResult.status === 'fulfilled' ? usersResult.value : [];
       const communities = communitiesResult.status === 'fulfilled' ? communitiesResult.value : [];
       const hashtags = hashtagsResult.status === 'fulfilled' ? hashtagsResult.value : [];
+      const federated = federatedResult.status === 'fulfilled' ? federatedResult.value : null;
 
       setSearchUsers(users);
       setSearchCommunities(communities);
       setSearchHashtags(hashtags);
+      setSearchFederatedActors(federated?.actors || []);
+      setSearchFederatedCommunities(federated?.communities || []);
 
       if (
         usersResult.status === 'rejected' &&
         communitiesResult.status === 'rejected' &&
-        hashtagsResult.status === 'rejected'
+        hashtagsResult.status === 'rejected' &&
+        federatedResult.status === 'rejected'
       ) {
         setSearchError(t('home.searchLoadError'));
       } else {
@@ -2174,6 +2187,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setSearchUsers([]);
         setSearchCommunities([]);
         setSearchHashtags([]);
+        setSearchFederatedActors([]);
+        setSearchFederatedCommunities([]);
       }
       return;
     }
@@ -4187,7 +4202,19 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function openLink(url?: string) {
     if (!url) return;
+    // If the link points at one of our own hosts AND maps to a known
+    // route, SPA-navigate via onNavigate so state (drafts, scroll,
+    // open modals) survives — `Linking.openURL` on web is a full
+    // window.location assignment and would reload the page.
+    const internalRoute = parseInternalOpenspaceUrl(url);
+    if (internalRoute) {
+      onNavigate(internalRoute);
+      return;
+    }
     if (isInternalOpenspaceUrl(url)) {
+      // Same-host URL that didn't resolve to a known route (e.g. /about
+      // / /privacy or anything we haven't taught parsePathToRoute about
+      // yet) — just hand it to the browser; full reload is acceptable.
       Linking.openURL(url).catch(() => setError(t('home.openLinkFailed')));
       return;
     }
@@ -6188,6 +6215,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     onNavigate({ screen: 'hashtag', name });
   }
 
+  function handleSelectSearchRemoteProfile(remoteActorId?: number) {
+    if (!remoteActorId) return;
+    closeSearchDropdown();
+    onNavigate({ screen: 'remote-profile', remoteActorId } as any);
+  }
+
+  function handleSelectSearchRemoteCommunity(remoteCommunityId?: number) {
+    if (!remoteCommunityId) return;
+    closeSearchDropdown();
+    onNavigate({ screen: 'remote-community', remoteCommunityId } as any);
+  }
+
   // Keep the last non-post route as the background context while a post modal is open.
   const displayRoute = route.screen === 'post' ? lastNonPostRouteRef.current : route;
   const viewingProfileRoute = displayRoute.screen === 'profile' || displayRoute.screen === 'me';
@@ -6250,7 +6289,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   })();
 
   const showSearchDropdown = searchFocused && searchQuery.trim().length >= 2;
-  const hasAnySearchResults = searchUsers.length > 0 || searchCommunities.length > 0 || searchHashtags.length > 0;
+  const hasAnySearchResults =
+    searchUsers.length > 0 ||
+    searchCommunities.length > 0 ||
+    searchHashtags.length > 0 ||
+    searchFederatedActors.length > 0 ||
+    searchFederatedCommunities.length > 0;
   const hasActivePostMedia = postHasMedia(activePost);
   const composerCommunitySearchTrimmed = composerCommunitySearch.trim().toLowerCase();
   const composerPinnedNames = new Set(
@@ -6700,17 +6744,70 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       )}
                     </View>
 
+                    <View style={styles.searchSection}>
+                      <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
+                        {t('home.searchSectionFediverse', { defaultValue: 'Fediverse' })}
+                      </Text>
+                      {searchFederatedCommunities.length === 0 && searchFederatedActors.length === 0 ? (
+                        <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
+                          {t('home.searchNoFediverseResults', { defaultValue: 'No fediverse matches yet.' })}
+                        </Text>
+                      ) : (
+                        <>
+                          {searchFederatedCommunities.map((item) => (
+                            <TouchableOpacity
+                              key={`search-fediverse-community-${item.id}`}
+                              style={[styles.searchResultRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                              activeOpacity={0.85}
+                              onPress={() => handleSelectSearchRemoteCommunity(item.id)}
+                            >
+                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
+                                <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
+                              </View>
+                              <View style={styles.searchResultMeta}>
+                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
+                                  {item.title || item.handle}
+                                </Text>
+                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
+                                  {item.handle}{item.is_subscribed ? ' · Saved in OpenSpace' : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                          {searchFederatedActors.map((item) => (
+                            <TouchableOpacity
+                              key={`search-fediverse-actor-${item.id}`}
+                              style={[styles.searchResultRow, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                              activeOpacity={0.85}
+                              onPress={() => handleSelectSearchRemoteProfile(item.id)}
+                            >
+                              <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
+                                {item.profile?.avatar ? (
+                                  <Image source={{ uri: item.profile.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
+                                ) : (
+                                  <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                                )}
+                              </View>
+                              <View style={styles.searchResultMeta}>
+                                <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
+                                  {item.display_name || item.profile?.name || item.handle}
+                                </Text>
+                                <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
+                                  {item.handle}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
+                    </View>
+
                     {searchError ? (
                       <Text style={[styles.searchSectionError, { color: c.errorText }]}>
                         {searchError}
                       </Text>
                     ) : null}
 
-                    {!searchError && !hasAnySearchResults ? (
-                      <Text style={[styles.searchSectionEmptyGlobal, { color: c.textMuted }]}>
-                        {t('home.searchNoResults')}
-                      </Text>
-                    ) : null}
                   </ScrollView>
                 ) : null}
               </View>
@@ -10031,11 +10128,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 searchUsers={searchUsers}
                 searchCommunities={searchCommunities}
                 searchHashtags={searchHashtags}
+                searchFederatedActors={searchFederatedActors}
+                searchFederatedCommunities={searchFederatedCommunities}
                 hasAnySearchResults={hasAnySearchResults}
                 onBack={handleBackToHomeFeed}
                 onSelectUser={handleSelectSearchUser}
                 onSelectCommunity={handleSelectSearchCommunity}
                 onSelectHashtag={handleSelectSearchHashtag}
+                onSelectRemoteProfile={handleSelectSearchRemoteProfile}
+                onSelectRemoteCommunity={handleSelectSearchRemoteCommunity}
                 isEdgeToEdge={isEdgeToEdge}
               />
             ) : null}
@@ -10053,6 +10154,33 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   loadingMore={feedLoadingMore}
                   hasMore={feedHasMore}
                   onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
+                  onOpenRemoteProfile={(query, fallbackUrl) => {
+                    if (!query) {
+                      if (fallbackUrl) void openExternalLink(fallbackUrl);
+                      return;
+                    }
+                    api.resolveFederatedDiscoveryEntity(token, query)
+                      .then((resolved) => {
+                        if (resolved.kind === 'community') {
+                          onNavigate({ screen: 'remote-community', remoteCommunityId: resolved.community.id } as any);
+                        } else {
+                          onNavigate({ screen: 'remote-profile', remoteActorId: resolved.actor.id } as any);
+                        }
+                      })
+                      .catch(() => {
+                        if (fallbackUrl) void openExternalLink(fallbackUrl);
+                      });
+                  }}
+                  onOpenRemoteThread={(url) => {
+                    if (!url) return;
+                    api.resolveFederatedRemoteThread(token, url)
+                      .then((resolved) => {
+                        onNavigate({ screen: 'remote-thread', inboundObjectId: resolved.inbound_object_id } as any);
+                      })
+                      .catch(() => {
+                        void openExternalLink(url);
+                      });
+                  }}
                 />
               ) : (
                 <FeedScreen

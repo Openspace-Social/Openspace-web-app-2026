@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SearchCommunityResult, SearchHashtagResult, SearchUserResult } from '../api/client';
+import { FederatedDiscoverySearchResult, SearchCommunityResult, SearchHashtagResult, SearchUserResult } from '../api/client';
 import SearchResultsSkeleton from '../components/SearchResultsSkeleton';
 
 type Props = {
@@ -15,11 +15,15 @@ type Props = {
   searchUsers: SearchUserResult[];
   searchCommunities: SearchCommunityResult[];
   searchHashtags: SearchHashtagResult[];
+  searchFederatedActors?: FederatedDiscoverySearchResult['actors'];
+  searchFederatedCommunities?: FederatedDiscoverySearchResult['communities'];
   hasAnySearchResults: boolean;
   onBack: () => void;
   onSelectUser: (username?: string) => void;
   onSelectCommunity: (name?: string) => void;
   onSelectHashtag: (name?: string) => void;
+  onSelectRemoteProfile?: (remoteActorId?: number) => void;
+  onSelectRemoteCommunity?: (remoteCommunityId?: number) => void;
   /** When true, strip the outer card chrome so results run edge-to-edge. */
   isEdgeToEdge?: boolean;
 };
@@ -35,11 +39,15 @@ export default function SearchResultsScreen({
   searchUsers,
   searchCommunities,
   searchHashtags,
+  searchFederatedActors = [],
+  searchFederatedCommunities = [],
   hasAnySearchResults,
   onBack,
   onSelectUser,
   onSelectCommunity,
   onSelectHashtag,
+  onSelectRemoteProfile,
+  onSelectRemoteCommunity,
   isEdgeToEdge = false,
 }: Props) {
   // HomeScreen already renders the page-level left sidebar (SIDEBAR_LEFT_W
@@ -170,11 +178,66 @@ export default function SearchResultsScreen({
               )}
             </View>
 
+            <View style={styles.searchSection}>
+              <Text style={[styles.searchSectionTitle, { color: c.textSecondary }]}>
+                {t('home.searchSectionFediverse', { defaultValue: 'Fediverse' })}
+              </Text>
+              {searchFederatedCommunities.length === 0 && searchFederatedActors.length === 0 ? (
+                <Text style={[styles.searchSectionEmpty, { color: c.textMuted }]}>
+                  {t('home.searchNoFediverseResults', { defaultValue: 'No fediverse matches yet.' })}
+                </Text>
+              ) : (
+                <View style={styles.searchTileGrid}>
+                  {searchFederatedCommunities.map((item) => (
+                    <TouchableOpacity
+                      key={`main-search-fediverse-community-${item.id}`}
+                      style={[styles.searchTile, isWideSearchResultsLayout ? styles.searchTileWide : null, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.85}
+                      onPress={() => onSelectRemoteCommunity?.(item.id)}
+                    >
+                      <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
+                        <MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" />
+                      </View>
+                      <View style={styles.searchResultMeta}>
+                        <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
+                          {item.title || item.handle}
+                        </Text>
+                        <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
+                          {item.handle}{item.is_subscribed ? ' · Saved in OpenSpace' : ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  {searchFederatedActors.map((item) => (
+                    <TouchableOpacity
+                      key={`main-search-fediverse-actor-${item.id}`}
+                      style={[styles.searchTile, isWideSearchResultsLayout ? styles.searchTileWide : null, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                      activeOpacity={0.85}
+                      onPress={() => onSelectRemoteProfile?.(item.id)}
+                    >
+                      <View style={[styles.searchAvatar, { backgroundColor: c.primary }]}>
+                        {item.profile?.avatar ? (
+                          <Image source={{ uri: item.profile.avatar }} style={styles.searchAvatarImage} resizeMode="cover" />
+                        ) : (
+                          <MaterialCommunityIcons name="account-outline" size={16} color="#fff" />
+                        )}
+                      </View>
+                      <View style={styles.searchResultMeta}>
+                        <Text style={[styles.searchResultPrimary, { color: c.textPrimary }]}>
+                          {item.display_name || item.profile?.name || item.handle}
+                        </Text>
+                        <Text style={[styles.searchResultSecondary, { color: c.textMuted }]}>
+                          {item.handle}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
             {searchError ? <Text style={[styles.searchSectionError, { color: c.errorText }]}>{searchError}</Text> : null}
 
-            {!searchError && !hasAnySearchResults ? (
-              <Text style={[styles.searchSectionEmptyGlobal, { color: c.textMuted }]}>{t('home.searchNoResults')}</Text>
-            ) : null}
           </View>
         )}
     </View>
