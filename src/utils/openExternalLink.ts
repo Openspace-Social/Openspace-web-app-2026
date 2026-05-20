@@ -1,4 +1,4 @@
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
 // Open a URL the user tapped (post body, comment, link preview card, etc.).
@@ -17,6 +17,15 @@ import * as WebBrowser from 'expo-web-browser';
 export async function openExternalLink(input: string | undefined | null): Promise<boolean> {
   const url = normalizeUrl(input);
   if (!url) return false;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      return !!opened;
+    } catch {
+      // Fall through to the other handlers.
+    }
+  }
 
   try {
     await WebBrowser.openBrowserAsync(url);
