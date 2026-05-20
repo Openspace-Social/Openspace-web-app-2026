@@ -2211,11 +2211,13 @@ export const api = {
     ),
 
   resolveFederatedRemoteThread: (token: string, url: string) => {
-    const params = new URLSearchParams();
-    params.set('url', url);
     return request<{ inbound_object_id: number }>(
-      `/api/auth/user/federation/inbound-objects/resolve/?${params.toString()}`,
-      { headers: { Authorization: `Token ${token}` } },
+      '/api/auth/user/federation/inbound-objects/resolve/',
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({ url }),
+      },
     );
   },
 
