@@ -10183,7 +10183,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                         setFeedError(
                           t(
                             'home.mastodonOpenHereUnavailable',
-                            { defaultValue: 'This Mastodon post is not cached in OpenSpace yet. Use Open to view it on Mastodon.' }
+                            { defaultValue: 'This Mastodon post is not available inside Openspace yet. Use Open to view it on Mastodon.' }
                           )
                         );
                       });
