@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share } from 'react-native';
 import { openExternalLink } from '../utils/openExternalLink';
+import { parseInternalOpenspaceUrl } from '../routing';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -292,6 +293,40 @@ export function useNativePostInteractions({
       },
       onOpenLink: (url) => {
         if (!url) return;
+        // If the link points at one of our own hosts AND resolves to a
+        // known route (community, profile, post, hashtag, etc.), route
+        // internally via react-navigation so users stay in-app instead
+        // of getting dumped into the in-app browser viewing their own
+        // site. Users frequently copy a community URL out of the web
+        // app and paste it back as a post body — clicking that URL
+        // used to open SFSafariViewController / Chrome Custom Tabs,
+        // which felt broken.
+        const internalRoute = parseInternalOpenspaceUrl(url);
+        if (internalRoute) {
+          switch (internalRoute.screen) {
+            case 'community':
+              navigation.navigate('Community', { name: internalRoute.name });
+              return;
+            case 'profile':
+              navigation.navigate('Profile', { username: internalRoute.username });
+              return;
+            case 'hashtag':
+              navigation.navigate('Hashtag', { name: internalRoute.name });
+              return;
+            case 'post':
+              // We can't tell short vs. long post from the URL alone;
+              // 'Post' (the standard detail screen) handles both via
+              // its own type-aware rendering path.
+              navigation.navigate('Post', { postUuid: internalRoute.postUuid });
+              return;
+            default:
+              // Fall through to the browser for routes we don't have a
+              // direct native screen for (settings, lists, etc. from a
+              // deep-link context). Better than silently swallowing.
+              break;
+          }
+        }
+
         // Tries the in-app browser first, falls back to the system
         // browser, and only stubs if neither path can handle the URL.
         void openExternalLink(url).then((opened) => {

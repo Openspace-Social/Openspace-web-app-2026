@@ -36,6 +36,44 @@ export function defaultAuthedRoute(): AppRoute {
   return { screen: 'feed', feed: 'home' };
 }
 
+// Hostnames the app treats as its own. Anything not in this list is treated
+// as an external link and opened in the in-app/system browser.
+const INTERNAL_OPENSPACE_HOSTS = new Set([
+  'openspace.social',
+  'www.openspace.social',
+  'staging.openspace.social',
+  'localhost',
+  '127.0.0.1',
+]);
+
+/**
+ * If `url` points at one of our own hosts AND resolves to a known route,
+ * returns the parsed AppRoute so the caller can navigate internally
+ * instead of opening the in-app/system browser. Returns null for anything
+ * external (or for internal hosts whose path falls back to the landing
+ * route — in that case the in-app browser is still the better UX since
+ * the user clearly wanted *that* page, not just "go home").
+ */
+export function parseInternalOpenspaceUrl(url: string | null | undefined): AppRoute | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = (parsed.hostname || '').toLowerCase();
+  const matchesHost =
+    INTERNAL_OPENSPACE_HOSTS.has(host) || host.endsWith('.openspace.social');
+  if (!matchesHost) return null;
+  const route = parsePathToRoute(parsed.pathname || '/');
+  // Bare /  or unknown paths resolve to `landing` — don't intercept those
+  // since the user explicitly clicked the marketing root and we'd rather
+  // surface that in the browser than dump them on the feed root.
+  if (route.screen === 'landing') return null;
+  return route;
+}
+
 export function parsePathToRoute(pathname: string): AppRoute {
   const path = (pathname || '/').replace(/\/+$/, '') || '/';
   const parts = path.split('/').filter(Boolean);

@@ -421,6 +421,17 @@ export default function LinkedAccountsScreenContainer() {
   const handleRefreshVerification = useCallback(
     async (identity: FederatedIdentityLink) => {
       if (!token) return;
+      // Already verified — short-circuit so a stale tap (e.g. between the
+      // server-side verify completing and the button re-rendering as
+      // disabled) doesn't kick the backend back into a verify flow that
+      // returns an error on a second attempt.
+      if (identity.migration_readiness?.remote_alias_verified) {
+        setVerificationNotice({
+          type: 'success',
+          message: 'This Mastodon identity is already verified.',
+        });
+        return;
+      }
       setJobBusyKey(`${identity.id}:refresh-verification`);
       setVerificationNotice(null);
       try {
@@ -883,12 +894,22 @@ export default function LinkedAccountsScreenContainer() {
                     </Text>
                     <TouchableOpacity
                       activeOpacity={0.85}
-                      disabled={!!jobBusyKey}
+                      disabled={!!jobBusyKey || !!readiness?.remote_alias_verified}
                       onPress={() => void handleRefreshVerification(identity)}
-                      style={[styles.secondaryAction, { borderColor: c.border, backgroundColor: c.surface }]}
+                      style={[
+                        styles.secondaryAction,
+                        readiness?.remote_alias_verified
+                          ? { borderColor: '#86EFAC', backgroundColor: '#ECFDF5', opacity: 0.9 }
+                          : { borderColor: c.border, backgroundColor: c.surface },
+                      ]}
                     >
                       {refreshVerificationBusy ? (
                         <ActivityIndicator size="small" color={c.primary} />
+                      ) : readiness?.remote_alias_verified ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <MaterialCommunityIcons name="check-circle" size={16} color="#16A34A" />
+                          <Text style={[styles.secondaryActionText, { color: '#166534' }]}>Verified</Text>
+                        </View>
                       ) : (
                         <Text style={[styles.secondaryActionText, { color: c.textPrimary }]}>Check verification again</Text>
                       )}
