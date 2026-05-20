@@ -51,6 +51,7 @@ import {
 } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import { feedViewport } from '../utils/feedViewport';
+import { openExternalLink } from '../utils/openExternalLink';
 import { AppRoute, parseInternalOpenspaceUrl } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
