@@ -42,6 +42,7 @@ export default function MastodonFeedScreenContainer() {
   const [nextMaxId, setNextMaxId] = useState<string | undefined>(undefined);
   const [error, setError] = useState('');
   const [feedSource, setFeedSource] = useState<FeedSource>('home');
+  const [remoteThreadOpeningUrl, setRemoteThreadOpeningUrl] = useState<string | null>(null);
 
   const loadFeed = useCallback(async (silent = false) => {
     if (!token) return;
@@ -174,6 +175,7 @@ export default function MastodonFeedScreenContainer() {
       return;
     }
     setError('');
+    setRemoteThreadOpeningUrl(url);
     try {
       const resolved = await api.resolveFederatedRemoteThread(token, url);
       navigation.navigate('RemoteThread', { inboundObjectId: resolved.inbound_object_id });
@@ -184,6 +186,8 @@ export default function MastodonFeedScreenContainer() {
           { defaultValue: 'This Mastodon post is not available inside Openspace yet. Use Open to view it on Mastodon.' }
         )
       );
+    } finally {
+      setRemoteThreadOpeningUrl(null);
     }
   }, [navigation, t, token]);
 
@@ -216,6 +220,7 @@ export default function MastodonFeedScreenContainer() {
           linkedAccount={linkedAccount}
           loadingMore={loadingMore}
           hasMore={hasMore}
+          remoteThreadOpeningUrl={remoteThreadOpeningUrl}
           feedSource={feedSource}
           onChangeFeedSource={setFeedSource}
           onOpenRemoteProfile={handleOpenResolvedRemoteProfile}

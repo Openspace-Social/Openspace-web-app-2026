@@ -41,6 +41,7 @@ type Props = {
   onChangeFeedSource?: (value: 'home' | 'posts' | 'notifications') => void;
   onOpenRemoteProfile?: (query: string, fallbackUrl?: string) => void;
   onOpenRemoteThread?: (url: string) => void;
+  remoteThreadOpeningUrl?: string | null;
 };
 
 // Per-status local overrides — populated optimistically on tap and
@@ -116,6 +117,7 @@ export default function MastodonFeedScreen({
   onChangeFeedSource,
   onOpenRemoteProfile,
   onOpenRemoteThread,
+  remoteThreadOpeningUrl = null,
 }: Props) {
   const styles = useMemo(() => makeStyles(c), [c]);
 
@@ -536,6 +538,7 @@ export default function MastodonFeedScreen({
                           iconInactive="source-branch"
                           activeColor={c.primary}
                           active={false}
+                          loading={remoteThreadOpeningUrl === status.url}
                           label={t('home.mastodonActionOpenHere', { defaultValue: 'Open here' })}
                           onPress={() => onOpenRemoteThread(status.url!)}
                         />
@@ -744,6 +747,7 @@ export default function MastodonFeedScreen({
                       iconInactive="source-branch"
                       activeColor={c.primary}
                       active={false}
+                      loading={remoteThreadOpeningUrl === status.url}
                       label={t('home.mastodonActionOpenHere', { defaultValue: 'Open here' })}
                       onPress={() => onOpenRemoteThread(status.url!)}
                     />

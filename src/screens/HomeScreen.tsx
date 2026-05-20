@@ -650,6 +650,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const [feedError, setFeedError] = useState('');
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [feedHasMore, setFeedHasMore] = useState(false);
+  const [mastodonRemoteThreadOpeningUrl, setMastodonRemoteThreadOpeningUrl] = useState<string | null>(null);
   const [feedNextMaxId, setFeedNextMaxId] = useState<number | undefined>(undefined);
   const [mastodonFeedNextMaxId, setMastodonFeedNextMaxId] = useState<string | undefined>(undefined);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
@@ -10154,6 +10155,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   linkedAccount={mastodonFeedLinkedAccount}
                   loadingMore={feedLoadingMore}
                   hasMore={feedHasMore}
+                  remoteThreadOpeningUrl={mastodonRemoteThreadOpeningUrl}
                   onOpenLinkedAccounts={() => setLinkedAccountsOpen(true)}
                   onOpenRemoteProfile={(query, fallbackUrl) => {
                     if (!query) {
@@ -10175,6 +10177,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                   onOpenRemoteThread={(url) => {
                     if (!url) return;
                     setFeedError('');
+                    setMastodonRemoteThreadOpeningUrl(url);
                     api.resolveFederatedRemoteThread(token, url)
                       .then((resolved) => {
                         onNavigate({ screen: 'remote-thread', inboundObjectId: resolved.inbound_object_id } as any);
@@ -10186,6 +10189,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                             { defaultValue: 'This Mastodon post is not available inside Openspace yet. Use Open to view it on Mastodon.' }
                           )
                         );
+                      })
+                      .finally(() => {
+                        setMastodonRemoteThreadOpeningUrl(null);
                       });
                   }}
                 />

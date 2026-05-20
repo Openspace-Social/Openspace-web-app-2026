@@ -207,6 +207,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   const [followSubmitting, setFollowSubmitting] = useState(false);
   const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
   const [hydrateAttempted, setHydrateAttempted] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !remoteActorId) return;
@@ -215,12 +216,15 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
       const next = await api.getFederatedRemoteActorDetail(token, remoteActorId);
       if (!hydrateAttempted && next.acting_linked_account?.id && (next.recent_items || []).length === 0) {
         setHydrateAttempted(true);
+        setHydrating(true);
         try {
           await api.hydrateFederatedRemoteActor(token, remoteActorId);
           const hydrated = await api.getFederatedRemoteActorDetail(token, remoteActorId);
           setPayload(hydrated);
         } catch {
           setPayload(next);
+        } finally {
+          setHydrating(false);
         }
       } else {
         setPayload(next);
@@ -394,6 +398,14 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
         </Text>
         {actor?.summary ? (
           <Text style={styles.sectionHint}>{stripHtml(actor.summary)}</Text>
+        ) : null}
+        {hydrating ? (
+          <View style={[styles.pill, { alignSelf: 'flex-start' }]}>
+            <ActivityIndicator size="small" color={c.primary} />
+            <Text style={[styles.pillText, { color: c.primary }]}>
+              {t('home.federatedRemoteProfileHydrating', { defaultValue: 'Importing recent activity into Openspace…' })}
+            </Text>
+          </View>
         ) : null}
         {!hasLinkedMastodonAccount ? (
           <Text style={styles.sectionHint}>
