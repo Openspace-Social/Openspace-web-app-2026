@@ -2468,6 +2468,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       }
       topBarScrollHandlerRef.current(scrollTop);
+      if (showingMainSearchResultsRef.current) return;
       if (distFromBottom < 600) {
         // Profile routes paginate their own posts; otherwise fall back to
         // the main feed loader. Mirrors the native onScroll handler.
@@ -6360,6 +6361,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     displayRoute.screen !== 'lists' &&
     searchResultsActive &&
     searchResultsQuery.length >= 2;
+  showingMainSearchResultsRef.current = showingMainSearchResults;
   const isWideSearchResultsLayout = viewportWidth >= 1200;
   const isCompactProfileLayout = viewportWidth < 1180;
   const profileTabs: Array<{ key: ProfileTabKey; label: string }> = [
@@ -6514,6 +6516,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const loadMoreMyProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
   const loadMoreProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
   const displayRouteScreenRef = useRef<string | undefined>(displayRoute?.screen);
+  const showingMainSearchResultsRef = useRef(false);
 
   function handleTopBarOnScroll(currentY: number) {
     if (!showBottomTabs) return;
