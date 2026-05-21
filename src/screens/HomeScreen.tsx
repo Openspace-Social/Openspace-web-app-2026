@@ -9716,12 +9716,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           ]}
           scrollEventThrottle={16}
           refreshControl={
-            <RefreshControl
-              refreshing={feedRefreshing}
-              onRefresh={handleRefreshFeed}
-              tintColor={c.textPrimary}
-              colors={[c.textPrimary]}
-            />
+            showingMainSearchResults ? undefined : (
+              <RefreshControl
+                refreshing={feedRefreshing}
+                onRefresh={handleRefreshFeed}
+                tintColor={c.textPrimary}
+                colors={[c.textPrimary]}
+              />
+            )
           }
         onLayout={({ nativeEvent }) => {
           // Feed viewport height drives per-card visibility checks for
@@ -9733,6 +9735,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
           handleTopBarOnScroll(contentOffset.y);
           feedViewport.setScrollY(contentOffset.y);
+          if (showingMainSearchResults) return;
           const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 400;
           if (!nearBottom) return;
           // Profile routes paginate their own posts list; everywhere else
