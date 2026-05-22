@@ -735,7 +735,7 @@ function PostCard({
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [translatedText, setTranslatedText] = React.useState<string | null>(null);
   const [isTranslating, setIsTranslating] = React.useState(false);
-  const [translationError, setTranslationError] = React.useState(false);
+  const [translationError, setTranslationError] = React.useState<string | null>(null);
   const [postMenuOpen, setPostMenuOpen] = React.useState(false);
   const [nativePostMenuPosition, setNativePostMenuPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [postDeleteConfirmOpen, setPostDeleteConfirmOpen] = React.useState(false);
@@ -1424,13 +1424,25 @@ function PostCard({
   async function handleTranslate() {
     if (!token || !post.uuid || isTranslating) return;
     setIsTranslating(true);
-    setTranslationError(false);
+    setTranslationError(null);
     try {
       const { api } = await import('../api/client');
       const result = await api.translatePost(token, post.uuid);
       setTranslatedText(result.translated_text);
-    } catch {
-      setTranslationError(true);
+    } catch (err: any) {
+      // Surface the real reason so we can debug. ApiRequestError carries
+      // {status, data, message}; everything else (network, parse) lands
+      // in the generic branch.
+      const status = err?.status;
+      const body = err?.data;
+      const message =
+        (typeof body === 'object' && body && (body.detail || body.message || body.error)) ||
+        (Array.isArray(body?.non_field_errors) && body.non_field_errors[0]) ||
+        err?.message ||
+        'Unknown error';
+      // eslint-disable-next-line no-console
+      console.error('[translatePost] failed', { status, body, err });
+      setTranslationError(status ? `${status}: ${message}` : String(message));
     } finally {
       setIsTranslating(false);
     }
@@ -1438,7 +1450,7 @@ function PostCard({
 
   function handleShowOriginal() {
     setTranslatedText(null);
-    setTranslationError(false);
+    setTranslationError(null);
   }
 
   function openPostReportMenuAction() {
@@ -2543,8 +2555,12 @@ function PostCard({
                 {isTranslating ? (
                   <ActivityIndicator size="small" color={c.textLink} />
                 ) : translationError ? (
-                  <Text style={[styles.seeMoreText, { color: (c as any).errorText ?? c.textMuted }]}>
+                  <Text
+                    style={[styles.seeMoreText, { color: (c as any).errorText ?? c.textMuted }]}
+                    numberOfLines={2}
+                  >
                     {t('home.translationError', { defaultValue: 'Translation failed — tap to retry' })}
+                    {`  ·  ${translationError}`}
                   </Text>
                 ) : (
                   <Text style={[styles.seeMoreText, { color: c.textLink }]}>

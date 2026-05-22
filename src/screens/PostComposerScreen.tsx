@@ -399,12 +399,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   const mastodonGateActive = publishDestination !== 'openbook';
   const mastodonRemaining = MASTODON_DEFAULT_MAX_CHARS - mastodonEffectiveLength;
   const mastodonOverLimit = mastodonGateActive && mastodonRemaining < 0;
-  // Mastodon doesn't accept video uploads via the cross-post path — see
-  // `_upload_post_media_to_mastodon`. Catching it client-side avoids the
-  // confusing post-publish "video not supported" toast that leaves an
-  // orphan draft when destination is Mastodon-only.
-  const mastodonHasUnsupportedMedia = mastodonGateActive && composerVideo != null;
-  const mastodonBlocked = mastodonOverLimit || mastodonHasUnsupportedMedia;
+  const mastodonBlocked = mastodonOverLimit;
   const remainingImageSlots = Math.max(0, MAX_IMAGES - imageUris.length);
 
   // Lexical editor calls back to RN whenever the user inserts an image.
@@ -1310,17 +1305,6 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
                 </Text>
               </View>
             ) : null}
-            {mastodonHasUnsupportedMedia ? (
-              <View style={[s.linkPreviewCard, { borderColor: c.errorText, backgroundColor: c.inputBackground }]}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} style={{ marginRight: 8 }} />
-                <Text style={{ color: c.errorText, flex: 1 }}>
-                  {t('home.composerMastodonVideoUnsupportedWarning', {
-                    defaultValue: 'Mastodon cross-posting does not support video yet. Remove the video or post to Openspace only.',
-                  })}
-                </Text>
-              </View>
-            ) : null}
-
         {linkPreviewLoading && !linkPreview ? (
           <View style={[s.linkPreviewCard, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
             <ActivityIndicator color={c.primary} size="small" style={{ marginRight: 10 }} />

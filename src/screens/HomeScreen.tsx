@@ -1072,11 +1072,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const composerMastodonGateActive = composerPublishDestination !== 'openbook';
   const composerMastodonRemaining = MASTODON_DEFAULT_MAX_CHARS - composerMastodonEffectiveLength;
   const composerMastodonOverLimit = composerMastodonGateActive && composerMastodonRemaining < 0;
-  // Mastodon doesn't accept video uploads via the cross-post path. Same
-  // pre-flight as the length gate — block here so the user doesn't end
-  // up with an orphan draft when Mastodon-only mode 422s.
-  const composerMastodonHasUnsupportedMedia = composerMastodonGateActive && !!composerVideo;
-  const composerMastodonBlocked = composerMastodonOverLimit || composerMastodonHasUnsupportedMedia;
+  const composerMastodonBlocked = composerMastodonOverLimit;
 
   const longPostPreviewExpandState = React.useMemo(() => {
     if (!longPostPreviewPost) {
@@ -8229,16 +8225,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                             defaultValue: 'This post is too long for Mastodon (max {{max}} characters, currently {{count}}). Shorten it or post to OpenSpace only.',
                             max: MASTODON_DEFAULT_MAX_CHARS,
                             count: composerMastodonEffectiveLength,
-                          })}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {composerMastodonHasUnsupportedMedia ? (
-                      <View style={{ marginTop: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: c.errorText, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color={c.errorText} />
-                        <Text style={{ color: c.errorText, flex: 1, fontSize: 13, lineHeight: 18 }}>
-                          {t('home.postComposerMastodonVideoUnsupportedWarning', {
-                            defaultValue: 'Mastodon cross-posting does not support video yet. Remove the video or post to OpenSpace only.',
                           })}
                         </Text>
                       </View>
