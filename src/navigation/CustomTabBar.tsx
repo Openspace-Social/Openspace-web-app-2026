@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Animated, View, type LayoutChangeEvent } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import BottomTabBar, { type BottomTab } from '../components/BottomTabBar';
@@ -19,6 +19,7 @@ import InviteDrawer from '../components/InviteDrawer';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationsContext';
+import { useChromeVisibility } from '../context/ChromeVisibilityContext';
 import { api } from '../api/client';
 
 const TAB_ROUTE_TO_LEGACY: Record<string, BottomTab> = {
@@ -70,6 +71,22 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
 
+  // Scroll-driven auto-hide. The provider lives at the TabsNavigator level,
+  // so the same Animated.Value also drives FeedHeader. We measure the
+  // tab bar height via onLayout, then animate a negative bottom margin
+  // so the bar slides downward AND vacates its slot in the parent
+  // flexbox — letting the screen above grow into the freed space
+  // instead of leaving a transparent gap.
+  const { hidden } = useChromeVisibility();
+  const [tabBarHeight, setTabBarHeight] = useState(0);
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    const next = e.nativeEvent.layout.height;
+    if (next > 0 && next !== tabBarHeight) setTabBarHeight(next);
+  }, [tabBarHeight]);
+  const marginBottom = tabBarHeight > 0
+    ? hidden.interpolate({ inputRange: [0, 1], outputRange: [0, -tabBarHeight] })
+    : 0;
+
   const goTo = useCallback(
     (routeName: string) => {
       // React Navigation dispatches `tabPress` events keyed by `route.key`
@@ -102,7 +119,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   // react-navigation's bottom-tabs already wraps the custom tabBar in a
   // safe-area-aware container, so we don't add paddingBottom here.
   return (
-    <View>
+    <Animated.View onLayout={handleLayout} style={{ marginBottom }}>
       <BottomTabBar
         c={theme.colors}
         t={t}
@@ -135,6 +152,6 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           onClose={() => setInviteOpen(false)}
         />
       ) : null}
-    </View>
+    </Animated.View>
   );
 }

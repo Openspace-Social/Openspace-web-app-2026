@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -179,7 +179,7 @@ function RemoteObjectCard({
         </View>
         {item.local_post?.uuid ? (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>Touches OpenSpace</Text>
+        <Text style={styles.badgeText}>Touches Openspace</Text>
           </View>
         ) : null}
       </View>
@@ -206,16 +206,17 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
   const [loading, setLoading] = useState(true);
   const [followSubmitting, setFollowSubmitting] = useState(false);
   const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
-  const [hydrateAttempted, setHydrateAttempted] = useState(false);
   const [hydrating, setHydrating] = useState(false);
+  const hydrateAttemptedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!token || !remoteActorId) return;
     setLoading(true);
     try {
       const next = await api.getFederatedRemoteActorDetail(token, remoteActorId);
-      if (!hydrateAttempted && next.acting_linked_account?.id && (next.recent_items || []).length === 0) {
-        setHydrateAttempted(true);
+      const cachedItemCount = Number(next.counts?.cached_items || 0);
+      if (!hydrateAttemptedRef.current && next.acting_linked_account?.id && cachedItemCount < 6) {
+        hydrateAttemptedRef.current = true;
         setHydrating(true);
         try {
           await api.hydrateFederatedRemoteActor(token, remoteActorId);
@@ -238,10 +239,10 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
     } finally {
       setLoading(false);
     }
-  }, [token, remoteActorId, showToast, t, hydrateAttempted]);
+  }, [token, remoteActorId, showToast, t]);
 
   useEffect(() => {
-    setHydrateAttempted(false);
+    hydrateAttemptedRef.current = false;
     void load();
   }, [load, remoteActorId]);
 
@@ -426,7 +427,7 @@ export default function RemoteProfileScreen({ token, remoteActorId, onOpenThread
             { key: 'all', label: t('home.filterAll', { defaultValue: 'All' }) },
             { key: 'posts', label: t('home.remotePostsFilter', { defaultValue: 'Posts' }) },
             { key: 'replies', label: t('home.remoteRepliesFilter', { defaultValue: 'Replies' }) },
-            { key: 'touches', label: t('home.remoteTouchesFilter', { defaultValue: 'Touches OpenSpace' }) },
+            { key: 'touches', label: t('home.remoteTouchesFilter', { defaultValue: 'Touches Openspace' }) },
           ] as const).map((option) => {
             const active = itemFilter === option.key;
             return (

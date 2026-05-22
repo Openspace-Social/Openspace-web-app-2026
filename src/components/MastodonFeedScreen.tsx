@@ -381,7 +381,7 @@ export default function MastodonFeedScreen({
             </View>
             <Text style={[styles.connectBannerText, { color: c.textSecondary }]}>
               {t('home.mastodonFeedDisconnectedBody', {
-                defaultValue: 'Connect a Mastodon account in Linked Accounts to bring your home timeline into OpenSpace.',
+                defaultValue: 'Connect a Mastodon account in Linked Accounts to bring your home timeline into Openspace.',
               })}
             </Text>
           </View>
@@ -405,7 +405,7 @@ export default function MastodonFeedScreen({
           <View style={[styles.sourceTabs, { borderColor: c.border, backgroundColor: c.surface }]}>
             {([
               { key: 'home', label: t('home.mastodonFeedHomeTab', { defaultValue: 'Home' }) },
-              { key: 'posts', label: t('home.mastodonFeedPostsTab', { defaultValue: 'Your posts' }) },
+              { key: 'posts', label: t('home.mastodonFeedPostsTab', { defaultValue: 'Your activity' }) },
               { key: 'notifications', label: t('home.mastodonFeedNotificationsTab', { defaultValue: 'Notifications' }) },
             ] as const).map((tab) => {
               const active = feedSource === tab.key;
@@ -491,7 +491,7 @@ export default function MastodonFeedScreen({
                         disabled={!(account?.acct || account?.profile_url) || !onOpenRemoteProfile}
                         style={postCardStyles.feedHeaderLeft}
                         onPress={() => {
-                          const query = account?.profile_url || (account?.acct ? `@${account.acct}` : '');
+                          const query = account?.acct ? `@${account.acct}` : (account?.profile_url || '');
                           if (query && onOpenRemoteProfile) {
                             onOpenRemoteProfile(query, account?.profile_url || status?.url || undefined);
                           }
@@ -625,7 +625,7 @@ export default function MastodonFeedScreen({
                     disabled={!(account?.acct || account?.profile_url) || !onOpenRemoteProfile}
                     style={postCardStyles.feedHeaderLeft}
                     onPress={() => {
-                      const query = account?.profile_url || (account?.acct ? `@${account.acct}` : '');
+                      const query = account?.acct ? `@${account.acct}` : (account?.profile_url || '');
                       if (query && onOpenRemoteProfile) {
                         onOpenRemoteProfile(query, account?.profile_url || status?.url || undefined);
                       }

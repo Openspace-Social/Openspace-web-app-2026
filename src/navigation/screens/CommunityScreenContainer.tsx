@@ -278,7 +278,11 @@ export default function CommunityScreenContainer() {
 
   const onOpenManage = useCallback(() => {
     if (!communityName) return;
-    navigation.navigate('ProfileTab', { screen: 'ManageCommunity', params: { name: communityName } });
+    // Push within the current CommunitiesStack (ManageCommunity is now
+    // mirrored there) so the native back button returns to this community
+    // page. The earlier cross-tab navigate to ProfileTab landed the user
+    // on ManageCommunity as the stack root with nothing to back out to.
+    navigation.push('ManageCommunity', { name: communityName });
   }, [navigation, communityName]);
 
   // ── Reactions (matching FeedScreenContainer) ──────────────────────────────

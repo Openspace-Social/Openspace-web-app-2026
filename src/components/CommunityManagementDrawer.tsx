@@ -14,6 +14,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { normalizeImageForUpload } from '../utils/normalizeImage';
 import {
   api,
   CommunityJoinRequest,
@@ -54,6 +57,14 @@ type Props = {
   onDeleted: () => void;
   onNotice: (message: string) => void;
   onError: (message: string) => void;
+  /** 'drawer' (default): slide-in modal with backdrop + swipe-to-close —
+   *  the legacy web layout.
+   *  'page': render content inline with no modal/backdrop/animation, for
+   *  use as a native stack route where the navigator already provides
+   *  the back button. On iOS the modal otherwise covers the navigator
+   *  header and the drawer has no close affordance reachable from a
+   *  full-width screen. */
+  mode?: 'drawer' | 'page';
 };
 
 function avatarFromUser(user?: CommunityMember) {
@@ -72,17 +83,44 @@ function formatRelativeOrDate(input: string | null | undefined) {
 }
 
 async function pickImageFile(accept: string): Promise<Blob | null> {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') return null;
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = accept;
-    input.onchange = () => {
-      const file = input.files?.[0] as Blob | undefined;
-      resolve(file || null);
-    };
-    input.click();
-  });
+  // Web — DOM file input picks a real File / Blob the FormData calls
+  // can read directly.
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = accept;
+      input.onchange = () => {
+        const file = input.files?.[0] as Blob | undefined;
+        resolve(file || null);
+      };
+      input.click();
+    });
+  }
+  // Native — system image library picker. We normalize the picked asset
+  // through `normalizeImageForUpload` (HEIC → JPEG re-encode + a 2048px
+  // long-side cap so 12-MP+ phone camera shots ship as ~1 MB) and
+  // return the file in RN-FormData's `{ uri, type, name }` shape cast
+  // to Blob — callers append it to FormData the same way as a web Blob.
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: false,
+    });
+    if (result.canceled) return null;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return null;
+    const normalizedUri = await normalizeImageForUpload(asset.uri);
+    const filename = (() => {
+      const parts = normalizedUri.split('/');
+      const tail = parts[parts.length - 1] || 'community-image.jpg';
+      return tail.includes('.') ? tail : `${tail}.jpg`;
+    })();
+    return ({ uri: normalizedUri, type: 'image/jpeg', name: filename } as unknown as Blob);
+  } catch {
+    return null;
+  }
 }
 
 export default function CommunityManagementDrawer({
@@ -97,8 +135,10 @@ export default function CommunityManagementDrawer({
   onDeleted,
   onNotice,
   onError,
+  mode = 'drawer',
 }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const drawerWidth = Math.min(480, width * 0.92);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -121,6 +161,8 @@ export default function CommunityManagementDrawer({
   const [mods, setMods] = useState<CommunityMember[]>([]);
   const [joinRequests, setJoinRequests] = useState<CommunityJoinRequest[]>([]);
   const [members, setMembers] = useState<CommunityMember[]>([]);
+  const [membersHasMore, setMembersHasMore] = useState(false);
+  const [membersLoadingMore, setMembersLoadingMore] = useState(false);
   const [banned, setBanned] = useState<CommunityMember[]>([]);
   const [ownershipTransfer, setOwnershipTransfer] = useState<CommunityOwnershipTransfer | null>(null);
   const [transferConfirm, setTransferConfirm] = useState<{
@@ -266,6 +308,10 @@ export default function CommunityManagementDrawer({
         } else if (panel === 'members') {
           const rows = await api.getCommunityMembers(token, communityName, 20);
           setMembers(rows);
+          // If we got a full page back, assume the server has more —
+          // the API doesn't surface a hasMore flag so we keep loading
+          // until a short page tells us we've reached the end.
+          setMembersHasMore(rows.length === 20);
         } else if (panel === 'moderators') {
           const rows = await api.getCommunityModerators(token, communityName, 20);
           setMods(rows);
@@ -1042,7 +1088,38 @@ export default function CommunityManagementDrawer({
       api.getCommunityBannedUsers(token, communityName, 20),
     ]);
     setMembers(memberRows);
+    setMembersHasMore(memberRows.length === 20);
     setBanned(bannedRows);
+  }
+
+  // Append the next page of members to the existing list. The API uses
+  // cursor pagination via `maxId` — passing the smallest id from the
+  // current list returns the next chunk in descending-id order.
+  async function loadMoreMembers() {
+    if (membersLoadingMore || !membersHasMore || !communityName) return;
+    const tail = members[members.length - 1];
+    const tailId = typeof tail?.id === 'number' ? tail.id : undefined;
+    if (tailId == null) return;
+    setMembersLoadingMore(true);
+    try {
+      const nextRows = await api.getCommunityMembers(token, communityName, 20, tailId);
+      if (Array.isArray(nextRows) && nextRows.length > 0) {
+        setMembers((prev) => {
+          // De-dupe by id in case the API returns overlap on cursor edges.
+          const seen = new Set(prev.map((m) => m.id));
+          const merged = [...prev];
+          for (const row of nextRows) {
+            if (!seen.has(row.id)) merged.push(row);
+          }
+          return merged;
+        });
+      }
+      setMembersHasMore(Array.isArray(nextRows) && nextRows.length === 20);
+    } catch (e: any) {
+      onError(e?.message || t('home.feedLoadError'));
+    } finally {
+      setMembersLoadingMore(false);
+    }
   }
 
   async function runRemoveMemberAction(username: string, ban: boolean) {
@@ -1130,6 +1207,35 @@ export default function CommunityManagementDrawer({
           },
           t('community.removeAndBanAction', { defaultValue: 'Remove + ban' }),
         ))}
+        {/* Load more — only when the server's likely to have more AND
+         *  the user isn't currently filtering (filtering is client-side
+         *  over the loaded set; loading more wouldn't change the visible
+         *  result and would only confuse the user). */}
+        {membersHasMore && !query ? (
+          <TouchableOpacity
+            onPress={() => { void loadMoreMembers(); }}
+            disabled={membersLoadingMore}
+            activeOpacity={0.85}
+            style={{
+              marginHorizontal: 12,
+              marginVertical: 12,
+              paddingVertical: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: c.inputBackground,
+              alignItems: 'center',
+            }}
+          >
+            {membersLoadingMore ? (
+              <ActivityIndicator color={c.primary} size="small" />
+            ) : (
+              <Text style={{ color: c.textPrimary, fontWeight: '700' }}>
+                {t('community.loadMoreMembers', { defaultValue: 'Load more members' })}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </>
     );
   }
@@ -1498,6 +1604,81 @@ export default function CommunityManagementDrawer({
 
   if (!mounted) return null;
 
+  // ── Page mode (native stack route) ─────────────────────────────────────
+  // No modal, no backdrop, no animation — just the same header + scrollview
+  // tree the drawer renders, filling the screen. The parent navigator's
+  // back button handles dismissal, so we don't render any close UI here.
+  if (mode === 'page') {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.surface }}>
+        {/* On the main panel the parent navigator already shows
+         *  "Manage community" in its header — rendering the drawer's
+         *  own title underneath would duplicate it. Sub-panels still
+         *  need the drawer header so the back-to-main arrow + the
+         *  panel-specific title (Members / Admins / etc.) appear. */}
+        {panel !== 'main' ? renderHeader() : null}
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          {panel === 'main' ? renderMain() : null}
+          {panel === 'details' ? renderDetails() : null}
+          {panel === 'members' ? renderMembers() : null}
+          {panel === 'administrators' ? renderAdministrators() : null}
+          {panel === 'ownershipTransfer' ? renderOwnershipTransfer() : null}
+          {panel === 'moderators' ? renderModerators() : null}
+          {panel === 'joinRequests' ? renderJoinRequests() : null}
+          {panel === 'banned' ? renderBanned() : null}
+          {panel === 'reports' ? renderReports() : null}
+          {panel === 'closed' ? renderClosedPosts() : null}
+          {panel === 'invite' ? renderInvite() : null}
+          {panel === 'unfavorite' ? renderUnfavorite() : null}
+          {panel === 'delete' ? renderDelete() : null}
+        </ScrollView>
+
+        {/* Report detail sub-panel — slides in over the reports list */}
+        <Animated.View style={{
+          position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+          backgroundColor: c.surface,
+          transform: [{ translateX: reportsDetailTranslateX }],
+          zIndex: 10,
+        }}>
+          {renderReportsDetail()}
+        </Animated.View>
+
+        {transferConfirm ? (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, zIndex: 50 }}>
+            <Pressable
+              onPress={() => setTransferConfirm(null)}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' }}
+            />
+            <View style={{ width: '100%', maxWidth: 520, borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, padding: 18, gap: 12 }}>
+              <Text style={{ color: c.textPrimary, fontWeight: '800', fontSize: 20 }}>{transferConfirm.title}</Text>
+              <Text style={{ color: c.textSecondary, fontSize: 16, lineHeight: 24 }}>{transferConfirm.message}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setTransferConfirm(null)}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground }}
+                >
+                  <Text style={{ color: c.textPrimary, fontWeight: '700' }}>
+                    {t('community.cancelAction', { defaultValue: 'Cancel' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const action = transferConfirm.onConfirm;
+                    setTransferConfirm(null);
+                    void action();
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: transferConfirm.danger ? '#DC2626' : c.primary }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '800' }}>{transferConfirm.confirmLabel}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', opacity: backdropOpacity }}>
@@ -1519,6 +1700,10 @@ export default function CommunityManagementDrawer({
           shadowOpacity: 0.2,
           shadowRadius: 18,
           elevation: 20,
+          // Push content below the iOS status bar / Android system bar so
+          // the drawer header doesn't crash into the clock when the drawer
+          // is used as a full-screen route on native.
+          paddingTop: insets.top,
         }}
       >
         {renderHeader()}

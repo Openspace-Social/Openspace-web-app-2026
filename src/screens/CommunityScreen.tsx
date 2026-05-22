@@ -380,20 +380,24 @@ export default function CommunityScreen({
         </Section>
       ) : null}
 
-      {/* Pinned posts */}
-      {pinnedPosts.length > 0 || pinnedPostsLoading ? (
-        <Section c={c} icon="pin-outline" title={t('home.communityPinnedPostsSection', { defaultValue: 'Pinned posts' })}>
-          {pinnedPostsLoading && pinnedPosts.length === 0 ? (
-            <ActivityIndicator color={c.primary} size="small" style={{ marginVertical: 10 }} />
-          ) : (
-            <View style={{ gap: 8 }}>
-              {pinnedPosts.map((p) => (
-                <View key={`pinned-${(p as any).id}`}>{renderPostCard(p)}</View>
-              ))}
-            </View>
-          )}
-        </Section>
-      ) : null}
+      {/* Pinned posts — always rendered (with an empty state when no
+       *  pins) so the user can see that pinning is a feature of the
+       *  community and not be confused by the section's absence. */}
+      <Section c={c} icon="pin-outline" title={t('home.communityPinnedPostsSection', { defaultValue: 'Pinned posts' })}>
+        {pinnedPostsLoading && pinnedPosts.length === 0 ? (
+          <ActivityIndicator color={c.primary} size="small" style={{ marginVertical: 10 }} />
+        ) : pinnedPosts.length === 0 ? (
+          <Text style={{ color: c.textMuted, fontSize: 13, paddingVertical: 8 }}>
+            {t('home.communityPinnedPostsEmpty', { defaultValue: 'No pinned posts yet.' })}
+          </Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {pinnedPosts.map((p) => (
+              <View key={`pinned-${(p as any).id}`}>{renderPostCard(p)}</View>
+            ))}
+          </View>
+        )}
+      </Section>
 
       {/* Members — single-line horizontal slider, with "Show more" pinned
           to the right of the section title that opens a dedicated infinite-

@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { openExternalLink } from '../../utils/openExternalLink';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -202,7 +202,12 @@ export default function PostDetailScreenContainer() {
       const url = `https://openspace.social/p/${uuid}`;
       try {
         const { Share } = await import('react-native');
-        await Share.share({ url, message: url });
+        // iOS honors `url` (rich preview); Android ignores it and only honors
+        // `message`. Passing both on iOS causes apps like WhatsApp to paste
+        // url+message and duplicate the link in the recipient's text box.
+        await Share.share(
+          Platform.OS === 'ios' ? { url } : { message: url },
+        );
       } catch {
         // cancelled
       }

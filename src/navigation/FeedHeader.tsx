@@ -4,24 +4,33 @@
  * Just a search pill across the row; the user's avatar moved to the
  * bottom Profile tab so the search has the full width to itself.
  *
- * Phase shortcuts still in place:
- *   - No scroll-driven auto-hide (mobile-web's Animated.View translate
- *     trick is a bigger lift and not needed for visual parity).
- *   - Search focus shows a placeholder toast; dropdown wiring pending.
+ * Scroll-driven auto-hide: subscribes to ChromeVisibilityContext's
+ * shared Animated.Value (0 = visible, 1 = hidden) and translates itself
+ * upward off-screen by its own measured height. The Feed screen drives
+ * the value via `useChromeScrollHandler()` so scrolling the feed down
+ * tucks the header out of the way; scrolling back up reveals it.
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
+import { useChromeVisibility } from '../context/ChromeVisibilityContext';
 
 export default function FeedHeader() {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
   const c = theme.colors;
+  const { hidden } = useChromeVisibility();
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const next = e.nativeEvent.layout.height;
+    if (next > 0 && next !== headerHeight) setHeaderHeight(next);
+  };
 
   const openSearch = () => {
     // Search modal lives on the root stack; navigate up out of the tabs.
@@ -34,13 +43,24 @@ export default function FeedHeader() {
     navigation.getParent()?.navigate('ProfileTab' as never, { screen: 'Settings' } as never);
   };
 
+  // Negative top-margin pulls the header up *out of layout* as `hidden`
+  // ramps 0 → 1 — so the screen below grows into the freed slot instead
+  // of leaving a transparent gap where the header used to be. Until we
+  // have a measured height, keep marginTop at 0 so the header doesn't
+  // start collapsed on first paint.
+  const marginTop = headerHeight > 0
+    ? hidden.interpolate({ inputRange: [0, 1], outputRange: [0, -headerHeight] })
+    : 0;
+
   return (
-    <View
+    <Animated.View
+      onLayout={handleLayout}
       style={[
         styles.headerWrap,
         {
           backgroundColor: c.surface,
           borderBottomColor: c.border,
+          marginTop,
         },
       ]}
     >
@@ -66,7 +86,7 @@ export default function FeedHeader() {
           <MaterialCommunityIcons name="cog-outline" size={20} color={c.textSecondary} />
         </TouchableOpacity>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

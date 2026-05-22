@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { AppNotification, NotificationType } from '../api/client';
 import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
@@ -414,6 +415,9 @@ type RowProps = {
   c: any;
   t: (key: string, options?: any) => string;
   onMarkRead: (id: number) => void;
+  /** Native-only: swipe-left reveals "Mark unread" alongside Delete on
+   *  the alerts/notifications screen. Web callers don't supply this. */
+  onMarkUnread?: (id: number) => void;
   onDelete: (id: number) => void;
   onNavigateProfile: (username: string) => void;
   onNavigatePost: (postId: number, postUuid?: string, commentId?: number, parentCommentId?: number) => void;
@@ -434,6 +438,7 @@ export function NotificationRow({
   c,
   t,
   onMarkRead,
+  onMarkUnread,
   onDelete,
   onNavigateProfile,
   onNavigatePost,
@@ -585,9 +590,91 @@ export function NotificationRow({
     }
   }
 
+  // Right-swipe actions — gesture-handler exposes a Swipeable with a
+  // renderRightActions callback that gets the row's translateX so the
+  // action buttons can pop in proportionally as the user drags.
+  const swipeableRef = useRef<Swipeable | null>(null);
+  const closeSwipe = () => swipeableRef.current?.close();
+
+  const renderRightActions = () => (
+    <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
+      {onMarkUnread ? (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            closeSwipe();
+            if (notif.read) onMarkUnread(notif.id);
+            else onMarkRead(notif.id);
+          }}
+          style={{
+            width: 96,
+            paddingHorizontal: 8,
+            paddingVertical: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: notif.read ? '#6366F1' : '#F59E0B',
+          }}
+          accessibilityLabel={notif.read ? 'Mark unread' : 'Mark read'}
+        >
+          <MaterialCommunityIcons
+            name={notif.read ? 'email-mark-as-unread' : 'email-open-outline'}
+            size={22}
+            color="#fff"
+          />
+          <Text
+            style={{ color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 4, textAlign: 'center' }}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
+            {notif.read ? 'Unread' : 'Read'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => {
+          closeSwipe();
+          onDelete(notif.id);
+        }}
+        style={{
+          width: 96,
+          paddingHorizontal: 8,
+          paddingVertical: 10,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#DC2626',
+        }}
+        accessibilityLabel="Delete notification"
+      >
+        <MaterialCommunityIcons name="trash-can-outline" size={22} color="#fff" />
+        <Text
+          style={{ color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 4, textAlign: 'center' }}
+          numberOfLines={1}
+          allowFontScaling={false}
+        >
+          Delete
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      // Defaults (friction=1 / rightThreshold=40) keep the buttons coupled
+      // 1:1 to the user's finger as they drag — anything higher feels like
+      // the swipe is lagging behind. `overshootRight=false` clamps the drag
+      // at the action-panel's edge so the row content never gets dragged
+      // past the buttons and visually crashes into them.
+      overshootRight={false}
+    >
     <TouchableOpacity
-      activeOpacity={0.85}
+      // activeOpacity=1 disables the press-dim. Dimming the row to 85%
+      // also dims its background, letting the Swipeable's right-action
+      // panel (painted underneath this row) flash through on every
+      // tap — visually identical to a buggy "buttons appear on tap".
+      activeOpacity={1}
       onPress={handlePress}
       style={{
         flexDirection: 'row',
@@ -597,7 +684,14 @@ export function NotificationRow({
         gap: 12,
         borderBottomWidth: 1,
         borderBottomColor: c.border,
-        backgroundColor: notif.read ? c.surface : c.primary + '0d', // subtle tint for unread
+        // Background MUST be fully opaque — the Swipeable renders the
+        // action panel underneath this row at all times (so it's ready
+        // to be revealed on swipe). The previous translucent unread
+        // tint (`c.primary + '0d'`, ~3% alpha) let the buttons bleed
+        // through on every render, making them appear "behind" the
+        // text without any swipe gesture. The unread dot on the left
+        // edge keeps the unread state visually distinct.
+        backgroundColor: c.surface,
         position: 'relative',
       }}
     >
@@ -898,16 +992,8 @@ export function NotificationRow({
         />
       ) : null}
 
-      {/* Delete button */}
-      <TouchableOpacity
-        onPress={() => onDelete(notif.id)}
-        activeOpacity={0.7}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={{ paddingLeft: 4, flexShrink: 0 }}
-      >
-        <MaterialCommunityIcons name="close" size={15} color={c.textMuted} />
-      </TouchableOpacity>
     </TouchableOpacity>
+    </Swipeable>
   );
 }
 

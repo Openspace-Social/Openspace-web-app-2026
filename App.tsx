@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer, DefaultTheme as RNDefaultTheme, DarkTheme as RNDarkTheme, type Theme as RNTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from './src/i18n';
@@ -22,6 +23,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider, type AuthContextValue } from './src/context/AuthContext';
 import { navigationRef, markNavigationReady } from './src/navigation/navigationRef';
 import { setFederationVisitorPreferredAuthMode, type FederationPreferredAuthMode } from './src/utils/federationAttribution';
+import { printProductionConsoleWarning } from './src/utils/consoleWarning';
 import {
   attachPushNotificationListeners,
   configurePushChannels,
@@ -35,6 +37,11 @@ import {
 // Required on web so popup-based OAuth flows can hand the callback URL back to
 // the opener instead of rendering the app inside the popup window.
 WebBrowser.maybeCompleteAuthSession();
+
+// Self-XSS deterrent — only fires on real openspace.social hosts; no-op on
+// localhost / native. Module-level so it runs once at app boot regardless
+// of which screen mounts first.
+printProductionConsoleWarning();
 
 // ── react-navigation migration feature flag ──────────────────────────────────
 // Native (iOS/Android): ON — the new navigator is the testbed here. Native
@@ -347,21 +354,28 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      {/* ThemeProvider must be ABOVE NavigationContainer so the
-          ThemedNavigationContainer wrapper can read isDark/theme via
-          useTheme() before constructing the navigator's theme prop. */}
-      <ThemeProvider>
-        <ThemedNavigationContainer>
-          <AppToastProvider>
-            <GifPickerProvider>
-              <MentionPopupProvider>
-                <Root />
-              </MentionPopupProvider>
-            </GifPickerProvider>
-          </AppToastProvider>
-        </ThemedNavigationContainer>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    // GestureHandlerRootView must wrap the whole tree so any descendant
+    // gesture-handler component (Swipeable, PanGestureHandler, etc.)
+    // works. Currently consumed by the notifications-row swipe actions;
+    // without this root, those rows throw "PanGestureHandler must be
+    // used as a descendant of GestureHandlerRootView" at first render.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* ThemeProvider must be ABOVE NavigationContainer so the
+            ThemedNavigationContainer wrapper can read isDark/theme via
+            useTheme() before constructing the navigator's theme prop. */}
+        <ThemeProvider>
+          <ThemedNavigationContainer>
+            <AppToastProvider>
+              <GifPickerProvider>
+                <MentionPopupProvider>
+                  <Root />
+                </MentionPopupProvider>
+              </GifPickerProvider>
+            </AppToastProvider>
+          </ThemedNavigationContainer>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

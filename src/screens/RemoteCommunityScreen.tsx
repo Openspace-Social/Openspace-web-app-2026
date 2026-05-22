@@ -212,7 +212,7 @@ export default function RemoteCommunityScreen({ token, remoteCommunityId }: Prop
           </View>
           <View style={styles.pill}>
             <MaterialCommunityIcons name="server-network" size={14} color={c.textSecondary} />
-            <Text style={styles.pillText}>Cached in OpenSpace</Text>
+            <Text style={styles.pillText}>Cached in Openspace</Text>
           </View>
           {community?.is_subscribed ? (
             <View style={styles.pill}>
@@ -267,7 +267,7 @@ export default function RemoteCommunityScreen({ token, remoteCommunityId }: Prop
             'home.federatedCommunityNextStepBody',
             {
               defaultValue:
-                'OpenSpace can now discover, cache, and save remote fediverse communities. Posting and deeper remote participation can build on top of this subscription layer next.',
+                'Openspace can now discover, cache, and save remote fediverse communities. Posting and deeper remote participation can build on top of this subscription layer next.',
             },
           )}
         </Text>

@@ -32,6 +32,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Clipboard from 'expo-clipboard';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
+import { validatePickedMedia, verifyUriExists } from '../utils/mediaValidation';
 import {
   api,
   type CircleResult,
@@ -547,6 +548,20 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       // video selection is single and replaces any photo selection.
       const videoAsset = assets.find((a) => a?.type === 'video');
       if (videoAsset?.uri) {
+        const videoCheck = validatePickedMedia({
+          kind: 'video',
+          size: (videoAsset as any).fileSize,
+          durationMs: (videoAsset as any).duration,
+        });
+        if (!videoCheck.ok) {
+          // Also pin the message to the composer's inline error banner —
+          // the fullScreenModal presents in its own iOS UIWindow, so a
+          // toast from the parent AppToastProvider renders *behind* the
+          // modal and the user never sees it.
+          setInlineError(videoCheck.reason);
+          onError(videoCheck.reason);
+          return;
+        }
         const fallbackName = (() => {
           const segments = videoAsset.uri.split('/');
           return segments[segments.length - 1] || 'post-video.mp4';
@@ -556,6 +571,8 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         setComposerVideo({ uri: videoAsset.uri, name, mimeType });
         setImageUris([]);
         setRotations({});
+        // Clear any stale rejection banner from a previous pick attempt.
+        setInlineError('');
         if (assets.some((a) => a?.type === 'image')) {
           // Tell the user we dropped their photos so they're not surprised.
           onNotice(t('home.composerVideoReplacedImages', {
@@ -564,16 +581,35 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         }
         return;
       }
-      const newUris = assets
-        .filter((a) => a?.type !== 'video')
-        .map((a) => a?.uri)
-        .filter((uri): uri is string => typeof uri === 'string' && !!uri);
+      // Validate each picked image against the size cap; collect the
+      // first rejection (if any) so the user sees a specific reason
+      // instead of a silent "nothing happened".
+      const imageAssets = assets.filter((a) => a?.type !== 'video');
+      const newUris: string[] = [];
+      let imageRejection: string | null = null;
+      for (const asset of imageAssets) {
+        if (!asset?.uri) continue;
+        const check = validatePickedMedia({
+          kind: 'image',
+          size: (asset as any).fileSize,
+        });
+        if (!check.ok) { imageRejection = check.reason; continue; }
+        newUris.push(asset.uri);
+      }
+      if (imageRejection) {
+        setInlineError(imageRejection);
+        onError(imageRejection);
+      }
       if (newUris.length === 0) return;
       setImageUris((prev) => {
         const merged = [...prev, ...newUris];
         // Hard-cap in case selectionLimit isn't honoured by the platform.
         return merged.slice(0, MAX_IMAGES);
       });
+      // Clear any stale rejection banner from a previous pick — but
+      // ONLY if every image in this batch passed. If some were rejected
+      // we want the rejection reason to stay visible.
+      if (!imageRejection) setInlineError('');
     } catch {
       onError(t('home.profileImagePickerFailed', { defaultValue: 'Could not open the photo library.' }));
     }
@@ -657,6 +693,27 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       setInlineError(msg);
       onError(msg);
       return;
+    }
+    // Verify every picked URI is still readable. iOS PHPhotoPicker URIs
+    // can be invalidated by the OS between pick and submit — when that
+    // happens, RN's FormData silently sends a request without the file
+    // part, the server creates a text-only post, and the user thinks
+    // their image uploaded. Catch it here with a clear error instead.
+    for (const uri of imageUris) {
+      const err = await verifyUriExists(uri);
+      if (err) {
+        setInlineError(err);
+        onError(err);
+        return;
+      }
+    }
+    if (composerVideo?.uri) {
+      const err = await verifyUriExists(composerVideo.uri);
+      if (err) {
+        setInlineError(err);
+        onError(err);
+        return;
+      }
     }
     setInlineError('');
     setSubmitting(true);
@@ -805,16 +862,43 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       const localPost = finalized && 'publish_destination' in (finalized as any)
         ? (finalized as FederatedPublishResult).local_post
         : finalized as FeedPost | null;
+      const federatedResult = finalized && 'publish_destination' in (finalized as any)
+        ? finalized as FederatedPublishResult
+        : null;
+      const crosspostStillPublishing = federatedResult?.publish_destination === 'both'
+        && !!localPost?.uuid
+        && String(federatedResult.mastodon_publish_status || localPost?.mastodon_publish_status || '').toUpperCase() === 'PE';
 
       onNotice(
         publishDestination === 'mastodon'
           ? t('home.postComposerMastodonSuccess', { defaultValue: 'Posted to Mastodon.' })
+          : crosspostStillPublishing
+            ? t('home.postComposerCrossPostPending', { defaultValue: 'Posted to Openspace. Mastodon cross-post is still publishing.' })
           : publishDestination === 'both'
-            ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to OpenSpace and Mastodon.' })
+            ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to Openspace and Mastodon.' })
             : t('home.composerPostedNotice', { defaultValue: 'Posted!' })
       );
       if (localPost) {
         onPosted(localPost);
+        if (crosspostStillPublishing && token && localPost.uuid) {
+          void api.waitForMastodonPublishResolution(token, localPost.uuid).then((resolvedPost) => {
+            const statusValue = String(resolvedPost.mastodon_publish_status || '').toUpperCase();
+            if (statusValue === 'PB') {
+              onNotice(t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to Openspace and Mastodon.' }));
+            } else if (statusValue === 'FA') {
+              onError(
+                resolvedPost.mastodon_publish_error
+                || t('home.postComposerCrossPostFailed', {
+                  defaultValue: 'Posted to Openspace, but the Mastodon cross-post failed.',
+                })
+              );
+            }
+          }).catch(() => {
+            onError(t('home.postComposerCrossPostUnknown', {
+              defaultValue: 'Posted to Openspace, but we could not confirm the Mastodon cross-post status.',
+            }));
+          });
+        }
       } else {
         onClose();
       }

@@ -25,6 +25,11 @@ type Props = {
   t: (key: string, options?: any) => string;
   onNotice: (msg: string) => void;
   onOpenCommunity: (communityName: string) => void;
+  /** iOS status-bar tap-to-top requires exactly one mounted scroll
+   *  view with `scrollsToTop=true`. Native callers should pass the
+   *  screen's `useIsFocused()` so the tap reliably lands on whichever
+   *  tab the user is actually viewing. Defaults to true for web. */
+  scrollsToTop?: boolean;
 };
 
 type SectionKey = 'administrated' | 'moderated' | 'joined' | 'favorites';
@@ -292,7 +297,7 @@ function CommunityCard({
   );
 }
 
-export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommunity }: Props) {
+export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommunity, scrollsToTop = true }: Props) {
   const s = useMemo(() => makeStyles(c), [c]);
   const { showToast } = useAppToast();
   const { width, height } = useWindowDimensions();
@@ -887,6 +892,7 @@ export default function CommunitiesScreen({ token, c, t, onNotice, onOpenCommuni
       <ScrollView
         style={s.scroll}
         contentContainerStyle={[s.scrollContent, isNarrow && { paddingHorizontal: 8 }]}
+        scrollsToTop={scrollsToTop}
       >
         <View style={[s.contentColumn, { maxWidth: contentWidth }]}>
           {/* Re-key on layoutMode so toggling Classic ↔ 3-panel forces a

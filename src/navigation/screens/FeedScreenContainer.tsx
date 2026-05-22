@@ -9,12 +9,15 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { useFeedData } from '../../hooks/useFeedData';
+import { useChromeScrollHandler, useChromeVisibility } from '../../context/ChromeVisibilityContext';
 import { useCommentsData } from '../../hooks/useCommentsData';
 import { useNativePostInteractions } from '../../hooks/useNativePostInteractions';
 import { useReactionList } from '../../hooks/useReactionList';
@@ -58,6 +61,29 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
   const flatListRef = useRef<FlatList<FeedPost>>(null);
   useScrollToTop(flatListRef);
   const isFocused = useIsFocused();
+
+  // Auto-hide the top FeedHeader + bottom CustomTabBar while scrolling
+  // the feed downward. Reset to visible whenever this tab loses focus so
+  // sibling tabs (Communities, Alerts, etc.) never inherit a hidden bar.
+  const handleChromeScroll = useChromeScrollHandler();
+  const { hidden: chromeHidden, resetVisible: resetChromeVisible } = useChromeVisibility();
+  useEffect(() => {
+    if (!isFocused) resetChromeVisible();
+  }, [isFocused, resetChromeVisible]);
+
+  // react-navigation reserves `tabBarHeight` of paddingBottom on every
+  // tab screen so the bar doesn't cover content. `useBottomTabBarHeight`
+  // returns the visible bar height; on iPhones with a home indicator
+  // the wrapping SafeAreaView reserves a *further* `insets.bottom` strip
+  // underneath that the hook doesn't include. Add both so the feed
+  // extends all the way to the screen edge when chrome hides.
+  const tabBarHeight = useBottomTabBarHeight();
+  const safeBottom = useSafeAreaInsets().bottom;
+  const totalBottomReservation = tabBarHeight + safeBottom;
+  const feedExtendBottom = chromeHidden.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -totalBottomReservation],
+  });
 
   const {
     posts, loading, loadingMore, refreshing, hasMore, error, refresh, loadMore,
@@ -334,11 +360,17 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onClose={closeMovePostCommunities}
         onSave={() => void submitMovePostCommunities()}
       />
+      <Animated.View style={{ flex: 1, marginBottom: feedExtendBottom }}>
       <ThemedFlatList
         ref={flatListRef}
         scrollsToTop={isFocused}
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.listContent}
+        // iOS otherwise auto-insets scroll content by the safe-area
+        // bottom (home indicator zone). Combined with react-navigation's
+        // tabBarHeight padding, that leaves a dead strip at the bottom
+        // when chrome hides — we want the feed to extend through both.
+        contentInsetAdjustmentBehavior="never"
         data={posts}
         keyExtractor={(post) => `${feedType}-${(post as any).id}`}
         renderItem={renderItem}
@@ -346,6 +378,8 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
+        onScroll={handleChromeScroll}
+        scrollEventThrottle={16}
         onEndReachedThreshold={0.4}
         onEndReached={() => {
           void loadMore();
@@ -374,6 +408,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
           ) : null
         }
       />
+      </Animated.View>
     </PostInteractionsProvider>
   );
 }

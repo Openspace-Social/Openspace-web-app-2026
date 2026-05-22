@@ -28,6 +28,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import CustomTabBar from './CustomTabBar';
 import FeedHeader from './FeedHeader';
+import { ChromeVisibilityProvider } from '../context/ChromeVisibilityContext';
 import FeedTopTabs from './FeedTopTabs';
 import SettingsScreenContainer from './screens/SettingsScreenContainer';
 import LandingScreenContainer from './screens/LandingScreenContainer';
@@ -154,6 +155,7 @@ export type HomeStackParamList = {
   UserCommunities: { username: string };
   UserFollowings: { username: string };
   CommunityMembers: { name: string };
+  ManageCommunity: { name: string };
   RemoteProfile: { remoteActorId: number };
   RemoteCommunity: { remoteCommunityId: number };
   RemoteThread: { inboundObjectId: number };
@@ -166,6 +168,7 @@ export type CommunitiesStackParamList = {
   CommunitiesList: undefined;
   Community: { name: string };
   CommunityMembers: { name: string };
+  ManageCommunity: { name: string };
   Post: PostScreenParams;
   LongPost: PostScreenParams;
   ReportPost: ReportPostScreenParams;
@@ -279,6 +282,15 @@ function HomeTabStack() {
         name="CommunityMembers"
         component={CommunityMembersScreenContainer}
         options={{ title: 'Members' }}
+      />
+      {/* Mirrored from CommunitiesStack + ProfileStack so tapping
+       *  "Manage" on a community page reached via HomeStack (e.g. from
+       *  a post) pushes in-tab and the native back button returns to
+       *  the community page. */}
+      <HomeStack.Screen
+        name="ManageCommunity"
+        component={ManageCommunityScreenContainer}
+        options={{ title: 'Manage community' }}
       />
       <HomeStack.Screen
         name="SearchResults"
@@ -402,6 +414,15 @@ function CommunitiesTabStack() {
         name="CommunityMembers"
         component={CommunityMembersScreenContainer}
         options={{ title: 'Members' }}
+      />
+      {/* Mirrored from ProfileStack so tapping "Manage" on a community
+       *  page pushes inside the current (Communities) tab rather than
+       *  cross-navigating to ProfileTab — keeps the native back button
+       *  pointing at the community page the user just came from. */}
+      <CommunitiesStack.Screen
+        name="ManageCommunity"
+        component={ManageCommunityScreenContainer}
+        options={{ title: 'Manage community' }}
       />
       {/* Post detail registered locally so taps on PostCards rendered
           inside a Community page (which lives in this stack) can push the
@@ -590,15 +611,17 @@ function ProfileTabStack() {
 
 function TabsNavigator() {
   return (
-    <Tabs.Navigator
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <CustomTabBar {...props} />}
-    >
-      <Tabs.Screen name="HomeTab" component={HomeTabStack} options={{ title: 'Home' }} />
-      <Tabs.Screen name="CommunitiesTab" component={CommunitiesTabStack} options={{ title: 'Communities' }} />
-      <Tabs.Screen name="AlertsTab" component={AlertsScreenContainer} options={{ title: 'Alerts' }} />
-      <Tabs.Screen name="ProfileTab" component={ProfileTabStack} options={{ title: 'Profile' }} />
-    </Tabs.Navigator>
+    <ChromeVisibilityProvider>
+      <Tabs.Navigator
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <CustomTabBar {...props} />}
+      >
+        <Tabs.Screen name="HomeTab" component={HomeTabStack} options={{ title: 'Home' }} />
+        <Tabs.Screen name="CommunitiesTab" component={CommunitiesTabStack} options={{ title: 'Communities' }} />
+        <Tabs.Screen name="AlertsTab" component={AlertsScreenContainer} options={{ title: 'Alerts' }} />
+        <Tabs.Screen name="ProfileTab" component={ProfileTabStack} options={{ title: 'Profile' }} />
+      </Tabs.Navigator>
+    </ChromeVisibilityProvider>
   );
 }
 

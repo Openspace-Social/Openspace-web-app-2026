@@ -119,6 +119,18 @@ export default function AlertsScreenContainer() {
     try { await api.markNotificationRead(token, id); } catch { void refreshUnread(); }
   }, [token, setUnreadCount, refreshUnread]);
 
+  const onMarkUnread = useCallback(async (id: number) => {
+    if (!token) return;
+    let wasRead = false;
+    setItems((prev) => prev.map((n) => {
+      if (n.id !== id) return n;
+      if (n.read) wasRead = true;
+      return { ...n, read: false };
+    }));
+    if (wasRead) setUnreadCount((cur) => cur + 1);
+    try { await api.markNotificationUnread(token, id); } catch { void refreshUnread(); }
+  }, [token, setUnreadCount, refreshUnread]);
+
   const onMarkAllRead = useCallback(async () => {
     if (!token) return;
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -354,12 +366,19 @@ export default function AlertsScreenContainer() {
       <ThemedFlatList
         data={filtered}
         keyExtractor={(n) => `notif-${n.id}`}
+        // iOS status-bar tap-to-top only fires when EXACTLY one scroll
+        // view in the hierarchy has `scrollsToTop=true`. Sibling tabs
+        // (Home / Communities / Profile) stay mounted once visited, so
+        // gating by focus keeps the tap landing on whichever tab the
+        // user is actually viewing.
+        scrollsToTop={isFocused}
         renderItem={({ item }) => (
           <NotificationRow
             notif={item}
             c={c}
             t={t}
             onMarkRead={onMarkRead}
+            onMarkUnread={onMarkUnread}
             onDelete={onDeleteNotification}
             onNavigateProfile={onNavigateProfile}
             onNavigatePost={onNavigatePost}

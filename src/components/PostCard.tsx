@@ -1282,7 +1282,7 @@ function PostCard({
 
     const segments: Segment[] = [];
     // Combined regex: URLs, @mentions, #hashtags
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -1307,9 +1307,12 @@ function PostCard({
         const username = match[2].slice(1); // strip @
         segments.push({ text: match[2], isLink: false, isMention: true, username, isHashtag: false });
       } else if (match[3]) {
+        const username = match[3].slice(1); // strip @
+        segments.push({ text: match[3], isLink: false, isMention: true, username, isHashtag: false });
+      } else if (match[4]) {
         // #hashtag
-        const tag = match[3].slice(1); // strip #
-        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: true, tag });
+        const tag = match[4].slice(1); // strip #
+        segments.push({ text: match[4], isLink: false, isMention: false, isHashtag: true, tag });
       }
 
       lastIndex = start + match[0].length;

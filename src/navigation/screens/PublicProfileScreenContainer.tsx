@@ -36,7 +36,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { normalizeImageForUpload } from '../../utils/normalizeImage';
 import { shareProfile } from '../../utils/shareProfile';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -136,6 +136,7 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
   const { showToast } = useAppToast();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<HomeStackParamList, 'Profile'>>();
+  const isFocused = useIsFocused();
   const username = usernameOverride ?? route.params?.username;
   const insets = useSafeAreaInsets();
 
@@ -176,6 +177,25 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
   const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
   const [commentsHasMore, setCommentsHasMore] = useState(true);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
+
+  useEffect(() => {
+    const normalized = (username || '').trim();
+    if (!token || !normalized.includes('@')) return;
+    let active = true;
+    void api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
+      .then((resolved) => {
+        if (!active) return;
+        if (resolved.kind === 'actor') {
+          navigation.replace('RemoteProfile', { remoteActorId: resolved.actor.id });
+        }
+      })
+      .catch(() => {
+        // allow the local profile load to fail normally if resolution fails
+      });
+    return () => {
+      active = false;
+    };
+  }, [navigation, token, username]);
 
   const refreshUser = useCallback(async () => {
     if (!token || !username) return;
@@ -846,6 +866,10 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
         refreshTintColor={c.textPrimary}
         onScroll={handleProfileScroll}
         scrollEventThrottle={16}
+        // iOS status-bar tap-to-top needs EXACTLY one scrollsToTop in
+        // the hierarchy — sibling tabs stay mounted once visited, so
+        // gate by focus to keep the tap landing on the active screen.
+        scrollsToTop={isFocused}
       >
         {/* Cover */}
         <View style={[styles.cover, { backgroundColor: c.inputBackground, borderColor: c.border }]}>

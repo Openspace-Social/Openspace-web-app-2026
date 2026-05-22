@@ -32,7 +32,7 @@ type Props = {
 // URLs first (so a c/ or @ inside a URL is consumed by it), then @mentions,
 // #hashtags, and c/community references. The c/ token requires a word
 // boundary before it so "abc/def" / paths don't false-positive.
-const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
+const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
 
 type Segment =
   | { kind: 'text'; text: string }
@@ -63,10 +63,12 @@ function tokenize(text: string): Segment[] {
     } else if (match[2]) {
       segments.push({ kind: 'mention', text: match[2], username: match[2].slice(1) });
     } else if (match[3]) {
-      segments.push({ kind: 'hashtag', text: match[3], tag: match[3].slice(1) });
+      segments.push({ kind: 'mention', text: match[3], username: match[3].slice(1) });
     } else if (match[4]) {
+      segments.push({ kind: 'hashtag', text: match[4], tag: match[4].slice(1) });
+    } else if (match[5]) {
       // Strip the "c/" prefix (2 chars) to get the community name.
-      segments.push({ kind: 'community', text: match[4], name: match[4].slice(2) });
+      segments.push({ kind: 'community', text: match[5], name: match[5].slice(2) });
     }
 
     lastIndex = start + match[0].length;

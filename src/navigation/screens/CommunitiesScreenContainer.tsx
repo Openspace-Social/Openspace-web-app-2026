@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import CommunitiesScreen from '../../screens/CommunitiesScreen';
@@ -21,6 +21,7 @@ export default function CommunitiesScreenContainer() {
   const { t } = useTranslation();
   const { showToast } = useAppToast();
   const navigation = useNavigation<NativeStackNavigationProp<CommunitiesStackParamList, 'CommunitiesList'>>();
+  const isFocused = useIsFocused();
 
   const handleOpenCommunity = useCallback((name: string) => {
     navigation.navigate('Community', { name });
@@ -39,6 +40,7 @@ export default function CommunitiesScreenContainer() {
       t={t}
       onNotice={handleNotice}
       onOpenCommunity={handleOpenCommunity}
+      scrollsToTop={isFocused}
     />
   );
 }

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Share } from 'react-native';
+import { Platform, Share } from 'react-native';
 import { openExternalLink } from '../utils/openExternalLink';
 import { parseInternalOpenspaceUrl } from '../routing';
 import { useNavigation } from '@react-navigation/native';
@@ -255,7 +255,24 @@ export function useNativePostInteractions({
           initialView: options?.initialView,
         });
       },
-      onNavigateProfile: (username) => navigation.navigate('Profile', { username }),
+      onNavigateProfile: (username) => {
+        const normalized = (username || '').trim();
+        if (normalized.includes('@') && token) {
+          void api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
+            .then((resolved) => {
+              if (resolved.kind === 'actor') {
+                navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
+              } else {
+                navigation.navigate('Profile', { username: normalized });
+              }
+            })
+            .catch(() => {
+              navigation.navigate('Profile', { username: normalized });
+            });
+          return;
+        }
+        navigation.navigate('Profile', { username: normalized });
+      },
       onNavigateCommunity: (name) => navigation.navigate('Community', { name }),
       onNavigateHashtag: (name) => navigation.navigate('Hashtag', { name }),
 
@@ -274,13 +291,22 @@ export function useNativePostInteractions({
       onToggleFollow: handleToggleFollow,
       onSharePost: async (post) => {
         const uuid = (post as any)?.uuid;
-        const url = uuid ? `https://openspace.social/posts/${uuid}` : '';
+        // NOTE: must be `/p/${uuid}` — `/posts/${uuid}` is the ActivityPub
+        // object endpoint which returns the federation JSON representation
+        // (Note object) instead of the human-readable post page.
+        const url = uuid ? `https://openspace.social/p/${uuid}` : '';
         if (!url) {
           stub('Share');
           return;
         }
         try {
-          await Share.share({ url, message: url });
+          // iOS supports `url` and many apps will pull a rich preview from it.
+          // Android's Share API ignores `url` entirely and only honors `message`.
+          // Passing both on iOS makes apps like WhatsApp paste url+message,
+          // producing a duplicated link in the recipient's text box.
+          await Share.share(
+            Platform.OS === 'ios' ? { url } : { message: url },
+          );
         } catch {
           // User cancelled or system-level failure — no-op.
         }
@@ -308,6 +334,20 @@ export function useNativePostInteractions({
               navigation.navigate('Community', { name: internalRoute.name });
               return;
             case 'profile':
+              if ((internalRoute.username || '').includes('@') && token) {
+                void api.resolveFederatedDiscoveryEntity(token, internalRoute.username.startsWith('@') ? internalRoute.username : `@${internalRoute.username}`)
+                  .then((resolved) => {
+                    if (resolved.kind === 'actor') {
+                      navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
+                    } else {
+                      navigation.navigate('Profile', { username: internalRoute.username });
+                    }
+                  })
+                  .catch(() => {
+                    navigation.navigate('Profile', { username: internalRoute.username });
+                  });
+                return;
+              }
               navigation.navigate('Profile', { username: internalRoute.username });
               return;
             case 'hashtag':

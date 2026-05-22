@@ -1840,7 +1840,7 @@ export default function PostDetailModal({
       | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
 
     const segments: Segment[] = [];
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -1860,7 +1860,9 @@ export default function PostDetailModal({
       } else if (match[2]) {
         segments.push({ text: match[2], isLink: false, isMention: true, username: match[2].slice(1), isHashtag: false });
       } else if (match[3]) {
-        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: true, tag: match[3].slice(1) });
+        segments.push({ text: match[3], isLink: false, isMention: true, username: match[3].slice(1), isHashtag: false });
+      } else if (match[4]) {
+        segments.push({ text: match[4], isLink: false, isMention: false, isHashtag: true, tag: match[4].slice(1) });
       }
 
       lastIndex = start + match[0].length;
@@ -3426,8 +3428,15 @@ export default function PostDetailModal({
           </View>
         )
       ) : (
-        <View style={[styles.postDetailRoot, { backgroundColor: c.background }]}>
-          <PostDetailSkeleton />
+        // Skeletons are reserved for the web experience. Native mobile +
+        // tablet follow the rest-of-app convention and show a centered
+        // spinner while the post detail is loading.
+        <View style={[styles.postDetailRoot, { backgroundColor: c.background, alignItems: 'center', justifyContent: 'center' }]}>
+          {Platform.OS === 'web' ? (
+            <PostDetailSkeleton />
+          ) : (
+            <ActivityIndicator color={c.primary} size="large" />
+          )}
         </View>
       )}
       </View>

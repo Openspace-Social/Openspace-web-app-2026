@@ -713,6 +713,8 @@ export type FederatedPublishResult = {
   publish_destination: 'mastodon' | 'both';
   local_post: FeedPost | null;
   mastodon_status: FederatedMastodonStatus | null;
+  mastodon_publish_status?: string;
+  mastodon_publish_error?: string | null;
 };
 
 export type PostMediaItem = {
@@ -754,6 +756,8 @@ export type FederatedDiscoveryResolvedEntity =
 export type FeedPost = {
   id: number;
   uuid?: string;
+  mastodon_publish_status?: string;
+  mastodon_publish_error?: string | null;
   text?: string;
   long_text?: string;
   language?: { id: number; code: string; name: string };
@@ -1553,6 +1557,8 @@ function normalizePostPayload(post: FeedPost): FeedPost {
 
   return {
     ...post,
+    mastodon_publish_status: typeof post.mastodon_publish_status === 'string' ? post.mastodon_publish_status : undefined,
+    mastodon_publish_error: typeof post.mastodon_publish_error === 'string' ? post.mastodon_publish_error : null,
     long_text_blocks: normalizeLongPostBlocks(post.long_text_blocks),
     shared_communities_count:
       typeof post.shared_communities_count === 'number' ? post.shared_communities_count : undefined,
@@ -1578,11 +1584,42 @@ function normalizePostPayload(post: FeedPost): FeedPost {
   };
 }
 
+/**
+ * Hydrate a list of posts returned from the community endpoints
+ * (`/api/communities/<name>/posts/` and `…/posts/pinned/`). Those
+ * endpoints use a reduced serializer that omits the `media` array and
+ * long-post fields — without hydration, multi-image cards collapse to
+ * the single `media_thumbnail` and long posts lose their block tree.
+ * Each row is re-fetched via the canonical UUID-based post endpoint
+ * (`/api/posts/<uuid>/`). Falls back to the unhydrated post on any
+ * failure so the list still renders something.
+ */
+async function hydrateCommunityPostList(token: string, posts: FeedPost[]): Promise<FeedPost[]> {
+  const results = await Promise.allSettled(
+    posts.map(async (post) => {
+      const uuid = typeof post.uuid === 'string' ? post.uuid.trim() : '';
+      if (!uuid) return post;
+      try {
+        const payload = await request<unknown>(`/api/posts/${encodeURIComponent(uuid)}/`, {
+          headers: { Authorization: `Token ${token}` },
+        });
+        const full = normalizeMaybeWrappedPost(payload);
+        return full ? normalizePostPayload(full) : post;
+      } catch {
+        return post;
+      }
+    }),
+  );
+  return results.map((result, index) => (result.status === 'fulfilled' ? result.value : posts[index]));
+}
+
 function normalizeFederatedPublishResult(payload: unknown): FederatedPublishResult {
   const data = (payload || {}) as Record<string, any>;
   return {
     publish_destination: data.publish_destination === 'mastodon' ? 'mastodon' : 'both',
     local_post: data.local_post ? normalizePostPayload(data.local_post as FeedPost) : null,
+    mastodon_publish_status: typeof data.mastodon_publish_status === 'string' ? data.mastodon_publish_status : undefined,
+    mastodon_publish_error: typeof data.mastodon_publish_error === 'string' ? data.mastodon_publish_error : null,
     mastodon_status: data.mastodon_status
       ? {
           ...data.mastodon_status,
@@ -2235,6 +2272,7 @@ export const api = {
         target_inbox_url?: string;
         delivery_status?: string;
       };
+      reply_preview?: FederatedInboundObject;
     }>(
       `/api/auth/user/federation/inbound-objects/${inboundObjectId}/reply/`,
       {
@@ -2552,6 +2590,28 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }),
 
+  waitForMastodonPublishResolution: async (
+    token: string,
+    postUuid: string,
+    options?: { timeoutMs?: number; intervalMs?: number },
+  ) => {
+    const timeoutMs = Math.max(10_000, options?.timeoutMs ?? 90_000);
+    const intervalMs = Math.max(1_000, options?.intervalMs ?? 2_500);
+    const deadline = Date.now() + timeoutMs;
+
+    while (true) {
+      const post = await api.getPostByUuid(token, postUuid);
+      const statusValue = (post.mastodon_publish_status || '').trim().toUpperCase();
+      if (!statusValue || statusValue === 'PB' || statusValue === 'FA' || statusValue === 'NR') {
+        return post;
+      }
+      if (Date.now() >= deadline) {
+        return post;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  },
+
   publishPost: (token: string, postUuid: string) =>
     request<FeedPost>(`/api/posts/${postUuid}/publish/`, {
       method: 'POST',
@@ -2761,41 +2821,7 @@ export const api = {
       }
     );
     const normalized = (Array.isArray(posts) ? posts : []).map((post) => normalizePostPayload(post));
-
-    // Community posts endpoint can return a reduced serializer shape that omits
-    // long-post fields (type/long_text_blocks/long_text_rendered_html). Hydrate
-    // each row via the canonical post endpoint so feed rendering stays
-    // consistent with home/profile surfaces.
-    const hydrated = await Promise.allSettled(
-      normalized.map(async (post) => {
-        if (typeof post.id !== 'number' || !Number.isFinite(post.id)) return post;
-        try {
-          const payload = await request<unknown>(`/api/posts/${post.id}/`, {
-            headers: { Authorization: `Token ${token}` },
-          });
-          const full = normalizeMaybeWrappedPost(payload);
-          return full ? normalizePostPayload(full) : post;
-        } catch {
-          if (typeof post.uuid === 'string' && post.uuid.trim()) {
-            try {
-              const payloadByUuid = await request<unknown>(`/api/posts/${encodeURIComponent(post.uuid)}/`, {
-                headers: { Authorization: `Token ${token}` },
-              });
-              const fullByUuid = normalizeMaybeWrappedPost(payloadByUuid);
-              return fullByUuid ? normalizePostPayload(fullByUuid) : post;
-            } catch {
-              return post;
-            }
-          }
-          return post;
-        }
-      })
-    );
-
-    return hydrated.map((result, index) => {
-      if (result.status === 'fulfilled') return result.value;
-      return normalized[index];
-    });
+    return hydrateCommunityPostList(token, normalized);
   },
 
   getClosedCommunityPosts: (token: string, communityName: string, count = 20) => {
@@ -3295,10 +3321,19 @@ export const api = {
       headers: { Authorization: `Token ${token}` },
     }).then((post) => normalizePostPayload(post)),
 
-  getCommunityPinnedPosts: (token: string | null, communityName: string) =>
-    request<FeedPost[]>(`/api/communities/${encodeURIComponent(communityName)}/posts/pinned/`, {
+  getCommunityPinnedPosts: async (token: string | null, communityName: string) => {
+    const posts = await request<FeedPost[]>(`/api/communities/${encodeURIComponent(communityName)}/posts/pinned/`, {
       headers: token ? { Authorization: `Token ${token}` } : {},
-    }).then((posts) => (Array.isArray(posts) ? posts.map(normalizePostPayload) : [])),
+    });
+    const normalized = Array.isArray(posts) ? posts.map(normalizePostPayload) : [];
+    // Same reduced-serializer shape as `getCommunityPosts` — hydrate to
+    // restore the `media` array (so multi-image pins get the swipeable
+    // pager) and long-post fields. Only hydrate when authenticated; the
+    // anonymous case (rare for pinned posts) falls back to the reduced
+    // shape.
+    if (!token) return normalized;
+    return hydrateCommunityPostList(token, normalized);
+  },
 
   getModerationCategories: (token: string) =>
     request<ModerationCategory[]>('/api/moderation/categories/', {
@@ -3731,6 +3766,12 @@ export const api = {
 
   markNotificationRead: (token: string, notificationId: number) =>
     request<void>(`/api/notifications/${notificationId}/read/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+    }),
+
+  markNotificationUnread: (token: string, notificationId: number) =>
+    request<void>(`/api/notifications/${notificationId}/unread/`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
     }),

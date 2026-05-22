@@ -154,7 +154,11 @@ export default function MastodonFeedScreenContainer() {
       return;
     }
     try {
-      const resolved = await api.resolveFederatedDiscoveryEntity(token, query);
+      const normalizedQuery = query.trim();
+      const preferredQuery = normalizedQuery.includes('@')
+        ? normalizedQuery.startsWith('@') ? normalizedQuery : `@${normalizedQuery}`
+        : normalizedQuery;
+      const resolved = await api.resolveFederatedDiscoveryEntity(token, preferredQuery);
       if (resolved.kind === 'community') {
         navigation.navigate('RemoteCommunity', { remoteCommunityId: resolved.community.id });
         return;

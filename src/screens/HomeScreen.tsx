@@ -52,6 +52,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { feedViewport } from '../utils/feedViewport';
 import { openExternalLink } from '../utils/openExternalLink';
+import { validatePickedMedia } from '../utils/mediaValidation';
 import { AppRoute, parseInternalOpenspaceUrl } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
 import MyProfileScreen from './MyProfileScreen';
@@ -5645,7 +5646,24 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   function appendComposerImageFiles(files: File[]) {
-    const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, 5);
+    const candidates = files.filter((file) => file.type.startsWith('image/'));
+    if (!candidates.length) return;
+
+    // Size cap mirrors POST_MEDIA_MAX_BYTES on the server. Filter out
+    // anything over the limit and surface the FIRST rejection's reason
+    // so the user knows what happened instead of a silent no-op.
+    const accepted: File[] = [];
+    let firstRejection: string | null = null;
+    for (const file of candidates) {
+      const check = validatePickedMedia({ kind: 'image', size: file.size });
+      if (!check.ok) {
+        if (!firstRejection) firstRejection = check.reason;
+        continue;
+      }
+      accepted.push(file);
+    }
+    if (firstRejection) setError(firstRejection);
+    const imageFiles = accepted.slice(0, 5);
     if (!imageFiles.length) return;
 
     setComposerVideo((prev) => {
@@ -5693,29 +5711,69 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       if (kind === 'video') {
         const file = files[0];
         const previewUri = typeof URL !== 'undefined' ? URL.createObjectURL(file) : undefined;
-        if (typeof URL !== 'undefined') {
-          for (const image of composerImages) {
-            if (image.previewUri?.startsWith('blob:')) {
-              try {
-                URL.revokeObjectURL(image.previewUri);
-              } catch {
-                // best-effort cleanup for browser object URLs
+        // Size check is synchronous; duration check needs a probe video
+        // element. Run both — if either fails, revoke the preview URL and
+        // show the rejection. We defer the size check above the probe so
+        // the failure message stays specific.
+        const sizeCheck = validatePickedMedia({ kind: 'video', size: file.size });
+        if (!sizeCheck.ok) {
+          if (previewUri) try { URL.revokeObjectURL(previewUri); } catch { /* */ }
+          setError(sizeCheck.reason);
+          return;
+        }
+        if (typeof document !== 'undefined' && previewUri) {
+          const probe = document.createElement('video');
+          probe.preload = 'metadata';
+          probe.src = previewUri;
+          probe.onloadedmetadata = () => {
+            const durationMs = Number.isFinite(probe.duration) ? probe.duration * 1000 : undefined;
+            const durationCheck = validatePickedMedia({ kind: 'video', durationMs });
+            if (!durationCheck.ok) {
+              try { URL.revokeObjectURL(previewUri); } catch { /* */ }
+              setError(durationCheck.reason);
+              return;
+            }
+            // Passed — clear existing media and accept.
+            for (const image of composerImages) {
+              if (image.previewUri?.startsWith('blob:')) {
+                try { URL.revokeObjectURL(image.previewUri); } catch { /* */ }
               }
             }
-          }
-          if (composerVideo?.previewUri?.startsWith('blob:')) {
-            try {
-              URL.revokeObjectURL(composerVideo.previewUri);
-            } catch {
-              // best-effort cleanup for browser object URLs
+            if (composerVideo?.previewUri?.startsWith('blob:')) {
+              try { URL.revokeObjectURL(composerVideo.previewUri); } catch { /* */ }
             }
-          }
+            setComposerImages([]);
+            setComposerVideo({
+              file: file as Blob & { name?: string; type?: string },
+              previewUri,
+            });
+          };
+          probe.onerror = () => {
+            // Couldn't read metadata — accept anyway (rare; server-side
+            // limits are still in place). Mirrors the old behavior for
+            // browsers that can't probe duration.
+            for (const image of composerImages) {
+              if (image.previewUri?.startsWith('blob:')) {
+                try { URL.revokeObjectURL(image.previewUri); } catch { /* */ }
+              }
+            }
+            if (composerVideo?.previewUri?.startsWith('blob:')) {
+              try { URL.revokeObjectURL(composerVideo.previewUri); } catch { /* */ }
+            }
+            setComposerImages([]);
+            setComposerVideo({
+              file: file as Blob & { name?: string; type?: string },
+              previewUri,
+            });
+          };
+        } else {
+          // SSR / no document: just accept.
+          setComposerImages([]);
+          setComposerVideo({
+            file: file as Blob & { name?: string; type?: string },
+            previewUri,
+          });
         }
-        setComposerImages([]);
-        setComposerVideo({
-          file: file as Blob & { name?: string; type?: string },
-          previewUri,
-        });
         return;
       }
 
@@ -6118,16 +6176,45 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         }
       }
 
+      const federatedResult = finalizedPost && 'publish_destination' in (finalizedPost as any)
+        ? finalizedPost as unknown as FederatedPublishResult
+        : null;
+      const resultLocalPost = federatedResult?.local_post || finalizedPost;
+      const crosspostStillPublishing = selectedPublishDestination === 'both'
+        && !!resultLocalPost?.uuid
+        && String(federatedResult?.mastodon_publish_status || resultLocalPost?.mastodon_publish_status || '').toUpperCase() === 'PE';
+
       closeComposerModal();
       setNotice(
         saveAsDraft
           ? t('home.postComposerDraftSuccess', { defaultValue: 'Draft saved.' })
           : selectedPublishDestination === 'mastodon'
             ? t('home.postComposerMastodonSuccess', { defaultValue: 'Posted to Mastodon.' })
+            : crosspostStillPublishing
+              ? t('home.postComposerCrossPostPending', { defaultValue: 'Posted to Openspace. Mastodon cross-post is still publishing.' })
             : selectedPublishDestination === 'both'
-              ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to OpenSpace and Mastodon.' })
+              ? t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to Openspace and Mastodon.' })
               : t('home.postComposerSuccess', { defaultValue: 'Post published.' })
       );
+      if (!saveAsDraft && crosspostStillPublishing && token && resultLocalPost?.uuid) {
+        void api.waitForMastodonPublishResolution(token, resultLocalPost.uuid).then((resolvedPost) => {
+          const statusValue = String(resolvedPost.mastodon_publish_status || '').toUpperCase();
+          if (statusValue === 'PB') {
+            setNotice(t('home.postComposerCrossPostSuccess', { defaultValue: 'Posted to Openspace and Mastodon.' }));
+          } else if (statusValue === 'FA') {
+            setError(
+              resolvedPost.mastodon_publish_error
+              || t('home.postComposerCrossPostFailed', {
+                defaultValue: 'Posted to Openspace, but the Mastodon cross-post failed.',
+              })
+            );
+          }
+        }).catch(() => {
+          setError(t('home.postComposerCrossPostUnknown', {
+            defaultValue: 'Posted to Openspace, but we could not confirm the Mastodon cross-post status.',
+          }));
+        });
+      }
       if (selectedPublishDestination !== 'mastodon') {
         await loadFeed(activeFeed);
       }
@@ -6341,6 +6428,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     if (/^hsl(a)?\(/i.test(trimmed)) return trimmed;
     return undefined;
   }
+  const showingMainSearchResultsRef = useRef(false);
   // Search results should be hidden whenever the user is on any non-feed
   // route, otherwise the persisted search state keeps the results rendering
   // *underneath* the active page (Settings / Followers / Circles / Lists /
@@ -6383,7 +6471,20 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       : viewportWidth;
 
   function handleNavigateProfile(username: string) {
-    onNavigate({ screen: 'profile', username });
+    const normalized = (username || '').trim();
+    if (normalized.includes('@') && token) {
+      api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
+        .then((resolved) => {
+          if (resolved.kind === 'actor') {
+            onNavigate({ screen: 'remote-profile', remoteActorId: resolved.actor.id } as any);
+          }
+        })
+        .catch(() => {
+          onNavigate({ screen: 'profile', username: normalized });
+        });
+      return;
+    }
+    onNavigate({ screen: 'profile', username: normalized });
   }
 
   function handleNavigateHashtag(tag: string) {
@@ -6398,10 +6499,23 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   function handleNavigateProfileFromPostDetail(username: string) {
+    const normalized = (username || '').trim();
     closeReactionList();
     clearWebFocus();
     setActivePost(null);
-    onNavigate({ screen: 'profile', username }, true);
+    if (normalized.includes('@') && token) {
+      api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
+        .then((resolved) => {
+          if (resolved.kind === 'actor') {
+            onNavigate({ screen: 'remote-profile', remoteActorId: resolved.actor.id } as any, true);
+          }
+        })
+        .catch(() => {
+          onNavigate({ screen: 'profile', username: normalized }, true);
+        });
+      return;
+    }
+    onNavigate({ screen: 'profile', username: normalized }, true);
   }
 
   function handleNavigateCommunity(name: string) {
@@ -6516,7 +6630,6 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const loadMoreMyProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
   const loadMoreProfilePostsRef = useRef<() => Promise<void> | void>(() => {});
   const displayRouteScreenRef = useRef<string | undefined>(displayRoute?.screen);
-  const showingMainSearchResultsRef = useRef(false);
 
   function handleTopBarOnScroll(currentY: number) {
     if (!showBottomTabs) return;

@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -55,6 +57,11 @@ function makeStyles(c: any) {
     screen: { flex: 1, backgroundColor: c.background },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     scrollContent: { padding: 16, gap: 14 },
+    threadColumn: { width: '100%', gap: 14 },
+    threadColumnWide: {
+      maxWidth: 1120,
+      alignSelf: 'center',
+    },
     contextCard: {
       borderRadius: 18,
       borderWidth: 1,
@@ -171,38 +178,49 @@ function ThreadObjectCard({
   c,
   highlighted = false,
   onPressActor,
+  roomy = false,
 }: {
   item: FederatedInboundObject;
   c: any;
   highlighted?: boolean;
   onPressActor?: () => void;
+  roomy?: boolean;
 }) {
   const styles = useMemo(() => makeStyles(c), [c]);
   const body = stripHtml(item.content_text || item.content_html || item.summary);
+  const isPendingReply = String(item.status || '').toLowerCase() === 'pending';
   return (
-    <View style={[styles.card, highlighted ? { borderColor: c.primary, backgroundColor: `${c.primary}10` } : null]}>
+    <View
+      style={[
+        styles.card,
+        roomy ? { padding: 20, gap: 12 } : null,
+        highlighted ? { borderColor: c.primary, backgroundColor: `${c.primary}10` } : null,
+      ]}
+    >
       <View style={styles.row}>
         <Pressable
           onPress={onPressActor}
           disabled={!onPressActor}
           style={({ pressed }) => [styles.authorRow, pressed ? { opacity: 0.8 } : null]}
         >
-          <View style={styles.actorAvatar}>
+          <View style={[styles.actorAvatar, roomy ? { width: 42, height: 42, borderRadius: 21 } : null]}>
             {item.actor.profile?.avatar ? (
               <Image source={{ uri: item.actor.profile.avatar }} style={styles.actorAvatarImage} resizeMode="cover" />
             ) : (
-              <Text style={styles.actorAvatarLetter}>
+              <Text style={[styles.actorAvatarLetter, roomy ? { fontSize: 17 } : null]}>
                 {((item.actor.display_name || item.actor.profile?.name || item.actor.handle || 'F').replace(/^@/, '').trim()[0] || 'F').toUpperCase()}
               </Text>
             )}
           </View>
-          <Text style={styles.handle} numberOfLines={1}>
+          <Text style={[styles.handle, roomy ? { fontSize: 16 } : null]} numberOfLines={1}>
             {item.actor.display_name || item.actor.profile?.name || item.actor.handle || item.actor.preferred_username || item.actor.actor_uri}
           </Text>
         </Pressable>
         <Text style={styles.meta}>{formatRelativeTime(item.published_at)}</Text>
       </View>
-      <Text style={styles.body}>{body || 'No preview available.'}</Text>
+      <Text style={[styles.body, roomy ? { fontSize: 16, lineHeight: 25 } : null]}>
+        {body || 'No preview available.'}
+      </Text>
       <View style={styles.badgeRow}>
         <View style={styles.badge}>
           <MaterialCommunityIcons name="earth" size={14} color={c.textSecondary} />
@@ -212,6 +230,12 @@ function ThreadObjectCard({
           <MaterialCommunityIcons name="source-branch" size={14} color={c.textSecondary} />
           <Text style={styles.badgeText}>Cached remote item</Text>
         </View>
+        {isPendingReply ? (
+          <View style={styles.badge}>
+            <MaterialCommunityIcons name="clock-outline" size={14} color={c.textSecondary} />
+            <Text style={styles.badgeText}>Queued from Openspace</Text>
+          </View>
+        ) : null}
         {item.local_post?.uuid ? (
           <View style={styles.badge}>
             <MaterialCommunityIcons name="link-variant" size={14} color={c.textSecondary} />
@@ -234,8 +258,10 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
   const { theme } = useTheme();
   const { t } = useTranslation();
   const { showToast } = useAppToast();
+  const { width: viewportWidth } = useWindowDimensions();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
+  const roomyWebLayout = Platform.OS === 'web' && viewportWidth >= 1100;
 
   const [payload, setPayload] = useState<FederatedRemoteThread | null>(null);
   const [loading, setLoading] = useState(true);
@@ -246,8 +272,22 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
   const [mastodonReplyDraft, setMastodonReplyDraft] = useState('');
   const [mastodonReplying, setMastodonReplying] = useState(false);
   const [showMastodonReplyComposer, setShowMastodonReplyComposer] = useState(false);
+  const [pendingReplies, setPendingReplies] = useState<FederatedInboundObject[]>([]);
+  const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const autoRefreshAttemptedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const reconcilePendingReplies = useCallback((nextPayload: FederatedRemoteThread | null, previousPending: FederatedInboundObject[]) => {
+    if (!nextPayload || !previousPending.length) return previousPending;
+    return previousPending.filter((pending) => {
+      return !(nextPayload.descendants || []).some((item) => {
+        const sameActor = (item.actor?.handle || '').trim().toLowerCase() === (pending.actor?.handle || '').trim().toLowerCase();
+        const sameText = (item.content_text || '').trim() === (pending.content_text || '').trim();
+        return sameActor && sameText;
+      });
+    });
+  }, []);
+
+  const load = useCallback(async (options?: { clearPending?: boolean }) => {
     if (!token || !inboundObjectId) return;
     setLoading(true);
     try {
@@ -256,6 +296,11 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
       setMastodonStatus(next.resolved_status || null);
       setMastodonReplyDraft('');
       setShowMastodonReplyComposer(false);
+      if (options?.clearPending !== false) {
+        setPendingReplies([]);
+      } else {
+        setPendingReplies((prev) => reconcilePendingReplies(next, prev));
+      }
     } catch (e: any) {
       showToast(
         e?.message || t('home.federatedRemoteThreadLoadError', { defaultValue: 'Could not load fediverse thread.' }),
@@ -263,14 +308,52 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
       );
       setPayload(null);
       setMastodonStatus(null);
+      if (options?.clearPending !== false) {
+        setPendingReplies([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [token, inboundObjectId, showToast, t]);
+  }, [token, inboundObjectId, reconcilePendingReplies, showToast, t]);
+
+  const refreshRemoteContext = useCallback(async () => {
+    if (!token) return;
+    const targetUrl = (payload?.subject?.url || payload?.subject?.object_uri || '').trim();
+    if (!targetUrl) return;
+    try {
+      const resolved = await api.resolveFederatedRemoteThread(token, targetUrl);
+      const refreshed = await api.getFederatedRemoteThread(token, resolved.inbound_object_id);
+      setPayload(refreshed);
+      setMastodonStatus(refreshed.resolved_status || null);
+      setPendingReplies((prev) => reconcilePendingReplies(refreshed, prev));
+    } catch {
+      // best-effort refresh only
+    }
+  }, [payload?.subject?.object_uri, payload?.subject?.url, reconcilePendingReplies, token]);
+
+  const scheduleRemoteRefresh = useCallback((delaysMs: number[]) => {
+    refreshTimersRef.current.forEach((timer) => clearTimeout(timer));
+    refreshTimersRef.current = delaysMs.map((delayMs) => setTimeout(() => {
+      void refreshRemoteContext();
+    }, delayMs));
+  }, [refreshRemoteContext]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    autoRefreshAttemptedRef.current = false;
+    refreshTimersRef.current.forEach((timer) => clearTimeout(timer));
+    refreshTimersRef.current = [];
+    void load({ clearPending: true });
+    return () => {
+      refreshTimersRef.current.forEach((timer) => clearTimeout(timer));
+      refreshTimersRef.current = [];
+    };
+  }, [load, inboundObjectId]);
+
+  useEffect(() => {
+    if (!payload?.acting_linked_account?.id || !payload?.subject || autoRefreshAttemptedRef.current) return;
+    autoRefreshAttemptedRef.current = true;
+    void refreshRemoteContext();
+  }, [payload?.acting_linked_account?.id, payload?.subject, refreshRemoteContext]);
 
   const handleReply = useCallback(async () => {
     if (!token || !inboundObjectId) return;
@@ -278,10 +361,14 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
     if (!trimmed || replying) return;
     setReplying(true);
     try {
-      await api.replyToFederatedInboundObject(token, inboundObjectId, trimmed);
+      const response = await api.replyToFederatedInboundObject(token, inboundObjectId, trimmed);
       setReplyDraft('');
+      if (response.reply_preview) {
+        setPendingReplies((prev) => [...prev, response.reply_preview as FederatedInboundObject]);
+      }
+      scheduleRemoteRefresh([2500, 6000]);
       showToast(
-        t('home.federatedReplyQueued', { defaultValue: 'Reply queued for federation delivery.' }),
+        t('home.federatedReplyQueued', { defaultValue: 'Reply queued from Openspace.' }),
         { type: 'success' },
       );
     } catch (e: any) {
@@ -292,7 +379,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
     } finally {
       setReplying(false);
     }
-  }, [token, inboundObjectId, replyDraft, replying, showToast, t]);
+  }, [token, inboundObjectId, replyDraft, replying, scheduleRemoteRefresh, showToast, t]);
 
   const runStatusToggle = useCallback(async (
     action: 'favourite' | 'reblog' | 'bookmark',
@@ -361,6 +448,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
   }, [mastodonReplyDraft, mastodonReplying, mastodonStatus?.id, payload?.acting_linked_account?.id, showToast, t, token]);
 
   const subject = payload?.subject;
+  const visibleDescendants = [...(payload?.descendants || []), ...pendingReplies];
   const resolvedStatus = mastodonStatus;
   const canUseMastodonActions = !!resolvedStatus?.id && !!payload?.acting_linked_account?.id;
   const isFavourited = !!resolvedStatus?.favourited;
@@ -380,15 +468,20 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent}>
+      <View style={[styles.threadColumn, roomyWebLayout ? styles.threadColumnWide : null]}>
       {payload?.local_context_post?.uuid ? (
         <Pressable
           onPress={() => payload.local_context_post?.uuid && onOpenPost?.(payload.local_context_post.uuid)}
-          style={({ pressed }) => [styles.contextCard, pressed ? { opacity: 0.9 } : null]}
+          style={({ pressed }) => [
+            styles.contextCard,
+            roomyWebLayout ? { padding: 20 } : null,
+            pressed ? { opacity: 0.9 } : null,
+          ]}
         >
           <Text style={styles.dividerLabel}>
-            {t('home.federatedContextLabel', { defaultValue: 'Touches an OpenSpace post' })}
+            {t('home.federatedContextLabel', { defaultValue: 'Touches an Openspace post' })}
           </Text>
-          <Text style={styles.body} numberOfLines={3}>
+          <Text style={[styles.body, roomyWebLayout ? { fontSize: 16, lineHeight: 24 } : null]} numberOfLines={3}>
             {payload.local_context_post?.text || t('home.federatedContextNoText', { defaultValue: 'Open the referenced local post.' })}
           </Text>
         </Pressable>
@@ -404,6 +497,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
               key={item.id}
               item={item}
               c={c}
+              roomy={roomyWebLayout}
               onPressActor={() => onOpenProfile(item.actor.id)}
             />
           ))}
@@ -418,6 +512,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
           <ThreadObjectCard
             item={subject}
             c={c}
+            roomy={roomyWebLayout}
             highlighted
             onPressActor={() => onOpenProfile(subject.actor.id)}
           />
@@ -489,7 +584,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
                 </Pressable>
               </View>
               {showMastodonReplyComposer ? (
-                <View style={styles.inlineComposer}>
+                <View style={[styles.inlineComposer, roomyWebLayout ? { padding: 16 } : null]}>
                   <Text style={styles.sectionHint}>
                     {t('home.replyFromMastodonHint', {
                       defaultValue: 'Reply through your linked Mastodon account so the conversation continues there too.',
@@ -526,7 +621,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
           ) : payload?.acting_linked_account ? (
             <Text style={styles.sectionHint}>
               {t('home.remoteThreadActionsPending', {
-                defaultValue: 'OpenSpace found the fediverse thread, but Mastodon has not resolved this post for actions yet.',
+                defaultValue: 'Openspace found the fediverse thread, but Mastodon has not resolved this post for actions yet.',
               })}
             </Text>
           ) : null}
@@ -538,10 +633,27 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
         </>
       ) : null}
 
+      {visibleDescendants.length ? (
+        <>
+          <Text style={styles.dividerLabel}>
+            {t('home.federatedLaterInThread', { defaultValue: 'Later in the thread' })}
+          </Text>
+          {visibleDescendants.map((item) => (
+            <ThreadObjectCard
+              key={item.id}
+              item={item}
+              c={c}
+              roomy={roomyWebLayout}
+              onPressActor={() => onOpenProfile(item.actor.id)}
+            />
+          ))}
+        </>
+      ) : null}
+
       {subject?.can_reply ? (
-        <View style={styles.replyComposer}>
+        <View style={[styles.replyComposer, roomyWebLayout ? { padding: 18 } : null]}>
           <Text style={styles.sectionTitle}>
-            {t('home.replyFromOpenSpace', { defaultValue: 'Reply from OpenSpace' })}
+            {t('home.replyFromOpenSpace', { defaultValue: 'Reply from Openspace' })}
           </Text>
           <Text style={styles.sectionHint}>
             {t(
@@ -576,22 +688,7 @@ export default function RemoteThreadScreen({ token, inboundObjectId, onOpenProfi
           </TouchableOpacity>
         </View>
       ) : null}
-
-      {payload?.descendants?.length ? (
-        <>
-          <Text style={styles.dividerLabel}>
-            {t('home.federatedLaterInThread', { defaultValue: 'Later in the thread' })}
-          </Text>
-          {payload.descendants.map((item) => (
-            <ThreadObjectCard
-              key={item.id}
-              item={item}
-              c={c}
-              onPressActor={() => onOpenProfile(item.actor.id)}
-            />
-          ))}
-        </>
-      ) : null}
+      </View>
     </ScrollView>
   );
 }

@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:web": "expo export --platform web && mkdir -p dist/.well-known && cp public/.well-known/apple-app-site-association dist/.well-known/apple-app-site-association"
+    "build:web": "expo export --platform web && node scripts/postbuild-web.js"
   },
   "dependencies": {
     "@10play/tentap-editor": "^1.0.1",
@@ -31,6 +31,7 @@
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.8",
     "expo-device": "~8.0.10",
+    "expo-file-system": "~19.0.22",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-localization": "~17.0.8",
