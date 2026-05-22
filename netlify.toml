@@ -2,6 +2,17 @@
   command = "npm run build:web"
   publish = "dist"
 
+# Edge function: inject Open Graph + Twitter Card meta tags into the SPA's
+# index.html when /p/:uuid (post-detail) URLs are requested, so link-preview
+# scrapers (WhatsApp, iMessage, Slack, Twitterbot, facebookexternalhit, etc.)
+# can render rich previews. Without this, scrapers just see the bare SPA
+# shell with no per-post metadata. See netlify/edge-functions/post-og-metadata.ts
+# for the full rationale and privacy gate. Runs before the SPA fallback below;
+# uses context.next() internally to fetch the shell, then splices in metadata.
+[[edge_functions]]
+  function = "post-og-metadata"
+  path = "/p/*"
+
 # Build-time environment variables baked into the web bundle. These match
 # the testflight EAS profile so staging.openspace.social/api/* calls hit
 # the Netlify proxy below, which forwards to the Django API on EB. For prod
