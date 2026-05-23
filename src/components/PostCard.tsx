@@ -3,6 +3,7 @@ import { ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, Scrol
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment, UserProfile } from '../api/client';
 import UserHoverCard from './UserHoverCard';
+import MirroredBadge from './MirroredBadge';
 import MentionHashtagInput from './MentionHashtagInput';
 import NativeInlineVideo, { type NativeInlineVideoHandle } from './NativeInlineVideo';
 import { useFeedMutePreference } from '../hooks/useFeedMutePreference';
@@ -1878,9 +1879,24 @@ function PostCard({
             >
               <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{creatorUsername || t('home.unknownUser')}</Text>
             </TouchableOpacity>
-            <Text style={[styles.feedDate, { color: c.textMuted }]}>
-              {post.created ? new Date(post.created).toLocaleString() : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+              <Text style={[styles.feedDate, { color: c.textMuted }]}>
+                {post.created ? new Date(post.created).toLocaleString() : ''}
+              </Text>
+              {post.source_provenance ? (
+                <>
+                  <Text style={[styles.feedDate, { color: c.textMuted }]}>·</Text>
+                  <MirroredBadge
+                    provenance={post.source_provenance}
+                    textMuted={c.textMuted}
+                    textSecondary={c.textSecondary}
+                    textLink={c.textLink}
+                    surface={c.surface}
+                    border={c.border}
+                  />
+                </>
+              ) : null}
+            </View>
           </View>
         </View>
         <View style={styles.feedHeaderActions}>

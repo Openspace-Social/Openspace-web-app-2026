@@ -796,6 +796,11 @@ export type FeedPost = {
       avatar?: string;
     };
     is_following?: boolean;
+    // True for Source publishers (BBC, ESPN, ...) — non-interactive
+    // accounts whose posts are ingested by openbook_sources rather than
+    // typed by a human. Drives the MirroredBadge render decision and
+    // hides DM / react-as-source affordances on Source profiles.
+    is_source?: boolean;
   };
   community?: {
     name?: string;
@@ -823,6 +828,15 @@ export type FeedPost = {
     duration?: number;
   }>;
   links?: Array<{ url?: string; title?: string; image?: string; description?: string; site_name?: string }>;
+  // Populated only for posts ingested via openbook_sources from an external
+  // platform (Bluesky, Mastodon, ...). Drives the "Mirrored" badge + the
+  // "View original" link in PostCard's author row.
+  source_provenance?: {
+    platform: 'bluesky' | 'mastodon' | 'twitter';
+    handle: string;
+    external_url: string | null;
+    external_created_at: string | null;
+  } | null;
   reposts_count?: number;
   user_has_reposted?: boolean;
   federation_attribution?: {
