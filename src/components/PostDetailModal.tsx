@@ -2175,7 +2175,14 @@ export default function PostDetailModal({
         ]}
       >
         <View style={styles.detailCommentRow}>
-          <View style={[styles.detailCommentAvatar, { backgroundColor: c.primary }]}>
+          {/* Tapping commenter avatar/username opens their profile — same
+              pattern as the main post-author header above. */}
+          <TouchableOpacity
+            onPress={() => comment.commenter?.username && onNavigateProfile(comment.commenter.username)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={[styles.detailCommentAvatar, { backgroundColor: c.primary }]}
+          >
             {comment.commenter?.profile?.avatar ? (
               <Image source={{ uri: comment.commenter.profile.avatar }} style={styles.detailCommentAvatarImage} resizeMode="cover" />
             ) : (
@@ -2188,10 +2195,16 @@ export default function PostDetailModal({
                 {(comment.commenter?.username?.[0] || 'U').toUpperCase()}
               </Text>
             )}
-          </View>
-          <View style={[styles.detailCommentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
+          </TouchableOpacity>
+          <View style={[styles.detailCommentBubble, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
             <View style={styles.commentAuthorRow}>
-              <Text style={[styles.detailCommentAuthor, { color: c.textPrimary }]}>@{comment.commenter?.username || currentUsername || t('home.unknownUser')}</Text>
+              <TouchableOpacity
+                onPress={() => comment.commenter?.username && onNavigateProfile(comment.commenter.username)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 4, bottom: 4 }}
+              >
+                <Text style={[styles.detailCommentAuthor, { color: c.textPrimary }]}>@{comment.commenter?.username || currentUsername || t('home.unknownUser')}</Text>
+              </TouchableOpacity>
               <Text style={[styles.commentTimeInline, { color: c.textMuted }]}>
                 {formatRelativeTime(comment.created)}
               </Text>
@@ -2257,7 +2270,7 @@ export default function PostDetailModal({
                   userTranslationLanguageCode={translationLanguageCode}
                   isTranslated={typeof commentTranslations.translatedById[comment.id] === 'string'}
                   isLoading={!!commentTranslations.loadingById[comment.id]}
-                  hasError={!!commentTranslations.errorById[comment.id]}
+                  errorMessage={commentTranslations.errorById[comment.id] ?? null}
                   onTranslate={() => { void commentTranslations.translate(comment.id); }}
                   onShowOriginal={() => commentTranslations.showOriginal(comment.id)}
                   c={c}
@@ -2383,18 +2396,31 @@ export default function PostDetailModal({
                 ]}
               >
                 <View style={styles.commentReplyMainRow}>
-                  <View style={[styles.commentReplyAvatar, { backgroundColor: c.primary }]}> 
+                  {/* Tapping reply avatar/username opens the replier's
+                      profile — same pattern as top-level comments. */}
+                  <TouchableOpacity
+                    onPress={() => reply.commenter?.username && onNavigateProfile(reply.commenter.username)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={[styles.commentReplyAvatar, { backgroundColor: c.primary }]}
+                  >
                     {reply.commenter?.profile?.avatar ? (
                       <Image source={{ uri: reply.commenter.profile.avatar }} style={styles.detailCommentAvatarImage} resizeMode="cover" />
                     ) : (
                       <Text style={styles.detailCommentAvatarLetter}>{(reply.commenter?.username?.[0] || 'U').toUpperCase()}</Text>
                     )}
-                  </View>
-                  <View style={[styles.commentReplyBubble, { backgroundColor: c.surface, borderColor: c.border }]}> 
+                  </TouchableOpacity>
+                  <View style={[styles.commentReplyBubble, { backgroundColor: c.surface, borderColor: c.border }]}>
                     <View style={styles.commentAuthorRow}>
-                      <Text style={[styles.detailCommentAuthor, { color: c.textPrimary }]}>
-                        @{reply.commenter?.username || t('home.unknownUser')}
-                      </Text>
+                      <TouchableOpacity
+                        onPress={() => reply.commenter?.username && onNavigateProfile(reply.commenter.username)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 4, bottom: 4 }}
+                      >
+                        <Text style={[styles.detailCommentAuthor, { color: c.textPrimary }]}>
+                          @{reply.commenter?.username || t('home.unknownUser')}
+                        </Text>
+                      </TouchableOpacity>
                       <Text style={[styles.commentTimeInline, { color: c.textMuted }]}>
                         {formatRelativeTime(reply.created)}
                       </Text>
@@ -2460,7 +2486,7 @@ export default function PostDetailModal({
                           userTranslationLanguageCode={translationLanguageCode}
                           isTranslated={typeof commentTranslations.translatedById[reply.id] === 'string'}
                           isLoading={!!commentTranslations.loadingById[reply.id]}
-                          hasError={!!commentTranslations.errorById[reply.id]}
+                          errorMessage={commentTranslations.errorById[reply.id] ?? null}
                           onTranslate={() => { void commentTranslations.translate(reply.id); }}
                           onShowOriginal={() => commentTranslations.showOriginal(reply.id)}
                           c={c}
@@ -3175,15 +3201,28 @@ export default function PostDetailModal({
                 </TouchableOpacity>
               ) : (
               <View style={[styles.postDetailHeader, { borderBottomColor: c.border }]}>
-                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}>
+                {/* Tapping avatar/username opens the creator's profile —
+                    mirrors PostCard behavior and matches the web. */}
+                <TouchableOpacity
+                  onPress={() => activePost.creator?.username && onNavigateProfile(activePost.creator.username)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={[styles.feedAvatar, { backgroundColor: c.primary }]}
+                >
                   {creatorAvatar ? (
                     <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
                   ) : (
                     <Text style={styles.feedAvatarLetter}>{(activePost.creator?.username?.[0] || 'O').toUpperCase()}</Text>
                   )}
-                </View>
+                </TouchableOpacity>
                 <View style={styles.feedHeaderMeta}>
-                  <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{activePost.creator?.username || t('home.unknownUser')}</Text>
+                  <TouchableOpacity
+                    onPress={() => activePost.creator?.username && onNavigateProfile(activePost.creator.username)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 4, bottom: 4 }}
+                  >
+                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{activePost.creator?.username || t('home.unknownUser')}</Text>
+                  </TouchableOpacity>
                   <Text style={[styles.feedDate, { color: c.textMuted }]}>{activePost.created ? new Date(activePost.created).toLocaleString() : ''}</Text>
                 </View>
                 {isNarrow ? (
@@ -3327,16 +3366,29 @@ export default function PostDetailModal({
                 borderWidth: 0,
               },
             ]}>
-              <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}> 
-                <View style={[styles.feedAvatar, { backgroundColor: c.primary }]}> 
+              <View style={[styles.postDetailTextOnlyHeader, { borderBottomColor: c.border }]}>
+                {/* Tapping avatar/username opens the creator's profile —
+                    mirrors PostCard behavior and matches the web. */}
+                <TouchableOpacity
+                  onPress={() => activePost.creator?.username && onNavigateProfile(activePost.creator.username)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={[styles.feedAvatar, { backgroundColor: c.primary }]}
+                >
                   {creatorAvatar ? (
                     <Image source={{ uri: creatorAvatar }} style={styles.feedAvatarImage} resizeMode="cover" />
                   ) : (
                     <Text style={styles.feedAvatarLetter}>{(activePost.creator?.username?.[0] || 'O').toUpperCase()}</Text>
                   )}
-                </View>
+                </TouchableOpacity>
                 <View style={styles.feedHeaderMeta}>
-                  <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{activePost.creator?.username || t('home.unknownUser')}</Text>
+                  <TouchableOpacity
+                    onPress={() => activePost.creator?.username && onNavigateProfile(activePost.creator.username)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 4, bottom: 4 }}
+                  >
+                    <Text style={[styles.feedAuthor, { color: c.textPrimary }]}>@{activePost.creator?.username || t('home.unknownUser')}</Text>
+                  </TouchableOpacity>
                   <Text style={[styles.feedDate, { color: c.textMuted }]}>{activePost.created ? new Date(activePost.created).toLocaleString() : ''}</Text>
                 </View>
                 <TouchableOpacity style={[styles.topNavUtility, { backgroundColor: c.inputBackground }]} onPress={onClose} activeOpacity={0.85}>

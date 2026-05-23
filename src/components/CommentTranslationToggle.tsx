@@ -19,7 +19,10 @@ type Props = {
   userTranslationLanguageCode: string | null | undefined;
   isTranslated: boolean;
   isLoading: boolean;
-  hasError: boolean;
+  // Per-comment failure reason. `null`/empty → no error. We carry the
+  // string (status + server message) so the UI can surface why the
+  // translation failed instead of a generic "tap to retry".
+  errorMessage: string | null;
   onTranslate: () => void;
   onShowOriginal: () => void;
   c: any;
@@ -31,7 +34,7 @@ export default function CommentTranslationToggle({
   userTranslationLanguageCode,
   isTranslated,
   isLoading,
-  hasError,
+  errorMessage,
   onTranslate,
   onShowOriginal,
   c,
@@ -68,9 +71,13 @@ export default function CommentTranslationToggle({
         >
           {isLoading ? (
             <ActivityIndicator size="small" color={c.textLink} />
-          ) : hasError ? (
-            <Text style={[styles.link, { color: (c as any).errorText ?? c.textMuted }]}>
+          ) : errorMessage ? (
+            <Text
+              style={[styles.link, { color: (c as any).errorText ?? c.textMuted }]}
+              numberOfLines={2}
+            >
               {t('home.translationError', { defaultValue: 'Translation failed — tap to retry' })}
+              {`  ·  ${errorMessage}`}
             </Text>
           ) : (
             <Text style={[styles.link, { color: c.textLink }]}>
