@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Switch,
   Text,
   TextInput,
@@ -37,6 +38,21 @@ import { shareProfile } from '../utils/shareProfile';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
+
+const SOURCE_PLATFORM_LABELS: Record<string, string> = {
+  bluesky: 'Bluesky',
+  mastodon: 'Mastodon',
+  twitter: 'X',
+};
+
+// Format a source mirror as "{handle} on {Platform}", normalizing the handle's
+// optional leading @ and prettifying the platform name. Used in the Source
+// profile header to surface where the mirrored posts originate.
+function formatSourceMirror(mirror: { platform: string; handle: string }) {
+  const handleClean = mirror.handle?.startsWith('@') ? mirror.handle : `@${mirror.handle ?? ''}`;
+  const platformLabel = SOURCE_PLATFORM_LABELS[mirror.platform] ?? mirror.platform;
+  return `${handleClean} on ${platformLabel}`;
+}
 
 type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more' | 'federation';
 type ActivityFilterKey = 'all' | 'community' | 'public' | 'comments';
@@ -1306,7 +1322,55 @@ export default function MyProfileScreen({
                 <Text style={[styles.profileMetaText, { color: c.textMuted }, isNarrow && { fontSize: 14 }]} numberOfLines={1}>{user.profile.location}</Text>
               ) : null}
               <Text style={[styles.profileMetaText, { color: c.textMuted }, isNarrow && { fontSize: 14 }]} numberOfLines={1}>@{user?.username || profileRouteUsername}</Text>
+              {user?.is_source ? (
+                <View style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  borderRadius: 10,
+                  backgroundColor: c.primary + '18',
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: c.primary,
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: c.primary, letterSpacing: 0.3 }}>
+                    {t('profile.sourceBadge', { defaultValue: 'SOURCE' })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
+            {user?.is_source && Array.isArray(user?.source_mirrors) && user.source_mirrors.length > 0 ? (
+              <View style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                marginTop: 6,
+                gap: 6,
+                justifyContent: isNarrow ? 'center' : 'flex-start',
+              }}>
+                <Text style={[styles.profileMetaText, { color: c.textMuted }]}>
+                  {t('profile.sourceMirrorsLabel', { defaultValue: 'Mirrors' })}
+                </Text>
+                {user.source_mirrors.map((mirror: { platform: string; handle: string; profile_url: string | null }, idx: number) => (
+                  <React.Fragment key={`${mirror.platform}-${mirror.handle}`}>
+                    {idx > 0 ? (
+                      <Text style={[styles.profileMetaText, { color: c.textMuted }]}>·</Text>
+                    ) : null}
+                    {mirror.profile_url ? (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => mirror.profile_url && onOpenLink?.(mirror.profile_url)}
+                      >
+                        <Text style={[styles.profileMetaText, { color: c.textLink, textDecorationLine: 'underline' }]}>
+                          {formatSourceMirror(mirror)}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={[styles.profileMetaText, { color: c.textSecondary }]}>
+                        {formatSourceMirror(mirror)}
+                      </Text>
+                    )}
+                  </React.Fragment>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -1421,8 +1485,11 @@ export default function MyProfileScreen({
               </TouchableOpacity>
             ) : null}
 
-            {/* Connect / Pending — shown when not yet connected */}
-            {!isFullyConnected && !isPendingConfirmation && (
+            {/* Connect / Pending / Disconnect — all hidden for Source profiles
+                since Sources are non-interactive publishers (BBC, ESPN, ...)
+                and can't accept connection requests or DM back. The Follow
+                button above is the only relationship users have with them. */}
+            {!isFullyConnected && !isPendingConfirmation && !user?.is_source && (
               <TouchableOpacity
                 style={[
                   styles.profileSecondaryBtn,
@@ -1454,7 +1521,7 @@ export default function MyProfileScreen({
             )}
 
             {/* Accept + Decline — shown when they've requested to connect with us */}
-            {isPendingConfirmation && (
+            {isPendingConfirmation && !user?.is_source && (
               <>
                 <TouchableOpacity
                   style={[styles.profileSecondaryBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
@@ -1494,7 +1561,7 @@ export default function MyProfileScreen({
             )}
 
             {/* Disconnect — shown when already fully connected */}
-            {isFullyConnected && (
+            {isFullyConnected && !user?.is_source && (
               <TouchableOpacity
                 style={[styles.profileSecondaryBtn, { backgroundColor: c.inputBackground, borderColor: c.border }]}
                 activeOpacity={0.85}

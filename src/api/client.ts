@@ -1034,6 +1034,17 @@ export type UserProfile = {
   date_joined?: string;
   visibility?: string;
   federation_summary?: FederationSummary;
+  // When this profile is a Source publisher (BBC, ESPN, ...) the backend
+  // sets is_source=true and source_mirrors lists the active external
+  // accounts whose posts are mirrored into the openspace feed. Drives
+  // the profile-screen branching: hide Connect/DM affordances, surface
+  // the platform handles in the header.
+  is_source?: boolean;
+  source_mirrors?: Array<{
+    platform: 'bluesky' | 'mastodon' | 'twitter';
+    handle: string;
+    profile_url: string | null;
+  }>;
 };
 
 export type FederationSummary = {
