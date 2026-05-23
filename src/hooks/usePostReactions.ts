@@ -26,6 +26,7 @@ import {
   emitPostReactionUpdate,
   subscribePostReactionUpdate,
   subscribePostContentUpdate,
+  subscribePostCommentCountUpdate,
   type PostReactionPatch,
 } from '../utils/postUpdates';
 
@@ -188,6 +189,19 @@ export function usePostReactions(
   useEffect(() => {
     return subscribePostContentUpdate((postId, patch) => {
       patchPost(postId, (p: any) => ({ ...p, ...patch }));
+    });
+  }, [patchPost]);
+
+  // Same idea for comments_count updates (emitted from useCommentsData
+  // when a top-level comment is added or deleted on the post-detail
+  // screen). Apply as a delta so this is robust to multiple in-flight
+  // operations and stale subscribers; clamp to ≥0.
+  useEffect(() => {
+    return subscribePostCommentCountUpdate((postId, patch) => {
+      patchPost(postId, (p: any) => ({
+        ...p,
+        comments_count: Math.max(0, (p.comments_count || 0) + patch.delta),
+      }));
     });
   }, [patchPost]);
 

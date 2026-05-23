@@ -73,3 +73,44 @@ export function subscribePostContentUpdate(listener: ContentListener): () => voi
     contentListeners.delete(listener);
   };
 }
+
+// ── Post comment-count updates ──────────────────────────────────────────
+// Comment add/delete from the post-detail screen needs to propagate the
+// comments_count back to every other mounted copy of the post (feed
+// cards, profile lists, etc.) — same problem reactions solve, different
+// state. Web only needs this because of a single shared post store
+// (HomeScreen calls applyPostPatch directly); native screens hold
+// independent copies, so we route through the pub/sub.
+//
+// Delta-based rather than absolute, because the emitter (useCommentsData)
+// doesn't know each subscriber's current comments_count value. Subscribers
+// clamp the resulting value to ≥0 so a stale subscriber doesn't end up
+// with a negative count if events arrive out of order.
+//
+// Top-level comments only. Replies don't affect post.comments_count —
+// they affect comment.replies_count, which only appears inside the
+// post-detail view where local state already updates it.
+export type PostCommentCountPatch = {
+  delta: number;
+};
+
+type CommentCountListener = (postId: number, patch: PostCommentCountPatch) => void;
+
+const commentCountListeners = new Set<CommentCountListener>();
+
+export function emitPostCommentCountUpdate(postId: number, patch: PostCommentCountPatch): void {
+  for (const listener of commentCountListeners) {
+    try {
+      listener(postId, patch);
+    } catch {
+      // A misbehaving subscriber must not break the others or the emitter.
+    }
+  }
+}
+
+export function subscribePostCommentCountUpdate(listener: CommentCountListener): () => void {
+  commentCountListeners.add(listener);
+  return () => {
+    commentCountListeners.delete(listener);
+  };
+}

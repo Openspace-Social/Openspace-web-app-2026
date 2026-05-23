@@ -26,6 +26,7 @@ import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, type FeedPost, type PostComment } from '../api/client';
 import { useGifPicker } from '../components/GifPickerProvider';
 import { extractCommenterFromUser, hydrateCommenter } from '../utils/hydrateCommenter';
+import { emitPostCommentCountUpdate } from '../utils/postUpdates';
 
 type CurrentCommenter = NonNullable<PostComment['commenter']>;
 
@@ -190,6 +191,11 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
         }));
         // Clear draft media now that it's attached to a real comment.
         setDraftCommentMediaByPostId((prev) => ({ ...prev, [postId]: null }));
+        // Broadcast the count bump so every mounted copy of this post —
+        // feed cards, profile lists, etc. — keeps its comments_count in
+        // sync. Without this, going back to the feed after commenting
+        // shows the stale pre-comment count until the next refresh.
+        emitPostCommentCountUpdate(postId, { delta: 1 });
       } catch {
         // no-op; parent UI surfaces via toast if needed later
       }
@@ -335,11 +341,16 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
               (r) => (r as any).id !== commentId,
             ),
           }));
+          // Replies don't contribute to post.comments_count (that's
+          // top-level comments only), so no broadcast here.
         } else {
           setLocalComments((prev) => ({
             ...prev,
             [postId]: (prev[postId] || []).filter((c) => (c as any).id !== commentId),
           }));
+          // Decrement broadcast — every other mounted copy of this post
+          // updates its comments_count accordingly. Subscriber clamps to ≥0.
+          emitPostCommentCountUpdate(postId, { delta: -1 });
         }
       } catch {
         // silent
