@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { openExternalLink } from '../../utils/openExternalLink';
+import { getRemoteProfileUrl } from '../../utils/fediverseProfiles';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -228,14 +229,29 @@ export default function PostDetailScreenContainer() {
 
   const handleNavigateProfile = useCallback(
     (username: string) => {
-      navigation.navigate('Profile', { username });
+      const normalized = (username || '').trim();
+      if (normalized.includes('@')) {
+        const remoteUrl = getRemoteProfileUrl(normalized);
+        if (remoteUrl) {
+          void openExternalLink(remoteUrl).then((opened) => {
+            if (!opened) stub('Open profile');
+          });
+          return;
+        }
+      }
+      // `push` keeps the back stack predictable (navigate() can dedupe
+      // by route name and pop back to an existing Profile instead of
+      // pushing a new one).
+      navigation.push('Profile', { username: normalized });
     },
-    [navigation],
+    [navigation, stub],
   );
 
   const handleNavigateHashtag = useCallback(
     (name: string) => {
-      navigation.navigate('Hashtag', { name });
+      // Same rationale as handleNavigateProfile — push so the back stack
+      // contains the post detail and the back button works.
+      navigation.push('Hashtag', { name });
     },
     [navigation],
   );

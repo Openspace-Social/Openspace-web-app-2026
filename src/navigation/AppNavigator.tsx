@@ -19,7 +19,8 @@
  */
 
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, type LinkingOptions } from '@react-navigation/native';
@@ -241,6 +242,45 @@ function Placeholder({ title, subtitle, actions }: {
 
 // ── Tab stacks ───────────────────────────────────────────────────────────────
 
+/**
+ * ManualBackButton — replaces the default native-stack back button with an
+ * explicit TouchableOpacity that calls navigation.pop(). Workaround for a
+ * react-native-screens v4 bug where consecutive pushes of the same screen
+ * name (e.g. Profile → back → Profile with different username) leave the
+ * default header back button visually present but wired to a dead target,
+ * so tapping it does nothing. Forcing our own pop() invocation through
+ * react-navigation's JS layer bypasses the broken native binding.
+ *
+ * Per-screen `headerLeft: () => <ManualBackButton />` enables it.
+ */
+function ManualBackButton({ tintColor }: { tintColor?: string }) {
+  const navigation = useNavigation<any>();
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        // Use pop() (not goBack) so the intent is unambiguous — go back
+        // exactly one screen in this stack.
+        if (typeof navigation.pop === 'function') {
+          navigation.pop();
+        } else {
+          navigation.goBack();
+        }
+      }}
+      activeOpacity={0.6}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+    >
+      <MaterialCommunityIcons
+        name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
+        size={Platform.OS === 'ios' ? 32 : 24}
+        color={tintColor || '#007AFF'}
+      />
+    </TouchableOpacity>
+  );
+}
+
 function HomeTabStack() {
   // Root Feed screen renders FeedTopTabs (one tab per feed type, native
   // horizontal swipe via react-native-pager-view). Pushed screens
@@ -271,12 +311,23 @@ function HomeTabStack() {
       <HomeStack.Screen
         name="Profile"
         component={PublicProfileScreenContainer}
-        options={{ title: 'Profile' }}
+        // headerLeft override = manual back button. See ManualBackButton
+        // docstring above for the react-native-screens v4 bug rationale.
+        options={({ navigation: _nav }) => ({
+          title: 'Profile',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        })}
       />
       <HomeStack.Screen
         name="Community"
         component={CommunityScreenContainer}
-        options={{ title: 'Community' }}
+        // ManualBackButton — see Profile screen comments. Same RNS v4
+        // dead-back-button risk on consecutive pushes (e.g. tapping two
+        // different community mentions in a row).
+        options={{
+          title: 'Community',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        }}
       />
       <HomeStack.Screen
         name="CommunityMembers"
@@ -300,8 +351,10 @@ function HomeTabStack() {
       <HomeStack.Screen
         name="Hashtag"
         component={HashtagScreenContainer}
+        // ManualBackButton — see Profile screen comments.
         options={({ route }) => ({
           title: route.params?.name ? `#${route.params.name}` : 'Hashtag',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
         })}
       />
       <HomeStack.Screen name="Search" options={{ title: 'Search' }}>
@@ -320,17 +373,29 @@ function HomeTabStack() {
       <HomeStack.Screen
         name="RemoteProfile"
         component={RemoteProfileScreenContainer}
-        options={{ title: 'Fediverse profile' }}
+        // ManualBackButton — see Profile screen comments.
+        options={{
+          title: 'Fediverse profile',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        }}
       />
       <HomeStack.Screen
         name="RemoteCommunity"
         component={RemoteCommunityScreenContainer}
-        options={{ title: 'Fediverse community' }}
+        // ManualBackButton — see Profile screen comments.
+        options={{
+          title: 'Fediverse community',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        }}
       />
       <HomeStack.Screen
         name="RemoteThread"
         component={RemoteThreadScreenContainer}
-        options={{ title: 'Fediverse thread' }}
+        // ManualBackButton — see Profile screen comments.
+        options={{
+          title: 'Fediverse thread',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        }}
       />
       <HomeStack.Screen
         name="ReportPost"
@@ -408,7 +473,11 @@ function CommunitiesTabStack() {
       <CommunitiesStack.Screen
         name="Community"
         component={CommunityScreenContainer}
-        options={{ title: 'Community' }}
+        // ManualBackButton — see Profile screen comments in HomeTabStack.
+        options={{
+          title: 'Community',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        }}
       />
       <CommunitiesStack.Screen
         name="CommunityMembers"
@@ -481,7 +550,12 @@ function ProfileTabStack() {
       <ProfileStack.Screen
         name="Profile"
         component={PublicProfileScreenContainer}
-        options={{ title: 'Profile' }}
+        // See ManualBackButton docstring at top of file — workaround for
+        // react-native-screens v4 dead back-button bug on repeat pushes.
+        options={({ navigation: _nav }) => ({
+          title: 'Profile',
+          headerLeft: ({ tintColor }) => <ManualBackButton tintColor={tintColor} />,
+        })}
       />
       <ProfileStack.Screen
         name="Followers"
