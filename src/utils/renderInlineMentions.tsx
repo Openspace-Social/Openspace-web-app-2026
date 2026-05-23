@@ -16,8 +16,8 @@
 import React, { useCallback } from 'react';
 import { Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../context/AuthContext';
-import { api } from '../api/client';
+import { openExternalLink } from './openExternalLink';
+import { getRemoteProfileUrl } from './fediverseProfiles';
 
 const TOKEN_REGEX = /(^|\s)(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|@[A-Za-z0-9_.]+|#[A-Za-z0-9_]+)/g;
 // Trailing chars to strip from a captured token before treating it as a
@@ -26,7 +26,6 @@ const TRAILING_PUNCT = /[.,!?:;]+$/;
 
 export function useInlineMentionRenderer(c?: any) {
   const navigation = useNavigation<any>();
-  const { token } = useAuth();
   const linkColor = c?.textLink || '#6366F1';
 
   return useCallback(
@@ -69,18 +68,13 @@ export function useInlineMentionRenderer(c?: any) {
             style={{ color: linkColor }}
             onPress={() => {
               if (isMention) {
-                if (value.includes('@') && token) {
-                  void api.resolveFederatedDiscoveryEntity(token, `@${value}`)
-                    .then((resolved) => {
-                      if (resolved.kind === 'actor') {
-                        navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
-                      } else {
-                        navigation.navigate('Profile', { username: value });
-                      }
-                    })
-                    .catch(() => {
-                      navigation.navigate('Profile', { username: value });
-                    });
+                if (value.includes('@')) {
+                  const remoteUrl = getRemoteProfileUrl(value);
+                  if (remoteUrl) {
+                    void openExternalLink(remoteUrl);
+                    return;
+                  }
+                  navigation.navigate('Profile', { username: value });
                 } else {
                   navigation.navigate('Profile', { username: value });
                 }
@@ -103,6 +97,6 @@ export function useInlineMentionRenderer(c?: any) {
       }
       return out.length === 0 ? text : out;
     },
-    [navigation, linkColor, token],
+    [navigation, linkColor],
   );
 }

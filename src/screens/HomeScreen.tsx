@@ -52,6 +52,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { feedViewport } from '../utils/feedViewport';
 import { openExternalLink } from '../utils/openExternalLink';
+import { getRemoteProfileUrl } from '../utils/fediverseProfiles';
 import { validatePickedMedia } from '../utils/mediaValidation';
 import { AppRoute, parseInternalOpenspaceUrl } from '../routing';
 import SearchResultsScreen from './SearchResultsScreen';
@@ -4208,6 +4209,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     // window.location assignment and would reload the page.
     const internalRoute = parseInternalOpenspaceUrl(url);
     if (internalRoute) {
+      if (internalRoute.screen === 'profile' && (internalRoute.username || '').includes('@')) {
+        const remoteUrl = getRemoteProfileUrl(internalRoute.username);
+        if (remoteUrl) {
+          void openExternalLink(remoteUrl).then((opened) => {
+            if (!opened) onNavigate(internalRoute);
+          });
+          return;
+        }
+      }
       onNavigate(internalRoute);
       return;
     }
@@ -4220,6 +4230,21 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     }
     setPendingExternalLink(url);
     setExternalLinkModalOpen(true);
+  }
+
+  const resolvedFederatedProfileRouteRef = React.useRef<string | null>(null);
+  function openRemoteProfileHandle(handle: string, fallbackToLocal = true, replace = false) {
+    const normalized = (handle || '').trim();
+    const remoteUrl = getRemoteProfileUrl(normalized);
+    if (remoteUrl) {
+      void openExternalLink(remoteUrl).then((opened) => {
+        if (!opened && fallbackToLocal) {
+          onNavigate({ screen: 'profile', username: normalized }, replace);
+        }
+      });
+      return true;
+    }
+    return false;
   }
 
   const welcomeText = user?.username
@@ -6334,6 +6359,22 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     ? displayRoute.username
     : user?.username || '';
   const communityRouteName = displayRoute.screen === 'community' ? displayRoute.name : '';
+  React.useEffect(() => {
+    if (displayRoute.screen !== 'profile') {
+      resolvedFederatedProfileRouteRef.current = null;
+      return;
+    }
+    const normalized = (displayRoute.username || '').trim();
+    if (!normalized.includes('@')) {
+      resolvedFederatedProfileRouteRef.current = null;
+      return;
+    }
+    if (resolvedFederatedProfileRouteRef.current === normalized) return;
+    resolvedFederatedProfileRouteRef.current = normalized;
+    if (!openRemoteProfileHandle(normalized, false)) {
+      resolvedFederatedProfileRouteRef.current = null;
+    }
+  }, [displayRoute, onNavigate]);
   const canManageCurrentCommunity = React.useMemo(() => {
     if (!communityInfo || typeof user?.id !== 'number') return false;
     if (communityInfo.is_creator) return true;
@@ -6468,16 +6509,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   function handleNavigateProfile(username: string) {
     const normalized = (username || '').trim();
-    if (normalized.includes('@') && token) {
-      api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
-        .then((resolved) => {
-          if (resolved.kind === 'actor') {
-            onNavigate({ screen: 'remote-profile', remoteActorId: resolved.actor.id } as any);
-          }
-        })
-        .catch(() => {
-          onNavigate({ screen: 'profile', username: normalized });
-        });
+    if (normalized.includes('@')) {
+      if (openRemoteProfileHandle(normalized)) return;
+      onNavigate({ screen: 'profile', username: normalized });
       return;
     }
     onNavigate({ screen: 'profile', username: normalized });
@@ -6499,16 +6533,9 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     closeReactionList();
     clearWebFocus();
     setActivePost(null);
-    if (normalized.includes('@') && token) {
-      api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
-        .then((resolved) => {
-          if (resolved.kind === 'actor') {
-            onNavigate({ screen: 'remote-profile', remoteActorId: resolved.actor.id } as any, true);
-          }
-        })
-        .catch(() => {
-          onNavigate({ screen: 'profile', username: normalized }, true);
-        });
+    if (normalized.includes('@')) {
+      if (openRemoteProfileHandle(normalized, true, true)) return;
+      onNavigate({ screen: 'profile', username: normalized }, true);
       return;
     }
     onNavigate({ screen: 'profile', username: normalized }, true);

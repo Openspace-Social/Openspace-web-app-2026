@@ -55,6 +55,8 @@ import EditProfileModal from '../../components/EditProfileModal';
 import FederationSummaryCard from '../../components/FederationSummaryCard';
 import UserBadge from '../../components/UserBadge';
 import LinkifyText from '../../components/LinkifyText';
+import { openExternalLink } from '../../utils/openExternalLink';
+import { getRemoteProfileUrl } from '../../utils/fediverseProfiles';
 import { PostInteractionsProvider } from '../../contexts/PostInteractionsContext';
 import { postCardStyles } from '../../styles/postCardStyles';
 import { api, type FeedPost, type FederationSummary, type PostComment } from '../../api/client';
@@ -180,22 +182,11 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
 
   useEffect(() => {
     const normalized = (username || '').trim();
-    if (!token || !normalized.includes('@')) return;
-    let active = true;
-    void api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
-      .then((resolved) => {
-        if (!active) return;
-        if (resolved.kind === 'actor') {
-          navigation.replace('RemoteProfile', { remoteActorId: resolved.actor.id });
-        }
-      })
-      .catch(() => {
-        // allow the local profile load to fail normally if resolution fails
-      });
-    return () => {
-      active = false;
-    };
-  }, [navigation, token, username]);
+    if (!normalized.includes('@')) return;
+    const remoteUrl = getRemoteProfileUrl(normalized);
+    if (!remoteUrl) return;
+    void openExternalLink(remoteUrl);
+  }, [username]);
 
   const refreshUser = useCallback(async () => {
     if (!token || !username) return;

@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Share } from 'react-native';
 import { openExternalLink } from '../utils/openExternalLink';
+import { getRemoteProfileUrl } from '../utils/fediverseProfiles';
 import { parseInternalOpenspaceUrl } from '../routing';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -257,18 +258,15 @@ export function useNativePostInteractions({
       },
       onNavigateProfile: (username) => {
         const normalized = (username || '').trim();
-        if (normalized.includes('@') && token) {
-          void api.resolveFederatedDiscoveryEntity(token, normalized.startsWith('@') ? normalized : `@${normalized}`)
-            .then((resolved) => {
-              if (resolved.kind === 'actor') {
-                navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
-              } else {
-                navigation.navigate('Profile', { username: normalized });
-              }
-            })
-            .catch(() => {
-              navigation.navigate('Profile', { username: normalized });
+        if (normalized.includes('@')) {
+          const remoteUrl = getRemoteProfileUrl(normalized);
+          if (remoteUrl) {
+            void openExternalLink(remoteUrl).then((opened) => {
+              if (!opened) navigation.navigate('Profile', { username: normalized });
             });
+            return;
+          }
+          navigation.navigate('Profile', { username: normalized });
           return;
         }
         navigation.navigate('Profile', { username: normalized });
@@ -334,18 +332,14 @@ export function useNativePostInteractions({
               navigation.navigate('Community', { name: internalRoute.name });
               return;
             case 'profile':
-              if ((internalRoute.username || '').includes('@') && token) {
-                void api.resolveFederatedDiscoveryEntity(token, internalRoute.username.startsWith('@') ? internalRoute.username : `@${internalRoute.username}`)
-                  .then((resolved) => {
-                    if (resolved.kind === 'actor') {
-                      navigation.navigate('RemoteProfile', { remoteActorId: resolved.actor.id });
-                    } else {
-                      navigation.navigate('Profile', { username: internalRoute.username });
-                    }
-                  })
-                  .catch(() => {
-                    navigation.navigate('Profile', { username: internalRoute.username });
+              if ((internalRoute.username || '').includes('@')) {
+                const remoteUrl = getRemoteProfileUrl(internalRoute.username);
+                if (remoteUrl) {
+                  void openExternalLink(remoteUrl).then((opened) => {
+                    if (!opened) navigation.navigate('Profile', { username: internalRoute.username });
                   });
+                  return;
+                }
                 return;
               }
               navigation.navigate('Profile', { username: internalRoute.username });
