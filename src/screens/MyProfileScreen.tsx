@@ -1845,6 +1845,10 @@ export default function MyProfileScreen({
               ) : null}
             </View>
 
+            {/* "Accounts I follow" — hidden on Source profiles. Sources are
+                non-interactive publishers; they don't follow anyone, so the
+                section would always render an empty state. */}
+            {!user?.is_source ? (
             <View style={[styles.profileDetailCard, { backgroundColor: c.inputBackground, borderColor: c.border, marginTop: 14 }]}>
               <View style={styles.profileSectionTitleRow}>
                 <MaterialCommunityIcons name="account-heart-outline" size={22} color={c.textPrimary} />
@@ -1912,28 +1916,34 @@ export default function MyProfileScreen({
                 </TouchableOpacity>
               ) : null}
             </View>
+            ) : null}
           </View>
 
           <View style={[styles.profileBodyRight, isCompactProfileLayout ? styles.profileBodyRightCompact : null]}>
-            <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
-              <View style={styles.profileSectionTitleRow}>
-                <MaterialCommunityIcons name="pin-outline" size={22} color={c.textPrimary} />
-                <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
-                  {t('home.profilePinnedPostsTitle')}
-                </Text>
-              </View>
-              {myPinnedPostsLoading ? (
-                <ActivityIndicator color={c.primary} size="small" />
-              ) : filteredPinnedPosts.length === 0 ? (
-                <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.profileNoPinnedPosts')}</Text>
-              ) : (
-                <View style={styles.feedList}>
-                  {filteredPinnedPosts.map((post) => (
-                    <React.Fragment key={`profile-pinned-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
-                  ))}
+            {/* Pinned posts section — hidden on Source profiles. There's no
+                human present to curate pinned posts for a Source publisher,
+                so the empty-state would be permanent noise. */}
+            {!user?.is_source ? (
+              <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}>
+                <View style={styles.profileSectionTitleRow}>
+                  <MaterialCommunityIcons name="pin-outline" size={22} color={c.textPrimary} />
+                  <Text style={[styles.profileDetailTitle, styles.profileSectionTitleText, { color: c.textPrimary }, isNarrow && { fontSize: 18 }]}>
+                    {t('home.profilePinnedPostsTitle')}
+                  </Text>
                 </View>
-              )}
-            </View>
+                {myPinnedPostsLoading ? (
+                  <ActivityIndicator color={c.primary} size="small" />
+                ) : filteredPinnedPosts.length === 0 ? (
+                  <Text style={[styles.feedEmptyText, { color: c.textMuted }]}>{t('home.profileNoPinnedPosts')}</Text>
+                ) : (
+                  <View style={styles.feedList}>
+                    {filteredPinnedPosts.map((post) => (
+                      <React.Fragment key={`profile-pinned-post-${post.id}`}>{renderPostCard(post, 'profile')}</React.Fragment>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
 
             <View style={[styles.profilePostsCard, { backgroundColor: c.inputBackground, borderColor: c.border }]}> 
               <View style={styles.profileSectionTitleRow}>
