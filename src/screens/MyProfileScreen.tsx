@@ -31,6 +31,7 @@ import {
 } from '../api/client';
 import FederationSummaryCard from '../components/FederationSummaryCard';
 import ProfileActionsMenu from '../components/ProfileActionsMenu';
+import SourceMirrorsModal from '../components/SourceMirrorsModal';
 import UserBadge from '../components/UserBadge';
 import ProfileSkeleton from '../components/ProfileSkeleton';
 import { PostCardSkeletonList } from '../components/PostCardSkeleton';
@@ -38,22 +39,6 @@ import { shareProfile } from '../utils/shareProfile';
 
 const DEFAULT_PROFILE_AVATAR = require('../../assets/default-profile-avatar.png');
 const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
-
-const SOURCE_PLATFORM_LABELS: Record<string, string> = {
-  bluesky: 'Bluesky',
-  mastodon: 'Mastodon',
-  activitypub: 'ActivityPub',
-  twitter: 'X',
-};
-
-// Format a source mirror as "{handle} on {Platform}", normalizing the handle's
-// optional leading @ and prettifying the platform name. Used in the Source
-// profile header to surface where the mirrored posts originate.
-function formatSourceMirror(mirror: { platform: string; handle: string }) {
-  const handleClean = mirror.handle?.startsWith('@') ? mirror.handle : `@${mirror.handle ?? ''}`;
-  const platformLabel = SOURCE_PLATFORM_LABELS[mirror.platform] ?? mirror.platform;
-  return `${handleClean} on ${platformLabel}`;
-}
 
 type TabKey = 'all' | 'about' | 'followers' | 'photos' | 'reels' | 'more' | 'federation';
 type ActivityFilterKey = 'all' | 'community' | 'public' | 'comments';
@@ -249,6 +234,7 @@ export default function MyProfileScreen({
   const objectUrlRef = React.useRef<string[]>([]);
 
   const [actionsMenuOpen, setActionsMenuOpen] = React.useState(false);
+  const [mirrorsModalOpen, setMirrorsModalOpen] = React.useState(false);
   const [activityFilter, setActivityFilter] = React.useState<ActivityFilterKey>('all');
   const [visibleJoinedCommunities, setVisibleJoinedCommunities] = React.useState(9);
   const [visibleFollowings, setVisibleFollowings] = React.useState(9);
@@ -1339,48 +1325,41 @@ export default function MyProfileScreen({
               ) : null}
             </View>
             {user?.is_source && Array.isArray(user?.source_mirrors) && user.source_mirrors.length > 0 ? (
-              // Vertical stack. Earlier version used a wrapping row with "·"
-              // separators between mirror entries, but on narrow widths the
-              // dot would land on its own line and the row could extend
-              // horizontally under the Follow/Subscribe/Share action buttons
-              // (the meta column and the actions column overlap in the
-              // viewport range where this is rendered). One-mirror-per-line
-              // with a leading bullet keeps each row self-contained and the
-              // maxWidth caps the column so it can't run under the actions.
-              <View style={{
-                marginTop: 8,
-                alignSelf: isNarrow ? 'center' : 'flex-start',
-                maxWidth: 360,
-              }}>
-                <Text style={[styles.profileMetaText, { color: c.textMuted, fontWeight: '600', marginBottom: 2 }]}>
-                  {t('profile.sourceMirrorsLabel', { defaultValue: 'Mirrors' })}
+              // Compact pill that opens a modal listing the mirrors. Replaces
+              // an earlier inline-list layout that bloated the header and
+              // collided with the right-side action buttons when the Source
+              // had more than one mirror. The modal scales gracefully to
+              // many mirrors without taking up profile-header real estate.
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setMirrorsModalOpen(true)}
+                style={{
+                  marginTop: 8,
+                  alignSelf: isNarrow ? 'center' : 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: c.border,
+                  backgroundColor: c.inputBackground,
+                }}
+              >
+                <MaterialCommunityIcons name="link-variant" size={14} color={c.textSecondary} />
+                <Text style={[styles.profileMetaText, { color: c.textSecondary, fontWeight: '600', marginLeft: 6 }]}>
+                  {t('profile.sourceMirrorsButton', {
+                    count: user.source_mirrors.length,
+                    defaultValue: `${user.source_mirrors.length} mirror${user.source_mirrors.length === 1 ? '' : 's'}`,
+                  })}
                 </Text>
-                {user.source_mirrors.map((mirror: { platform: string; handle: string; profile_url: string | null }) => (
-                  <View
-                    key={`${mirror.platform}-${mirror.handle}`}
-                    style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 2 }}
-                  >
-                    <Text style={[styles.profileMetaText, { color: c.textMuted, marginRight: 6 }]}>
-                      •
-                    </Text>
-                    {mirror.profile_url ? (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => mirror.profile_url && onOpenLink?.(mirror.profile_url)}
-                        style={{ flexShrink: 1 }}
-                      >
-                        <Text style={[styles.profileMetaText, { color: c.textLink, textDecorationLine: 'underline' }]}>
-                          {formatSourceMirror(mirror)}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <Text style={[styles.profileMetaText, { color: c.textSecondary, flexShrink: 1 }]}>
-                        {formatSourceMirror(mirror)}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </View>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={16}
+                  color={c.textMuted}
+                  style={{ marginLeft: 2 }}
+                />
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
@@ -1650,6 +1629,14 @@ export default function MyProfileScreen({
           onBlock={() => onBlockUser?.(user?.username || profileRouteUsername)}
           onUnblock={() => onUnblockUser?.(user?.username || profileRouteUsername)}
           onReport={(catId, desc) => onReportUser?.(user?.username || profileRouteUsername, catId, desc)}
+        />
+        <SourceMirrorsModal
+          visible={mirrorsModalOpen}
+          mirrors={Array.isArray(user?.source_mirrors) ? user.source_mirrors : []}
+          onClose={() => setMirrorsModalOpen(false)}
+          onOpenLink={onOpenLink}
+          c={c}
+          t={t}
         />
       </View>
 
