@@ -169,12 +169,19 @@ export default function CommunityManagementDrawer({
   const [banned, setBanned] = useState<CommunityMember[]>([]);
   // Phase 6.2: per-community mirrored Sources (curated by mods).
   const [mirroredSources, setMirroredSources] = useState<CommunityMirroredSourceRow[]>([]);
+  // Two-step picker: step 1 ('sources') searches Source profiles, step 2
+  // ('mirrors') shows the selected Source's platform streams so the mod
+  // picks a specific mirror. We always force the user through step 2 — even
+  // for single-mirror Sources — so the subscription target is explicit and
+  // the UI stays consistent as Sources gain more mirrors over time.
   const [sourcePicker, setSourcePicker] = useState<{
     open: boolean;
     query: string;
     results: SourceDirectoryEntry[];
     loading: boolean;
-  }>({ open: false, query: '', results: [], loading: false });
+    step: 'sources' | 'mirrors';
+    selectedSource: SourceDirectoryEntry | null;
+  }>({ open: false, query: '', results: [], loading: false, step: 'sources', selectedSource: null });
   const [ownershipTransfer, setOwnershipTransfer] = useState<CommunityOwnershipTransfer | null>(null);
   const [transferConfirm, setTransferConfirm] = useState<{
     title: string;
@@ -869,9 +876,19 @@ export default function CommunityManagementDrawer({
   }
 
   async function openSourcePickerSearch(query: string) {
+    // Don't hit the API with an empty query — the backend orders by
+    // username alphabetically, so an empty search would surface whatever
+    // happens to come first (currently "A24 Films"), which isn't a useful
+    // default and reads as a bug. Force the mod to type at least one
+    // character so the results are intentional.
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSourcePicker((prev) => ({ ...prev, query, results: [], loading: false }));
+      return;
+    }
     setSourcePicker((prev) => ({ ...prev, query, loading: true }));
     try {
-      const payload = await api.getSourcesDirectory(token, { search: query || undefined, count: 30 });
+      const payload = await api.getSourcesDirectory(token, { search: trimmed, count: 30 });
       setSourcePicker((prev) => ({ ...prev, results: payload.results, loading: false }));
     } catch (e: any) {
       setSourcePicker((prev) => ({ ...prev, loading: false }));
@@ -897,8 +914,12 @@ export default function CommunityManagementDrawer({
         </View>
         <TouchableOpacity
           onPress={() => {
-            setSourcePicker({ open: true, query: '', results: [], loading: false });
-            void openSourcePickerSearch('');
+            // Open empty — no auto-search, no default alphabetical list.
+            // The empty-state message in step 1 prompts the mod to type.
+            setSourcePicker({
+              open: true, query: '', results: [], loading: false,
+              step: 'sources', selectedSource: null,
+            });
           }}
           style={{
             marginHorizontal: 16,
@@ -986,25 +1007,53 @@ export default function CommunityManagementDrawer({
           })
         )}
 
-        {/* Add-source picker overlay */}
+        {/* Add-source picker overlay — two-step drill (source → mirror).
+            On web we use position:'fixed' so the modal escapes the drawer
+            panel and covers the full viewport; otherwise it'd be capped by
+            whatever vertical space the drawer body happens to have. */}
         {sourcePicker.open ? (
           <View style={{
-            position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+            position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+            top: 0, bottom: 0, left: 0, right: 0,
             backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
             padding: 16,
+            // Above the drawer's own stacking context on web.
+            zIndex: 1000,
           }}>
             <View style={{
-              width: '100%', maxWidth: 480, maxHeight: '90%',
+              // Web has the full viewport to work with — give the picker a
+              // comfortable reading width and tall results pane. Mobile
+              // keeps the tighter sheet so it doesn't dominate small
+              // viewports.
+              width: '100%',
+              maxWidth: Platform.OS === 'web' ? 880 : 480,
+              maxHeight: Platform.OS === 'web' ? '90%' : '90%',
               backgroundColor: c.surface, borderRadius: 12, padding: 12,
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                {sourcePicker.step === 'mirrors' ? (
+                  <TouchableOpacity
+                    onPress={() => setSourcePicker((prev) => ({
+                      ...prev, step: 'sources', selectedSource: null,
+                    }))}
+                    style={{ paddingRight: 10, paddingVertical: 4 }}
+                  >
+                    <Text style={{ color: c.primary, fontSize: 16, fontWeight: '700' }}>←</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <Text style={{ flex: 1, color: c.textPrimary, fontSize: 16, fontWeight: '700' }}>
-                  {t('community.pickSourceTitle', { defaultValue: 'Add a Source' })}
+                  {sourcePicker.step === 'mirrors'
+                    ? t('community.pickMirrorTitle', { defaultValue: 'Pick a mirror' })
+                    : t('community.pickSourceTitle', { defaultValue: 'Add a Source' })}
                 </Text>
-                <TouchableOpacity onPress={() => setSourcePicker({ open: false, query: '', results: [], loading: false })}>
+                <TouchableOpacity onPress={() => setSourcePicker({
+                  open: false, query: '', results: [], loading: false,
+                  step: 'sources', selectedSource: null,
+                })}>
                   <Text style={{ color: c.textMuted, fontSize: 18 }}>✕</Text>
                 </TouchableOpacity>
               </View>
+              {sourcePicker.step === 'sources' ? (
               <TextInput
                 value={sourcePicker.query}
                 onChangeText={(text) => {
@@ -1021,64 +1070,155 @@ export default function CommunityManagementDrawer({
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <ScrollView style={{ maxHeight: 360 }}>
-                {sourcePicker.loading ? (
-                  <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
-                ) : sourcePicker.results.length === 0 ? (
-                  <Text style={{ color: c.textMuted, padding: 16, textAlign: 'center' }}>
-                    {t('community.pickSourceNoneFound', { defaultValue: 'No sources match.' })}
-                  </Text>
-                ) : (
-                  // Flatten each source into one row per mirror so the
-                  // operator picks a specific platform stream rather than
-                  // implicitly subscribing to all of an outlet's accounts.
-                  sourcePicker.results.flatMap((src) => {
-                    const mirrors = src.mirrors || [];
-                    if (mirrors.length === 0) return [];
-                    return mirrors.map((mirror) => {
-                      const already = subscribedMirrorIds.has(mirror.id);
+              ) : null}
+              {/* Step 'mirrors': show the selected Source as a header so the
+                  mod sees whose mirrors they're about to choose from. */}
+              {sourcePicker.step === 'mirrors' && sourcePicker.selectedSource ? (() => {
+                const src = sourcePicker.selectedSource;
+                const displayName = src.profile?.name || src.username || 'Source';
+                return (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 10,
+                    paddingHorizontal: 4, paddingVertical: 10,
+                    borderBottomWidth: 1, borderBottomColor: c.border,
+                    marginBottom: 4,
+                  }}>
+                    {src.profile?.avatar ? (
+                      <Image
+                        source={{ uri: src.profile.avatar }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: c.border }}
+                      />
+                    ) : (
+                      <View style={{
+                        width: 40, height: 40, borderRadius: 20, backgroundColor: c.primary,
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>
+                          {(displayName[0] || 'S').toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                        {displayName}
+                      </Text>
+                      <Text style={{ color: c.textMuted, fontSize: 12 }} numberOfLines={1}>
+                        @{src.username}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })() : null}
+              <ScrollView style={{ maxHeight: Platform.OS === 'web' ? 720 : 360 }}>
+                {sourcePicker.step === 'sources' ? (
+                  sourcePicker.loading ? (
+                    <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+                  ) : sourcePicker.results.length === 0 ? (
+                    <Text style={{ color: c.textMuted, padding: 16, textAlign: 'center' }}>
+                      {sourcePicker.query.trim().length === 0
+                        ? t('community.pickSourcePrompt', { defaultValue: 'Type to search Sources by name or @handle.' })
+                        : t('community.pickSourceNoneFound', { defaultValue: 'No sources match.' })}
+                    </Text>
+                  ) : (
+                    // Step 1: one row per Source profile. Tap drills into
+                    // the mirror picker. We don't auto-skip step 2 even for
+                    // single-mirror Sources — the mod should always see and
+                    // confirm which platform stream they're routing in.
+                    sourcePicker.results.map((src) => {
+                      const mirrors = src.mirrors || [];
+                      const mirrorCount = mirrors.length;
+                      // Show a Source as fully-added when every one of its
+                      // mirrors is already subscribed; partial-add stays
+                      // tappable so the mod can add the remaining mirrors.
+                      const allAdded = mirrorCount > 0 && mirrors.every(
+                        (m) => subscribedMirrorIds.has(m.id),
+                      );
                       const displayName = src.profile?.name || src.username || 'Source';
                       return (
-                        <View
-                          key={`pick-${src.id}-${mirror.id}`}
+                        <TouchableOpacity
+                          key={`pick-src-${src.id}`}
+                          disabled={mirrorCount === 0}
+                          onPress={() => setSourcePicker((prev) => ({
+                            ...prev, step: 'mirrors', selectedSource: src,
+                          }))}
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 10,
-                            paddingHorizontal: 4, paddingVertical: 8,
+                            paddingHorizontal: 4, paddingVertical: 10,
                             borderBottomWidth: 1, borderBottomColor: c.border,
+                            opacity: mirrorCount === 0 ? 0.5 : 1,
                           }}
                         >
                           {src.profile?.avatar ? (
                             <Image
                               source={{ uri: src.profile.avatar }}
-                              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.border }}
+                              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.border }}
                             />
                           ) : (
                             <View style={{
-                              width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary,
+                              width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary,
                               alignItems: 'center', justifyContent: 'center',
                             }}>
-                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
                                 {(displayName[0] || 'S').toUpperCase()}
                               </Text>
                             </View>
                           )}
                           <View style={{ flex: 1 }}>
+                            <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                              {displayName}
+                            </Text>
+                            <Text style={{ color: c.textMuted, fontSize: 12 }} numberOfLines={1}>
+                              @{src.username} · {mirrorCount === 0
+                                ? t('community.pickSourceNoMirrors', { defaultValue: 'no mirrors' })
+                                : mirrorCount === 1
+                                  ? t('community.pickSourceOneMirror', { defaultValue: '1 mirror' })
+                                  : t('community.pickSourceMirrorCount', { defaultValue: '{{count}} mirrors', count: mirrorCount })}
+                              {allAdded ? ' · ' + t('community.pickSourceAllAdded', { defaultValue: 'all added' }) : ''}
+                            </Text>
+                          </View>
+                          <Text style={{ color: c.textMuted, fontSize: 18, paddingHorizontal: 4 }}>›</Text>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )
+                ) : (
+                  // Step 2: list the chosen Source's mirrors. Each Add tap
+                  // posts that specific mirror_id and closes the picker.
+                  (() => {
+                    const src = sourcePicker.selectedSource;
+                    const mirrors = src?.mirrors || [];
+                    if (mirrors.length === 0) {
+                      return (
+                        <Text style={{ color: c.textMuted, padding: 16, textAlign: 'center' }}>
+                          {t('community.pickMirrorNone', { defaultValue: 'This Source has no active mirrors.' })}
+                        </Text>
+                      );
+                    }
+                    return mirrors.map((mirror) => {
+                      const already = subscribedMirrorIds.has(mirror.id);
+                      return (
+                        <View
+                          key={`pick-mirror-${mirror.id}`}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            paddingHorizontal: 4, paddingVertical: 10,
+                            borderBottomWidth: 1, borderBottomColor: c.border,
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
-                                {displayName}
-                              </Text>
                               <View style={{
-                                paddingHorizontal: 5, paddingVertical: 1, borderRadius: 7,
+                                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
                                 borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground,
                               }}>
-                                <Text style={{ color: c.textSecondary, fontSize: 9, fontWeight: '700', letterSpacing: 0.3 }}>
+                                <Text style={{ color: c.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 }}>
                                   {mirror.platform.toUpperCase()}
                                 </Text>
                               </View>
+                              <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                                @{mirror.external_handle}
+                              </Text>
                             </View>
-                            <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={1}>
-                              @{mirror.external_handle}
-                            </Text>
                           </View>
                           <TouchableOpacity
                             disabled={already || busy}
@@ -1086,7 +1226,10 @@ export default function CommunityManagementDrawer({
                               await api.addCommunityMirroredSource(token, communityName, mirror.id);
                               const rows = await api.getCommunityMirroredSources(token, communityName, 100);
                               setMirroredSources(rows);
-                              setSourcePicker({ open: false, query: '', results: [], loading: false });
+                              setSourcePicker({
+                                open: false, query: '', results: [], loading: false,
+                                step: 'sources', selectedSource: null,
+                              });
                             }, t('community.mirroredSourceAdded', { defaultValue: 'Source added to community.' }))}
                             style={{
                               paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
@@ -1098,13 +1241,15 @@ export default function CommunityManagementDrawer({
                               color: already ? c.textSecondary : '#fff',
                               fontWeight: '700', fontSize: 12,
                             }}>
-                              {already ? 'Added' : 'Add'}
+                              {already
+                                ? t('community.pickMirrorAdded', { defaultValue: 'Added' })
+                                : t('community.pickMirrorAdd', { defaultValue: 'Add' })}
                             </Text>
                           </TouchableOpacity>
                         </View>
                       );
                     });
-                  })
+                  })()
                 )}
               </ScrollView>
             </View>
