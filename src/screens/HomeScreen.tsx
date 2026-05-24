@@ -87,6 +87,7 @@ import FollowPeopleScreen from './FollowPeopleScreen';
 import CommunitiesScreen from './CommunitiesScreen';
 import ManageCommunitiesScreen from './ManageCommunitiesScreen';
 import MutedCommunitiesScreen from './MutedCommunitiesScreen';
+import SourcesDirectoryScreen from './SourcesDirectoryScreen';
 import SettingsScreen from './SettingsScreen';
 import RemoteProfileScreen from './RemoteProfileScreen';
 import RemoteThreadScreen from './RemoteThreadScreen';
@@ -6400,7 +6401,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       screen === 'communities' ||
       screen === 'community' ||
       screen === 'manage-communities' ||
-      screen === 'muted-communities'
+      screen === 'muted-communities' ||
+      screen === 'sources'
     ) return 'communities';
     if (
       screen === 'me' ||
@@ -10176,6 +10178,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                 t={t}
                 onNotice={setNotice}
                 onOpenCommunity={(name: string) => onNavigate({ screen: 'community', name })}
+              />
+            ) : null}
+
+            {displayRoute.screen === 'sources' ? (
+              <SourcesDirectoryScreen
+                token={token}
+                c={c}
+                t={t}
+                onOpenProfile={(username: string) => onNavigate({ screen: 'profile', username })}
+                onNotice={setNotice}
+                onError={setError}
               />
             ) : null}
 

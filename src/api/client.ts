@@ -1047,6 +1047,37 @@ export type UserProfile = {
   }>;
 };
 
+// Returned by GET /api/sources/ — one entry per Source publisher account.
+export type SourceDirectoryEntry = {
+  id: number;
+  username?: string;
+  visibility?: string;
+  is_source?: boolean;
+  is_following?: boolean;
+  profile?: {
+    id?: number;
+    name?: string;
+    avatar?: string;
+    cover?: string;
+    badges?: Array<{ keyword?: string; keyword_description?: string }>;
+  };
+  source_profile?: {
+    category?: string;
+    publisher_url?: string;
+    description?: string;
+    verified_at?: string | null;
+  };
+  mirrors_count?: number;
+};
+
+// One row in a community's mirrored-sources list.
+export type CommunityMirroredSourceRow = {
+  id: number;
+  source_user: SourceDirectoryEntry;
+  added_by: { id: number; username: string } | null;
+  added_at: string;
+};
+
 export type FederationSummary = {
   is_enabled: boolean;
   is_discoverable: boolean;
@@ -3029,6 +3060,58 @@ export const api = {
       method: 'DELETE',
       headers: { Authorization: `Token ${token}` },
     }),
+
+  // ─── Phase 6: Sources directory + per-community mirrored sources ────────
+
+  getSourcesDirectory: (token: string | null, opts?: { category?: string; search?: string; count?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.category) params.set('category', opts.category);
+    if (opts?.search) params.set('search', opts.search);
+    params.set('count', String(Math.min(Math.max(opts?.count ?? 20, 1), 50)));
+    if (typeof opts?.offset === 'number' && opts.offset > 0) params.set('offset', String(opts.offset));
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Token ${token}`;
+    return request<{ results: SourceDirectoryEntry[]; total: number; offset: number; count: number }>(
+      `/api/sources/?${params.toString()}`,
+      { headers },
+    ).then((payload) => ({
+      ...payload,
+      results: payload.results.map((s) => ({
+        ...s,
+        profile: s.profile ? { ...s.profile, avatar: normalizeMediaUrl(s.profile.avatar), cover: normalizeMediaUrl(s.profile.cover) } : s.profile,
+      })),
+    }));
+  },
+
+  getCommunityMirroredSources: (token: string, communityName: string, count = 100) => {
+    const params = new URLSearchParams();
+    params.set('count', String(Math.min(Math.max(count, 1), 100)));
+    return request<CommunityMirroredSourceRow[]>(
+      `/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/?${params.toString()}`,
+      { headers: { Authorization: `Token ${token}` } },
+    ).then((rows) => (Array.isArray(rows) ? rows : []).map((r) => ({
+      ...r,
+      source_user: {
+        ...r.source_user,
+        profile: r.source_user.profile
+          ? { ...r.source_user.profile, avatar: normalizeMediaUrl(r.source_user.profile.avatar), cover: normalizeMediaUrl(r.source_user.profile.cover) }
+          : r.source_user.profile,
+      },
+    })));
+  },
+
+  addCommunityMirroredSource: (token: string, communityName: string, sourceUsername: string) =>
+    request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${token}` },
+      body: JSON.stringify({ source_username: sourceUsername }),
+    }),
+
+  removeCommunityMirroredSource: (token: string, communityName: string, sourceUsername: string) =>
+    request<unknown>(
+      `/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/${encodeURIComponent(sourceUsername)}/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
 
   getCommunityBannedUsers: (token: string, communityName: string, count = 20, maxId?: number) => {
     const params = new URLSearchParams();

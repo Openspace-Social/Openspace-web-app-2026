@@ -21,12 +21,14 @@ import {
   api,
   CommunityJoinRequest,
   CommunityMember,
+  CommunityMirroredSourceRow,
   CommunityModeratedObject,
   CommunityOwnershipTransfer,
   FeedPost,
   ModeratedObjectReport,
   SearchUserResult,
   SearchCommunityResult,
+  SourceDirectoryEntry,
 } from '../api/client';
 import { useSwipeToClose } from '../hooks/useSwipeToClose';
 
@@ -37,6 +39,7 @@ type Panel =
   | 'administrators'
   | 'ownershipTransfer'
   | 'moderators'
+  | 'mirroredSources'
   | 'joinRequests'
   | 'banned'
   | 'reports'
@@ -164,6 +167,14 @@ export default function CommunityManagementDrawer({
   const [membersHasMore, setMembersHasMore] = useState(false);
   const [membersLoadingMore, setMembersLoadingMore] = useState(false);
   const [banned, setBanned] = useState<CommunityMember[]>([]);
+  // Phase 6.2: per-community mirrored Sources (curated by mods).
+  const [mirroredSources, setMirroredSources] = useState<CommunityMirroredSourceRow[]>([]);
+  const [sourcePicker, setSourcePicker] = useState<{
+    open: boolean;
+    query: string;
+    results: SourceDirectoryEntry[];
+    loading: boolean;
+  }>({ open: false, query: '', results: [], loading: false });
   const [ownershipTransfer, setOwnershipTransfer] = useState<CommunityOwnershipTransfer | null>(null);
   const [transferConfirm, setTransferConfirm] = useState<{
     title: string;
@@ -315,6 +326,9 @@ export default function CommunityManagementDrawer({
         } else if (panel === 'moderators') {
           const rows = await api.getCommunityModerators(token, communityName, 20);
           setMods(rows);
+        } else if (panel === 'mirroredSources') {
+          const rows = await api.getCommunityMirroredSources(token, communityName, 100);
+          setMirroredSources(rows);
         } else if (panel === 'joinRequests') {
           const rows = await api.getCommunityJoinRequests(token, communityName);
           setJoinRequests(Array.isArray(rows) ? rows : []);
@@ -360,6 +374,7 @@ export default function CommunityManagementDrawer({
       case 'administrators': return t('community.manageAdministrators', { defaultValue: 'Administrators' });
       case 'ownershipTransfer': return t('community.manageOwnershipTransfer', { defaultValue: 'Transfer community ownership' });
       case 'moderators': return t('community.manageModerators', { defaultValue: 'Moderators' });
+      case 'mirroredSources': return t('community.manageMirroredSources', { defaultValue: 'Mirrored Sources' });
       case 'joinRequests': return t('community.manageJoinRequests', { defaultValue: 'Join requests' });
       case 'banned': return t('community.manageBannedUsers', { defaultValue: 'Banned users' });
       case 'reports': return t('community.manageReports', { defaultValue: 'Moderation reports' });
@@ -567,6 +582,7 @@ export default function CommunityManagementDrawer({
           ownershipTransfer ? t('community.transferOwnershipPendingBadge', { defaultValue: 'Pending' }) : undefined,
         ) : null}
         {renderMenuItem('gavel', t('community.manageModerators', { defaultValue: 'Moderators' }), t('community.manageModeratorsSub', { defaultValue: 'See, add and remove moderators.' }), 'moderators')}
+        {renderMenuItem('rss', t('community.manageMirroredSources', { defaultValue: 'Mirrored Sources' }), t('community.manageMirroredSourcesSub', { defaultValue: 'Mirror posts from Source publishers into this community.' }), 'mirroredSources')}
         {community?.type === 'R' ? renderMenuItem(
           'account-clock-outline',
           t('community.manageJoinRequests', { defaultValue: 'Join requests' }),
@@ -848,6 +864,224 @@ export default function CommunityManagementDrawer({
             setMods(rows);
           }, t('community.moderatorRemoved', { defaultValue: 'Moderator removed.' }));
         }, t('community.removeModerator', { defaultValue: 'Remove' })))}
+      </>
+    );
+  }
+
+  async function openSourcePickerSearch(query: string) {
+    setSourcePicker((prev) => ({ ...prev, query, loading: true }));
+    try {
+      const payload = await api.getSourcesDirectory(token, { search: query || undefined, count: 30 });
+      setSourcePicker((prev) => ({ ...prev, results: payload.results, loading: false }));
+    } catch (e: any) {
+      setSourcePicker((prev) => ({ ...prev, loading: false }));
+      onError(e?.message || 'Failed to load sources');
+    }
+  }
+
+  function renderMirroredSources() {
+    const subscribedUsernames = new Set(
+      mirroredSources.map((row) => row.source_user.username).filter(Boolean) as string[],
+    );
+    return (
+      <>
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+          <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
+            {t('community.mirroredSourcesIntro', {
+              defaultValue:
+                'Add a Source publisher (BBC News, NASA, etc.) to mirror its posts into this community in addition to the world feed.',
+            })}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => {
+            setSourcePicker({ open: true, query: '', results: [], loading: false });
+            void openSourcePickerSearch('');
+          }}
+          style={{
+            marginHorizontal: 16,
+            marginTop: 10,
+            paddingVertical: 10,
+            borderRadius: 8,
+            backgroundColor: c.primary,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+            {t('community.addMirroredSource', { defaultValue: '+ Add a source' })}
+          </Text>
+        </TouchableOpacity>
+
+        {mirroredSources.length === 0 ? (
+          <Text style={{ color: c.textMuted, padding: 16 }}>
+            {t('community.noMirroredSources', { defaultValue: 'No sources are mirrored into this community yet.' })}
+          </Text>
+        ) : (
+          mirroredSources.map((row) => {
+            const src = row.source_user;
+            const displayName = src.profile?.name || src.username || 'Source';
+            return (
+              <View
+                key={`mirsrc-${row.id}`}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  paddingHorizontal: 16, paddingVertical: 12,
+                  borderBottomWidth: 1, borderBottomColor: c.border,
+                }}
+              >
+                {src.profile?.avatar ? (
+                  <Image
+                    source={{ uri: src.profile.avatar }}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c.border }}
+                  />
+                ) : (
+                  <View style={{
+                    width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                      {(displayName[0] || 'S').toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text style={{ color: c.textMuted, fontSize: 12 }} numberOfLines={1}>
+                    @{src.username}
+                    {src.source_profile?.category ? ` · ${src.source_profile.category}` : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  disabled={busy}
+                  onPress={() => void runAction(async () => {
+                    if (!src.username) return;
+                    await api.removeCommunityMirroredSource(token, communityName, src.username);
+                    const rows = await api.getCommunityMirroredSources(token, communityName, 100);
+                    setMirroredSources(rows);
+                  }, t('community.mirroredSourceRemoved', { defaultValue: 'Source removed from community.' }))}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                    borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground,
+                  }}
+                >
+                  <Text style={{ color: c.errorText, fontWeight: '700', fontSize: 12 }}>
+                    {t('community.removeAction', { defaultValue: 'Remove' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+
+        {/* Add-source picker overlay */}
+        {sourcePicker.open ? (
+          <View style={{
+            position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
+            padding: 16,
+          }}>
+            <View style={{
+              width: '100%', maxWidth: 480, maxHeight: '90%',
+              backgroundColor: c.surface, borderRadius: 12, padding: 12,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ flex: 1, color: c.textPrimary, fontSize: 16, fontWeight: '700' }}>
+                  {t('community.pickSourceTitle', { defaultValue: 'Add a Source' })}
+                </Text>
+                <TouchableOpacity onPress={() => setSourcePicker({ open: false, query: '', results: [], loading: false })}>
+                  <Text style={{ color: c.textMuted, fontSize: 18 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={sourcePicker.query}
+                onChangeText={(text) => {
+                  setSourcePicker((prev) => ({ ...prev, query: text }));
+                  void openSourcePickerSearch(text);
+                }}
+                placeholder={t('community.pickSourceSearch', { defaultValue: 'Search sources by name…' })}
+                placeholderTextColor={c.textMuted}
+                style={{
+                  borderWidth: 1, borderColor: c.border, borderRadius: 8,
+                  paddingHorizontal: 10, paddingVertical: 8, color: c.textPrimary,
+                  marginBottom: 8,
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <ScrollView style={{ maxHeight: 360 }}>
+                {sourcePicker.loading ? (
+                  <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+                ) : sourcePicker.results.length === 0 ? (
+                  <Text style={{ color: c.textMuted, padding: 16, textAlign: 'center' }}>
+                    {t('community.pickSourceNoneFound', { defaultValue: 'No sources match.' })}
+                  </Text>
+                ) : (
+                  sourcePicker.results.map((src) => {
+                    const already = src.username ? subscribedUsernames.has(src.username) : false;
+                    return (
+                      <View
+                        key={`pick-${src.id}`}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
+                          paddingHorizontal: 4, paddingVertical: 8,
+                          borderBottomWidth: 1, borderBottomColor: c.border,
+                        }}
+                      >
+                        {src.profile?.avatar ? (
+                          <Image
+                            source={{ uri: src.profile.avatar }}
+                            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.border }}
+                          />
+                        ) : (
+                          <View style={{
+                            width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary,
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                              {(src.profile?.name?.[0] || src.username?.[0] || 'S').toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+                            {src.profile?.name || src.username}
+                          </Text>
+                          <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={1}>
+                            @{src.username}{src.source_profile?.category ? ` · ${src.source_profile.category}` : ''}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          disabled={already || busy}
+                          onPress={() => void runAction(async () => {
+                            if (!src.username) return;
+                            await api.addCommunityMirroredSource(token, communityName, src.username);
+                            const rows = await api.getCommunityMirroredSources(token, communityName, 100);
+                            setMirroredSources(rows);
+                            setSourcePicker({ open: false, query: '', results: [], loading: false });
+                          }, t('community.mirroredSourceAdded', { defaultValue: 'Source added to community.' }))}
+                          style={{
+                            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                            backgroundColor: already ? c.inputBackground : c.primary,
+                            opacity: already ? 0.6 : 1,
+                          }}
+                        >
+                          <Text style={{
+                            color: already ? c.textSecondary : '#fff',
+                            fontWeight: '700', fontSize: 12,
+                          }}>
+                            {already ? 'Added' : 'Add'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        ) : null}
       </>
     );
   }
@@ -1624,6 +1858,7 @@ export default function CommunityManagementDrawer({
           {panel === 'administrators' ? renderAdministrators() : null}
           {panel === 'ownershipTransfer' ? renderOwnershipTransfer() : null}
           {panel === 'moderators' ? renderModerators() : null}
+          {panel === 'mirroredSources' ? renderMirroredSources() : null}
           {panel === 'joinRequests' ? renderJoinRequests() : null}
           {panel === 'banned' ? renderBanned() : null}
           {panel === 'reports' ? renderReports() : null}
@@ -1714,6 +1949,7 @@ export default function CommunityManagementDrawer({
           {panel === 'administrators' ? renderAdministrators() : null}
           {panel === 'ownershipTransfer' ? renderOwnershipTransfer() : null}
           {panel === 'moderators' ? renderModerators() : null}
+          {panel === 'mirroredSources' ? renderMirroredSources() : null}
           {panel === 'joinRequests' ? renderJoinRequests() : null}
           {panel === 'banned' ? renderBanned() : null}
           {panel === 'reports' ? renderReports() : null}

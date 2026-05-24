@@ -24,6 +24,7 @@ export type AppRoute =
   | { screen: 'blocked' }
   | { screen: 'manage-communities' }
   | { screen: 'muted-communities' }
+  | { screen: 'sources' }
   | { screen: 'settings' };
 
 export type LegalDrawerScreen = 'about' | 'privacy' | 'terms' | 'guidelines';
@@ -80,7 +81,7 @@ export function parsePathToRoute(pathname: string): AppRoute {
   const reservedTopLevelRoutes = new Set([
     'home', 'trending', 'public', 'explore', 'mastodon',
     'me', 'communities', 'circles', 'lists', 'followers', 'following', 'blocked',
-    'manage-communities', 'muted-communities', 'settings',
+    'manage-communities', 'muted-communities', 'sources', 'settings',
     'about', 'privacy', 'terms', 'guidelines',
     'posts', 'p', 'search', 'u', 'fediverse', 'c', 'h',
     'api', 'health', 'nodeinfo', '.well-known', 'users',
@@ -102,6 +103,7 @@ export function parsePathToRoute(pathname: string): AppRoute {
     if (first === 'blocked') return { screen: 'blocked' };
     if (first === 'manage-communities') return { screen: 'manage-communities' };
     if (first === 'muted-communities') return { screen: 'muted-communities' };
+    if (first === 'sources') return { screen: 'sources' };
     if (first === 'settings') return { screen: 'settings' };
     if (first === 'about') return { screen: 'about' };
     if (first === 'privacy') return { screen: 'privacy' };
@@ -195,6 +197,8 @@ export function routeToPath(route: AppRoute): string {
       return '/manage-communities';
     case 'muted-communities':
       return '/muted-communities';
+    case 'sources':
+      return '/sources';
     case 'settings':
       return '/settings';
     case 'about':
