@@ -1047,6 +1047,13 @@ export type UserProfile = {
   }>;
 };
 
+// One mirror (platform-specific stream) belonging to a Source.
+export type SourceMirrorSummary = {
+  id: number;
+  platform: 'bluesky' | 'mastodon' | 'activitypub' | 'twitter';
+  external_handle: string;
+};
+
 // Returned by GET /api/sources/ — one entry per Source publisher account.
 export type SourceDirectoryEntry = {
   id: number;
@@ -1067,12 +1074,16 @@ export type SourceDirectoryEntry = {
     description?: string;
     verified_at?: string | null;
   };
+  mirrors?: SourceMirrorSummary[];
   mirrors_count?: number;
 };
 
-// One row in a community's mirrored-sources list.
+// One row in a community's mirrored-sources list. Subscription is per-mirror
+// (community ↔ SourceMirror), so the row surfaces both the mirror (the
+// subscription target) and the source user (the publishing entity).
 export type CommunityMirroredSourceRow = {
   id: number;
+  mirror: SourceMirrorSummary;
   source_user: SourceDirectoryEntry;
   added_by: { id: number; username: string } | null;
   added_at: string;
@@ -3100,16 +3111,16 @@ export const api = {
     })));
   },
 
-  addCommunityMirroredSource: (token: string, communityName: string, sourceUsername: string) =>
+  addCommunityMirroredSource: (token: string, communityName: string, mirrorId: number) =>
     request<unknown>(`/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/`, {
       method: 'POST',
       headers: { Authorization: `Token ${token}` },
-      body: JSON.stringify({ source_username: sourceUsername }),
+      body: JSON.stringify({ mirror_id: mirrorId }),
     }),
 
-  removeCommunityMirroredSource: (token: string, communityName: string, sourceUsername: string) =>
+  removeCommunityMirroredSource: (token: string, communityName: string, mirrorId: number) =>
     request<unknown>(
-      `/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/${encodeURIComponent(sourceUsername)}/`,
+      `/api/communities/${encodeURIComponent(communityName)}/mirrored-sources/${mirrorId}/`,
       { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
     ),
 

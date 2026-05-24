@@ -880,8 +880,10 @@ export default function CommunityManagementDrawer({
   }
 
   function renderMirroredSources() {
-    const subscribedUsernames = new Set(
-      mirroredSources.map((row) => row.source_user.username).filter(Boolean) as string[],
+    // Subscriptions are per-mirror, not per-source. Track the set of
+    // subscribed mirror IDs so the picker can disable already-added rows.
+    const subscribedMirrorIds = new Set(
+      mirroredSources.map((row) => row.mirror.id),
     );
     return (
       <>
@@ -889,7 +891,7 @@ export default function CommunityManagementDrawer({
           <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
             {t('community.mirroredSourcesIntro', {
               defaultValue:
-                'Add a Source publisher (BBC News, NASA, etc.) to mirror its posts into this community in addition to the world feed.',
+                'Mirror posts from a specific Source platform stream (e.g. BBC News on Bluesky) into this community in addition to the world feed. Each platform stream is added independently.',
             })}
           </Text>
         </View>
@@ -919,6 +921,7 @@ export default function CommunityManagementDrawer({
         ) : (
           mirroredSources.map((row) => {
             const src = row.source_user;
+            const mirror = row.mirror;
             const displayName = src.profile?.name || src.username || 'Source';
             return (
               <View
@@ -945,19 +948,27 @@ export default function CommunityManagementDrawer({
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
-                    {displayName}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    <View style={{
+                      paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+                      borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground,
+                    }}>
+                      <Text style={{ color: c.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 }}>
+                        {mirror.platform.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={{ color: c.textMuted, fontSize: 12 }} numberOfLines={1}>
-                    @{src.username}
-                    {src.source_profile?.category ? ` · ${src.source_profile.category}` : ''}
+                    @{mirror.external_handle}
                   </Text>
                 </View>
                 <TouchableOpacity
                   disabled={busy}
                   onPress={() => void runAction(async () => {
-                    if (!src.username) return;
-                    await api.removeCommunityMirroredSource(token, communityName, src.username);
+                    await api.removeCommunityMirroredSource(token, communityName, mirror.id);
                     const rows = await api.getCommunityMirroredSources(token, communityName, 100);
                     setMirroredSources(rows);
                   }, t('community.mirroredSourceRemoved', { defaultValue: 'Source removed from community.' }))}
@@ -1018,64 +1029,81 @@ export default function CommunityManagementDrawer({
                     {t('community.pickSourceNoneFound', { defaultValue: 'No sources match.' })}
                   </Text>
                 ) : (
-                  sourcePicker.results.map((src) => {
-                    const already = src.username ? subscribedUsernames.has(src.username) : false;
-                    return (
-                      <View
-                        key={`pick-${src.id}`}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 10,
-                          paddingHorizontal: 4, paddingVertical: 8,
-                          borderBottomWidth: 1, borderBottomColor: c.border,
-                        }}
-                      >
-                        {src.profile?.avatar ? (
-                          <Image
-                            source={{ uri: src.profile.avatar }}
-                            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.border }}
-                          />
-                        ) : (
-                          <View style={{
-                            width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary,
-                            alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
-                              {(src.profile?.name?.[0] || src.username?.[0] || 'S').toUpperCase()}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
-                            {src.profile?.name || src.username}
-                          </Text>
-                          <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={1}>
-                            @{src.username}{src.source_profile?.category ? ` · ${src.source_profile.category}` : ''}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          disabled={already || busy}
-                          onPress={() => void runAction(async () => {
-                            if (!src.username) return;
-                            await api.addCommunityMirroredSource(token, communityName, src.username);
-                            const rows = await api.getCommunityMirroredSources(token, communityName, 100);
-                            setMirroredSources(rows);
-                            setSourcePicker({ open: false, query: '', results: [], loading: false });
-                          }, t('community.mirroredSourceAdded', { defaultValue: 'Source added to community.' }))}
+                  // Flatten each source into one row per mirror so the
+                  // operator picks a specific platform stream rather than
+                  // implicitly subscribing to all of an outlet's accounts.
+                  sourcePicker.results.flatMap((src) => {
+                    const mirrors = src.mirrors || [];
+                    if (mirrors.length === 0) return [];
+                    return mirrors.map((mirror) => {
+                      const already = subscribedMirrorIds.has(mirror.id);
+                      const displayName = src.profile?.name || src.username || 'Source';
+                      return (
+                        <View
+                          key={`pick-${src.id}-${mirror.id}`}
                           style={{
-                            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-                            backgroundColor: already ? c.inputBackground : c.primary,
-                            opacity: already ? 0.6 : 1,
+                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                            paddingHorizontal: 4, paddingVertical: 8,
+                            borderBottomWidth: 1, borderBottomColor: c.border,
                           }}
                         >
-                          <Text style={{
-                            color: already ? c.textSecondary : '#fff',
-                            fontWeight: '700', fontSize: 12,
-                          }}>
-                            {already ? 'Added' : 'Add'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
+                          {src.profile?.avatar ? (
+                            <Image
+                              source={{ uri: src.profile.avatar }}
+                              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.border }}
+                            />
+                          ) : (
+                            <View style={{
+                              width: 32, height: 32, borderRadius: 16, backgroundColor: c.primary,
+                              alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                                {(displayName[0] || 'S').toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+                                {displayName}
+                              </Text>
+                              <View style={{
+                                paddingHorizontal: 5, paddingVertical: 1, borderRadius: 7,
+                                borderWidth: 1, borderColor: c.border, backgroundColor: c.inputBackground,
+                              }}>
+                                <Text style={{ color: c.textSecondary, fontSize: 9, fontWeight: '700', letterSpacing: 0.3 }}>
+                                  {mirror.platform.toUpperCase()}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={1}>
+                              @{mirror.external_handle}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            disabled={already || busy}
+                            onPress={() => void runAction(async () => {
+                              await api.addCommunityMirroredSource(token, communityName, mirror.id);
+                              const rows = await api.getCommunityMirroredSources(token, communityName, 100);
+                              setMirroredSources(rows);
+                              setSourcePicker({ open: false, query: '', results: [], loading: false });
+                            }, t('community.mirroredSourceAdded', { defaultValue: 'Source added to community.' }))}
+                            style={{
+                              paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                              backgroundColor: already ? c.inputBackground : c.primary,
+                              opacity: already ? 0.6 : 1,
+                            }}
+                          >
+                            <Text style={{
+                              color: already ? c.textSecondary : '#fff',
+                              fontWeight: '700', fontSize: 12,
+                            }}>
+                              {already ? 'Added' : 'Add'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    });
                   })
                 )}
               </ScrollView>
