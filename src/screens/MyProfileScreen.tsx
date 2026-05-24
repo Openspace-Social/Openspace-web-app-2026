@@ -42,6 +42,7 @@ const DEFAULT_PROFILE_COVER = require('../../assets/default-profile-cover.png');
 const SOURCE_PLATFORM_LABELS: Record<string, string> = {
   bluesky: 'Bluesky',
   mastodon: 'Mastodon',
+  activitypub: 'ActivityPub',
   twitter: 'X',
 };
 
@@ -1338,36 +1339,46 @@ export default function MyProfileScreen({
               ) : null}
             </View>
             {user?.is_source && Array.isArray(user?.source_mirrors) && user.source_mirrors.length > 0 ? (
+              // Vertical stack. Earlier version used a wrapping row with "·"
+              // separators between mirror entries, but on narrow widths the
+              // dot would land on its own line and the row could extend
+              // horizontally under the Follow/Subscribe/Share action buttons
+              // (the meta column and the actions column overlap in the
+              // viewport range where this is rendered). One-mirror-per-line
+              // with a leading bullet keeps each row self-contained and the
+              // maxWidth caps the column so it can't run under the actions.
               <View style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                marginTop: 6,
-                gap: 6,
-                justifyContent: isNarrow ? 'center' : 'flex-start',
+                marginTop: 8,
+                alignSelf: isNarrow ? 'center' : 'flex-start',
+                maxWidth: 360,
               }}>
-                <Text style={[styles.profileMetaText, { color: c.textMuted }]}>
+                <Text style={[styles.profileMetaText, { color: c.textMuted, fontWeight: '600', marginBottom: 2 }]}>
                   {t('profile.sourceMirrorsLabel', { defaultValue: 'Mirrors' })}
                 </Text>
-                {user.source_mirrors.map((mirror: { platform: string; handle: string; profile_url: string | null }, idx: number) => (
-                  <React.Fragment key={`${mirror.platform}-${mirror.handle}`}>
-                    {idx > 0 ? (
-                      <Text style={[styles.profileMetaText, { color: c.textMuted }]}>·</Text>
-                    ) : null}
+                {user.source_mirrors.map((mirror: { platform: string; handle: string; profile_url: string | null }) => (
+                  <View
+                    key={`${mirror.platform}-${mirror.handle}`}
+                    style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 2 }}
+                  >
+                    <Text style={[styles.profileMetaText, { color: c.textMuted, marginRight: 6 }]}>
+                      •
+                    </Text>
                     {mirror.profile_url ? (
                       <TouchableOpacity
                         activeOpacity={0.7}
                         onPress={() => mirror.profile_url && onOpenLink?.(mirror.profile_url)}
+                        style={{ flexShrink: 1 }}
                       >
                         <Text style={[styles.profileMetaText, { color: c.textLink, textDecorationLine: 'underline' }]}>
                           {formatSourceMirror(mirror)}
                         </Text>
                       </TouchableOpacity>
                     ) : (
-                      <Text style={[styles.profileMetaText, { color: c.textSecondary }]}>
+                      <Text style={[styles.profileMetaText, { color: c.textSecondary, flexShrink: 1 }]}>
                         {formatSourceMirror(mirror)}
                       </Text>
                     )}
-                  </React.Fragment>
+                  </View>
                 ))}
               </View>
             ) : null}
