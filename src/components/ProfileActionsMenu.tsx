@@ -69,6 +69,10 @@ type Props = {
   isFullyConnected: boolean;
   isPendingConfirmation: boolean; // they sent us a request
   connectionCircleIds: number[];
+  // True for Source publishers (BBC, ESPN, ...). When set, the Connect /
+  // Disconnect actions in this menu are hidden because Sources are
+  // non-interactive and can't accept connection requests.
+  isSource?: boolean;
   // Data
   userCircles: CircleResult[];
   userLists: ListResult[];
@@ -100,6 +104,7 @@ export default function ProfileActionsMenu({
   isFullyConnected,
   isPendingConfirmation,
   connectionCircleIds,
+  isSource = false,
   userCircles,
   userLists,
   moderationCategories,
@@ -369,15 +374,22 @@ export default function ProfileActionsMenu({
           onPress={() => setPanel('lists')}
         />
 
-        <MenuItem
-          icon={connectIcon}
-          label={connectLabel}
-          sublabel={connectSublabel}
-          onPress={() => !isConnected || isFullyConnected || isPendingConfirmation ? setPanel('circles') : undefined}
-          disabled={isConnected && !isFullyConnected && !isPendingConfirmation}
-        />
+        {/* Connect / Update circles / Confirm connection / Pending —
+            all hidden on Source profiles. Sources can't accept or
+            decline connection requests; surfacing the affordance would
+            be a dead end mirroring what the primary action row already
+            does on Source profiles. */}
+        {!isSource ? (
+          <MenuItem
+            icon={connectIcon}
+            label={connectLabel}
+            sublabel={connectSublabel}
+            onPress={() => !isConnected || isFullyConnected || isPendingConfirmation ? setPanel('circles') : undefined}
+            disabled={isConnected && !isFullyConnected && !isPendingConfirmation}
+          />
+        ) : null}
 
-        {isFullyConnected || isConnected ? (
+        {!isSource && (isFullyConnected || isConnected) ? (
           confirmDisconnect ? (
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: 10,

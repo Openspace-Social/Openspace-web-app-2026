@@ -1621,6 +1621,7 @@ export default function MyProfileScreen({
           isFullyConnected={isFullyConnected}
           isPendingConfirmation={isPendingConfirmation}
           connectionCircleIds={connectionCircleIds}
+          isSource={!!user?.is_source}
           userCircles={userCircles}
           userLists={userLists}
           moderationCategories={moderationCategories}
