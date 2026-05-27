@@ -36,6 +36,13 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# EAS local build artefacts (.ipa for TestFlight, .aab for Play Store).
+# These are 16-55 MB binaries written to the project root by `eas build
+# --local`. They're uploaded to the stores then forgotten; tracking
+# them in git bloats history and triggers GitHub's >50 MB warnings.
+*.ipa
+*.aab
+
 # generated native folders
 /ios
 /android
