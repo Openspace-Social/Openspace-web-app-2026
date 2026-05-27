@@ -681,7 +681,11 @@ export default function LongPostDetailScreenContainer() {
         <View style={styles.composerOverlay} pointerEvents="box-none">
           <Pressable style={styles.composerBackdrop} onPress={closeComposer} />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            // Android no-op fix — see PostDetailModal composer note.
+            // 'padding' on both platforms: composer is an overlay anchored
+            // to flex-end of an absolute backdrop, so adding bottom padding
+            // pushes the composer up above the keyboard.
+            behavior="padding"
             style={styles.composerKeyboardWrap}
           >
             <View

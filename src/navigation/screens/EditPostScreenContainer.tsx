@@ -90,7 +90,11 @@ export default function EditPostScreenContainer() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android no-op fix — see PostComposerScreen note.
+      // 'height' on Android: KAV is the root flex container, so shrinking
+      // it lets the inner ScrollView reflow above the keyboard. iOS keeps
+      // 'padding' which is the iOS norm.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
     >
       <View style={styles.container}>

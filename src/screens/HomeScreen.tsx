@@ -97,6 +97,7 @@ import EmailPreferencesScreenContainer from '../navigation/screens/EmailPreferen
 import FederationSummaryScreenContainer from '../navigation/screens/FederationSummaryScreenContainer';
 import InviteDrawer from '../components/InviteDrawer';
 import CommunityManagementDrawer from '../components/CommunityManagementDrawer';
+import SourcePickerOnboarding from '../components/SourcePickerOnboarding';
 import EditProfileDrawer from '../components/EditProfileDrawer';
 import MentionHashtagInput from '../components/MentionHashtagInput';
 import { MentionPopupOverlay } from '../components/MentionPopupProvider';
@@ -640,6 +641,14 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Source-picker one-time modal. Flipped true the first render after we
+  // fetch a user whose has_seen_source_picker is False — surfaces the
+  // picker to pre-existing users who never went through signup with the
+  // picker in place. Local dismissal flag below tracks the same-session
+  // "Maybe later" tap so the modal doesn't re-open after the user's
+  // bulk-follow POST flips the server flag and triggers a user-refresh.
+  const [showSourcePickerModal, setShowSourcePickerModal] = useState(false);
+  const sourcePickerHandledRef = useRef(false);
   const [linkedIdentities, setLinkedIdentities] = useState<SocialIdentity[]>([]);
   const [passwordInitializedOverride, setPasswordInitializedOverride] = useState(false);
   const [identitiesLoading, setIdentitiesLoading] = useState(true);
@@ -1259,6 +1268,20 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setUser(authenticatedUser);
         setLinkedIdentities(identities);
         setFederatedLinkedAccounts(Array.isArray(federatedAccounts) ? federatedAccounts : []);
+        // One-time source-picker prompt for users who pre-date the picker
+        // being added to the signup flow. The ref gate guarantees we only
+        // surface the modal once per session even if user-data is refreshed
+        // before they finish (we don't want the modal flickering on top of
+        // itself during the post-submit user refetch).
+        const anyUser = authenticatedUser as any;
+        if (
+          anyUser
+          && anyUser.has_seen_source_picker === false
+          && !sourcePickerHandledRef.current
+        ) {
+          sourcePickerHandledRef.current = true;
+          setShowSourcePickerModal(true);
+        }
       })
       .catch((errorValue) => {
         if (!active) return;
@@ -6700,6 +6723,39 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
+      {/* One-time source-picker prompt for pre-existing users — see
+          showSourcePickerModal state above. Rendered as a full-viewport
+          overlay (Animated.View w/ absolute fill, zIndex above the tab bar).
+          On complete or "Maybe later" the server flag is flipped server-side
+          and we close locally; the ref gate keeps it from re-mounting if
+          the user data is refreshed before this render finishes. */}
+      {showSourcePickerModal && token && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: c.background,
+            zIndex: 9999,
+          }}
+        >
+          <SourcePickerOnboarding
+            token={token}
+            allowMaybeLater
+            onComplete={() => {
+              setShowSourcePickerModal(false);
+              // Refresh user data so has_seen_source_picker reflects the
+              // server-side flip; downstream UI may use the flag elsewhere.
+              api
+                .getAuthenticatedUser(token)
+                .then((u) => setUser(u))
+                .catch(() => {/* best-effort */});
+            }}
+          />
+        </View>
+      )}
       <Animated.View
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;

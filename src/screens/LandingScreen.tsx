@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiRequestError, api, type FederatedIdentityJob } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import LanguagePicker from '../components/LanguagePicker';
+import SourcePickerOnboarding from '../components/SourcePickerOnboarding';
 import AboutUsDrawer from '../components/AboutUsDrawer';
 import PrivacyPolicyDrawer from '../components/PrivacyPolicyDrawer';
 import TermsOfUseDrawer from '../components/TermsOfUseDrawer';
@@ -119,7 +120,7 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'mastodonChooseFlow' | 'continueMastodon' | 'mastodonSetupChecklist' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify' | 'mastodonLinkAccount' | 'mastodonLinkVerify'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'verifyEmail' | 'recoverPassword' | 'recoverAccount' | 'resetPassword' | 'socialUsername' | 'linkMastodon' | 'mastodonChooseFlow' | 'continueMastodon' | 'mastodonSetupChecklist' | 'pickSources' | 'shareProfile' | 'appleLinkAccount' | 'appleLinkVerify' | 'mastodonLinkAccount' | 'mastodonLinkVerify'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
@@ -693,7 +694,10 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
           defaultValue: 'Mastodon account linked successfully.',
         }),
       );
-      setAuthMode('shareProfile');
+      // Source-picker step lands BEFORE shareProfile so the user finishes
+      // signup with a populated feed; the picker calls back into
+      // setAuthMode('shareProfile') on completion (or skip).
+      setAuthMode('pickSources');
     } catch (e: any) {
       setError(
         e?.message
@@ -707,7 +711,8 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
   function skipOnboardingMastodon() {
     setError('');
     setNotice('');
-    setAuthMode('shareProfile');
+    // Source-picker step lands BEFORE shareProfile (see other call site).
+    setAuthMode('pickSources');
   }
 
   function switchToContinueMastodon() {
@@ -1509,6 +1514,22 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
     }
   }
 
+  // Source-picker step takes over the entire viewport — it has its own
+  // header/title/footer and renders an interactive multi-screen flow. We
+  // early-return to bypass the standard hero / card / footer layout entirely;
+  // when the picker calls onComplete, we advance to 'shareProfile' and the
+  // normal layout resumes.
+  if (authMode === 'pickSources' && shareFlowToken) {
+    return (
+      <View style={[styles.root, { backgroundColor: c.background }]}>
+        <SourcePickerOnboarding
+          token={shareFlowToken}
+          onComplete={() => setAuthMode('shareProfile')}
+        />
+      </View>
+    );
+  }
+
   return (
     <ImageBackground
       source={require('../../assets/emojis-bg.png')}
@@ -1518,24 +1539,11 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
     >
     <KeyboardAvoidingView
       style={styles.rootInner}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android no-op fix — see PostComposerScreen note. 'height' on
+      // Android shrinks the KAV (full-screen flex root) so the sign-in
+      // card and inputs sit above the keyboard.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {Platform.OS === 'web' && (
-        <View style={styles.floatingTopControls} pointerEvents="box-none">
-          <LanguagePicker compact={!isWide} />
-          <TouchableOpacity
-            style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.background }]}
-            onPress={toggleTheme}
-            activeOpacity={0.75}
-            accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
-          >
-            <Text style={styles.themeToggleIcon}>
-              {isDark ? '☀️' : '🌙'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       <ScrollView
         contentContainerStyle={[styles.scroll, isWide && styles.scrollWide]}
         keyboardShouldPersistTaps="handled"
@@ -1577,6 +1585,26 @@ export default function LandingScreen({ onLogin, route, onNavigate }: LandingScr
                 {t('federationBadge')}
               </Text>
             </View>
+            {/* Web: theme + language controls live in the centered hero flow,
+                directly below the federation badge — easier to discover than
+                the previous top-right absolute placement. Native already has
+                them inline at the top of the hero (above the title) via the
+                `inlineTopControls` block above. */}
+            {Platform.OS === 'web' && (
+              <View style={styles.heroTopControls}>
+                <LanguagePicker compact={!isWide} />
+                <TouchableOpacity
+                  style={[styles.themeToggle, { borderColor: c.border, backgroundColor: c.background }]}
+                  onPress={toggleTheme}
+                  activeOpacity={0.75}
+                  accessibilityLabel={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+                >
+                  <Text style={styles.themeToggleIcon}>
+                    {isDark ? '☀️' : '🌙'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Login card */}
@@ -3200,21 +3228,23 @@ const styles = StyleSheet.create({
   backgroundImage: {
     opacity: 0.40,
   },
-  floatingTopControls: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 54 : 12,
-    right: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    zIndex: 10,
-  },
   inlineTopControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
     marginBottom: 14,
+  },
+  heroTopControls: {
+    // Web-only: theme + language toggles sit centered, directly under the
+    // federation badge in the hero flow. Gives them a normal layout slot
+    // instead of the previous floating top-right placement (which was
+    // easy to miss against the busy emoji background).
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 14,
   },
   themeToggle: {
     borderWidth: 1,

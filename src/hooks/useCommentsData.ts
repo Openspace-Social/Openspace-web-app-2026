@@ -49,9 +49,19 @@ export type UseCommentsDataResult = {
   localComments: CommentsMap;
   commentBoxPostIds: Bool;
   commentsLoadingByPost: Bool;
+  // Pagination — per-post cursor tracking for "load more" comments.
+  // - HasMore is set on the initial load if the first page came back
+  //   full (>= page size). Subsequent loadMore calls also re-set it.
+  // - LoadingMore is true while a paginated fetch is in flight (separate
+  //   from the initial-load flag so the UI can show a footer spinner).
+  commentsHasMoreByPost: Bool;
+  commentsLoadingMoreByPost: Bool;
   commentRepliesById: CommentsMap;
   commentRepliesExpanded: Bool;
   commentRepliesLoadingById: Bool;
+  // Same pagination triple, per-comment, for replies.
+  repliesHasMoreByComment: Bool;
+  repliesLoadingMoreByComment: Bool;
   editingCommentById: Bool;
   editingReplyById: Bool;
   commentMutationLoadingById: Bool;
@@ -60,9 +70,11 @@ export type UseCommentsDataResult = {
 
   // Handlers
   loadComments: (postId: number) => Promise<void>;
+  loadMoreComments: (postId: number) => Promise<void>;
   toggleCommentBox: (postId: number) => void;
   submitComment: (postId: number, text: string) => Promise<void>;
   toggleCommentReplies: (postId: number, commentId: number) => void;
+  loadMoreReplies: (postId: number, commentId: number) => Promise<void>;
   submitReply: (postId: number, commentId: number, text: string) => Promise<void>;
   startEditingComment: (commentId: number, currentText: string, isReply: boolean) => void;
   cancelEditingComment: (commentId: number, isReply: boolean) => void;
@@ -102,9 +114,20 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
   const [localComments, setLocalComments] = useState<CommentsMap>({});
   const [commentBoxPostIds, setCommentBoxPostIds] = useState<Bool>({});
   const [commentsLoadingByPost, setCommentsLoadingByPost] = useState<Bool>({});
+  // Pagination state for top-level comments. min_id cursor (server returns
+  // a full page sorted ASC by id; we track the max id we've seen and pass
+  // it back as min_id for the next page).
+  const [commentsHasMoreByPost, setCommentsHasMoreByPost] = useState<Bool>({});
+  const [commentsLoadingMoreByPost, setCommentsLoadingMoreByPost] = useState<Bool>({});
+  const [commentsMaxIdByPost, setCommentsMaxIdByPost] = useState<Record<number, number>>({});
   const [commentRepliesById, setCommentRepliesById] = useState<CommentsMap>({});
   const [commentRepliesExpanded, setCommentRepliesExpanded] = useState<Bool>({});
   const [commentRepliesLoadingById, setCommentRepliesLoadingById] = useState<Bool>({});
+  // Pagination state for replies (same cursor pattern as comments, but
+  // scoped per parent commentId).
+  const [repliesHasMoreByComment, setRepliesHasMoreByComment] = useState<Bool>({});
+  const [repliesLoadingMoreByComment, setRepliesLoadingMoreByComment] = useState<Bool>({});
+  const [repliesMaxIdByComment, setRepliesMaxIdByComment] = useState<Record<number, number>>({});
   const [editingCommentById, setEditingCommentById] = useState<Bool>({});
   const [editingReplyById, setEditingReplyById] = useState<Bool>({});
   const [commentMutationLoadingById, setCommentMutationLoadingById] = useState<Bool>({});
@@ -139,6 +162,11 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     [posts],
   );
 
+  // Comment/reply page size — matches the API's hard cap (count_max in
+  // api.getPostComments / getPostCommentReplies). The server returns at
+  // most this many per request regardless of what we ask for.
+  const COMMENTS_PAGE_SIZE = 20;
+
   const loadComments = useCallback(
     async (postId: number) => {
       const postUuid = resolveUuid(postId);
@@ -147,6 +175,18 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
       try {
         const comments = await api.getPostComments(token, postUuid);
         setLocalComments((prev) => ({ ...prev, [postId]: comments }));
+        // Cursor + hasMore: if we got a full page back, assume there's
+        // more (we can't know for sure without an extra round-trip).
+        // maxId is the largest id in this batch — passed as min_id to
+        // the next fetch (ASC sort means "give me ids strictly > X").
+        const maxId = comments.length > 0
+          ? Math.max(...comments.map((cmt) => (cmt as any).id || 0))
+          : 0;
+        setCommentsMaxIdByPost((prev) => ({ ...prev, [postId]: maxId }));
+        setCommentsHasMoreByPost((prev) => ({
+          ...prev,
+          [postId]: comments.length >= COMMENTS_PAGE_SIZE,
+        }));
       } catch {
         // Surface via caller — silent failure keeps the UI usable.
       } finally {
@@ -154,6 +194,38 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
       }
     },
     [token, resolveUuid],
+  );
+
+  const loadMoreComments = useCallback(
+    async (postId: number) => {
+      const postUuid = resolveUuid(postId);
+      if (!token || !postUuid) return;
+      // Guard against double-firing if the user mashes the button.
+      if (commentsLoadingMoreByPost[postId]) return;
+      const minId = commentsMaxIdByPost[postId];
+      if (!minId) return; // shouldn't happen — initial load sets it
+      setCommentsLoadingMoreByPost((prev) => ({ ...prev, [postId]: true }));
+      try {
+        const more = await api.getPostComments(token, postUuid, COMMENTS_PAGE_SIZE, minId);
+        if (more.length > 0) {
+          setLocalComments((prev) => ({
+            ...prev,
+            [postId]: [...(prev[postId] || []), ...more],
+          }));
+          const newMax = Math.max(minId, ...more.map((cmt) => (cmt as any).id || 0));
+          setCommentsMaxIdByPost((prev) => ({ ...prev, [postId]: newMax }));
+        }
+        setCommentsHasMoreByPost((prev) => ({
+          ...prev,
+          [postId]: more.length >= COMMENTS_PAGE_SIZE,
+        }));
+      } catch {
+        // silent — keep existing comments, hasMore unchanged so user can retry
+      } finally {
+        setCommentsLoadingMoreByPost((prev) => ({ ...prev, [postId]: false }));
+      }
+    },
+    [token, resolveUuid, commentsLoadingMoreByPost, commentsMaxIdByPost],
   );
 
   const toggleCommentBox = useCallback(
@@ -211,6 +283,16 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
       try {
         const replies = await api.getPostCommentReplies(token, postUuid, commentId);
         setCommentRepliesById((prev) => ({ ...prev, [commentId]: replies }));
+        // Same pagination bookkeeping as loadComments — track cursor
+        // and "is there more" so the UI can show "Load more replies".
+        const maxId = replies.length > 0
+          ? Math.max(...replies.map((rp) => (rp as any).id || 0))
+          : 0;
+        setRepliesMaxIdByComment((prev) => ({ ...prev, [commentId]: maxId }));
+        setRepliesHasMoreByComment((prev) => ({
+          ...prev,
+          [commentId]: replies.length >= COMMENTS_PAGE_SIZE,
+        }));
       } catch {
         // silent
       } finally {
@@ -231,6 +313,43 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
       });
     },
     [commentRepliesById, loadReplies],
+  );
+
+  const loadMoreReplies = useCallback(
+    async (postId: number, commentId: number) => {
+      const postUuid = resolveUuid(postId);
+      if (!token || !postUuid) return;
+      if (repliesLoadingMoreByComment[commentId]) return;
+      const minId = repliesMaxIdByComment[commentId];
+      if (!minId) return;
+      setRepliesLoadingMoreByComment((prev) => ({ ...prev, [commentId]: true }));
+      try {
+        const more = await api.getPostCommentReplies(
+          token,
+          postUuid,
+          commentId,
+          COMMENTS_PAGE_SIZE,
+          minId,
+        );
+        if (more.length > 0) {
+          setCommentRepliesById((prev) => ({
+            ...prev,
+            [commentId]: [...(prev[commentId] || []), ...more],
+          }));
+          const newMax = Math.max(minId, ...more.map((rp) => (rp as any).id || 0));
+          setRepliesMaxIdByComment((prev) => ({ ...prev, [commentId]: newMax }));
+        }
+        setRepliesHasMoreByComment((prev) => ({
+          ...prev,
+          [commentId]: more.length >= COMMENTS_PAGE_SIZE,
+        }));
+      } catch {
+        // silent — preserve existing replies and hasMore so user can retry
+      } finally {
+        setRepliesLoadingMoreByComment((prev) => ({ ...prev, [commentId]: false }));
+      }
+    },
+    [token, resolveUuid, repliesLoadingMoreByComment, repliesMaxIdByComment],
   );
 
   const submitReply = useCallback(
@@ -597,16 +716,22 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
     localComments,
     commentBoxPostIds,
     commentsLoadingByPost,
+    commentsHasMoreByPost,
+    commentsLoadingMoreByPost,
     commentRepliesById,
     commentRepliesExpanded,
     commentRepliesLoadingById,
+    repliesHasMoreByComment,
+    repliesLoadingMoreByComment,
     editingCommentById,
     editingReplyById,
     commentMutationLoadingById,
     loadComments,
+    loadMoreComments,
     toggleCommentBox,
     submitComment,
     toggleCommentReplies,
+    loadMoreReplies,
     submitReply,
     startEditingComment,
     cancelEditingComment,

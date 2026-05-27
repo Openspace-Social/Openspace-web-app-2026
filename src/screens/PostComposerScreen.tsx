@@ -977,7 +977,16 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   return (
     <KeyboardAvoidingView
       style={[s.root, { backgroundColor: c.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // behavior was previously iOS-only — Android got `undefined` which
+      // makes KeyboardAvoidingView a no-op. Result: when the keyboard
+      // appeared, the Audience / Publish-destination cards at the bottom
+      // of the ScrollView sat flush against the keyboard's top, with no
+      // breathing room. 'height' on Android shrinks the KAV (which is the
+      // root flex container), the inner ScrollView reflows, and the
+      // ScrollView's contentContainer paddingBottom (40px below) keeps
+      // the last card visibly above the keyboard. iOS stays on 'padding'
+      // which is the iOS norm for full-screen modal composers.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* Status-bar safe-area spacer — fullScreenModal covers the whole
        *  screen, so the header lands under the notch / clock without
@@ -2271,7 +2280,12 @@ const makeStyles = (c: any) =>
       alignItems: 'center',
       gap: 12,
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      // Was 12; tightened so the header sits closer to the status-bar
+      // spacer above (which is `insets.top` tall and unavoidable). Saves
+      // ~8 vertical px and gives the composer body that much more room
+      // above the keyboard. Touch targets stay comfortable because the
+      // close icon has its own 10px hitSlop.
+      paddingVertical: 8,
       borderBottomWidth: 1,
     },
     headerTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },

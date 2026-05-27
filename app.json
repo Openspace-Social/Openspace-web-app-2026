@@ -33,7 +33,7 @@
         ]
       },
       "bundleIdentifier": "com.mem1984.openspacesocial",
-      "buildNumber": "28"
+      "buildNumber": "29"
     },
     "android": {
       "adaptiveIcon": {
@@ -46,7 +46,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "social.openspace.app",
-      "versionCode": 65,
+      "versionCode": 66,
       "intentFilters": [
         {
           "action": "VIEW",

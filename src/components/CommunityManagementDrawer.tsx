@@ -143,6 +143,7 @@ export default function CommunityManagementDrawer({
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const drawerWidth = Math.min(480, width * 0.92);
+  const panelWidth = mode === 'page' ? width : drawerWidth;
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const swipeHandlers = useSwipeToClose({ drawerWidth, translateX, onClose });
@@ -198,7 +199,7 @@ export default function CommunityManagementDrawer({
   const [reportsDetailReports, setReportsDetailReports] = useState<ModeratedObjectReport[]>([]);
   const [reportsDetailReportsLoading, setReportsDetailReportsLoading] = useState(false);
   const [reportsPendingCount, setReportsPendingCount] = useState(0);
-  const reportsDetailTranslateX = useRef(new Animated.Value(drawerWidth)).current;
+  const reportsDetailTranslateX = useRef(new Animated.Value(panelWidth)).current;
   const [closedPosts, setClosedPosts] = useState<FeedPost[]>([]);
   const [removeAlsoBan, setRemoveAlsoBan] = useState(false);
   const userSuggestionsSeqRef = useRef(0);
@@ -249,12 +250,12 @@ export default function CommunityManagementDrawer({
   // Animate the reports detail sub-panel
   useEffect(() => {
     if (reportsDetailItem) {
-      reportsDetailTranslateX.setValue(drawerWidth);
+      reportsDetailTranslateX.setValue(panelWidth);
       Animated.timing(reportsDetailTranslateX, { toValue: 0, duration: 260, useNativeDriver: true }).start();
     } else {
-      Animated.timing(reportsDetailTranslateX, { toValue: drawerWidth, duration: 260, useNativeDriver: true }).start();
+      Animated.timing(reportsDetailTranslateX, { toValue: panelWidth, duration: 260, useNativeDriver: true }).start();
     }
-  }, [reportsDetailItem, reportsDetailTranslateX, drawerWidth]);
+  }, [reportsDetailItem, reportsDetailTranslateX, panelWidth]);
 
   // Keep pending count badge up to date whenever the drawer is opened
   useEffect(() => {
@@ -424,7 +425,13 @@ export default function CommunityManagementDrawer({
         style={{ flexDirection: 'row', gap: 14, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border }}
       >
         <MaterialCommunityIcons name={icon as any} size={22} color={danger ? c.errorText : c.textSecondary} />
-        <View style={{ flex: 1 }}>
+        {/* minWidth: 0 is required — `flex: 1` alone leaves the default
+            `minWidth: auto` (intrinsic content width). When the sublabel
+            text is long, the column refuses to shrink and pushes the
+            chevron-right at the end of the row off the right edge of
+            the screen. Same RN/Android flexbox quirk that bit the
+            Mirrored Sources row. */}
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: danger ? c.errorText : c.textPrimary }}>{label}</Text>
           <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 2 }}>{sublabel}</Text>
         </View>
@@ -437,7 +444,11 @@ export default function CommunityManagementDrawer({
             <Text style={{ color: c.primary, fontWeight: '800', fontSize: 11 }}>{badgeLabel}</Text>
           </View>
         ) : null}
-        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textMuted} />
+        {/* Darker color than the previous c.textMuted so the chevron
+            is actually visible against the white surface — the muted
+            gray was too low-contrast and looked like the row had no
+            action affordance at all. */}
+        <MaterialCommunityIcons name="chevron-right" size={20} color={c.textSecondary} />
       </TouchableOpacity>
     );
   }
@@ -461,7 +472,7 @@ export default function CommunityManagementDrawer({
             <Text style={{ color: '#fff', fontWeight: '700' }}>{displayName.slice(0, 1).toUpperCase()}</Text>
           </View>
         )}
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>{displayName}</Text>
           <Text style={{ color: c.textMuted, fontSize: 12 }}>{handle}</Text>
         </View>
@@ -538,7 +549,7 @@ export default function CommunityManagementDrawer({
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{initial}</Text>
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }}>
                       {candidateName || `@${username}`}
                     </Text>
@@ -818,7 +829,7 @@ export default function CommunityManagementDrawer({
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{initial}</Text>
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }}>
                       {candidateName || `@${username}`}
                     </Text>
@@ -903,8 +914,8 @@ export default function CommunityManagementDrawer({
       mirroredSources.map((row) => row.mirror.id),
     );
     return (
-      <>
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+      <View style={{ alignSelf: 'stretch' }}>
+        <View style={{ width: '100%', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
           <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 18 }}>
             {t('community.mirroredSourcesIntro', {
               defaultValue:
@@ -948,6 +959,10 @@ export default function CommunityManagementDrawer({
               <View
                 key={`mirsrc-${row.id}`}
                 style={{
+                  // width: '100%' pins the row to the panel width so the
+                  // Remove button at the end doesn't get pushed off-screen
+                  // by long display names + the platform badge.
+                  width: '100%',
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   paddingHorizontal: 16, paddingVertical: 12,
                   borderBottomWidth: 1, borderBottomColor: c.border,
@@ -968,7 +983,13 @@ export default function CommunityManagementDrawer({
                     </Text>
                   </View>
                 )}
-                <View style={{ flex: 1 }}>
+                {/* `flex: 1` alone isn't enough on Android — RN inherits
+                    a CSS-flex minWidth of 'auto' (= intrinsic content
+                    width), so a long handle/display name keeps the column
+                    from shrinking and the Remove sibling gets pushed past
+                    the right edge. `minWidth: 0` lets the column shrink
+                    so siblings fit. */}
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
                       {displayName}
@@ -1098,7 +1119,7 @@ export default function CommunityManagementDrawer({
                         </Text>
                       </View>
                     )}
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
                         {displayName}
                       </Text>
@@ -1163,7 +1184,7 @@ export default function CommunityManagementDrawer({
                               </Text>
                             </View>
                           )}
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
                               {displayName}
                             </Text>
@@ -1205,7 +1226,7 @@ export default function CommunityManagementDrawer({
                             borderBottomWidth: 1, borderBottomColor: c.border,
                           }}
                         >
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               <View style={{
                                 paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
@@ -1255,7 +1276,7 @@ export default function CommunityManagementDrawer({
             </View>
           </View>
         ) : null}
-      </>
+      </View>
     );
   }
 
@@ -1284,7 +1305,7 @@ export default function CommunityManagementDrawer({
               <Text style={{ color: '#fff', fontWeight: '700' }}>{initial}</Text>
             </View>
           )}
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700' }}>{displayName}</Text>
             <Text style={{ color: c.textMuted, fontSize: 12 }}>{handle}</Text>
           </View>
@@ -1472,7 +1493,7 @@ export default function CommunityManagementDrawer({
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{initial}</Text>
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ color: c.textPrimary, fontSize: 13, fontWeight: '700' }}>
                       {candidateName || `@${username}`}
                     </Text>
@@ -2017,14 +2038,23 @@ export default function CommunityManagementDrawer({
   // back button handles dismissal, so we don't render any close UI here.
   if (mode === 'page') {
     return (
-      <View style={{ flex: 1, backgroundColor: c.surface }}>
+      <View style={{ flex: 1, width: '100%', alignSelf: 'stretch', backgroundColor: c.surface }}>
         {/* On the main panel the parent navigator already shows
          *  "Manage community" in its header — rendering the drawer's
          *  own title underneath would duplicate it. Sub-panels still
          *  need the drawer header so the back-to-main arrow + the
          *  panel-specific title (Members / Admins / etc.) appear. */}
         {panel !== 'main' ? renderHeader() : null}
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        {/* contentContainerStyle needs the width too — ScrollView's
+            `style` sizes the outer scroll container, but the children
+            live inside the contentContainer which can size to its widest
+            child if not constrained. Pinning both to the device width
+            stops long row contents from inflating the panel. */}
+        <ScrollView
+          style={{ flex: 1, width: '100%', alignSelf: 'stretch' }}
+          contentContainerStyle={{ width: '100%', flexGrow: 1, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
           {panel === 'main' ? renderMain() : null}
           {panel === 'details' ? renderDetails() : null}
           {panel === 'members' ? renderMembers() : null}

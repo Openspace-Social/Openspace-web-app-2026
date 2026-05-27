@@ -166,7 +166,10 @@ export default function EditProfileModal({ visible, onClose, initial, onSave }: 
         ]}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          // Android no-op fix — see PostDetailModal composer note.
+          // 'padding' on both platforms: the sheet sits at flex-end of an
+          // overlay backdrop; padding pushes it above the keyboard.
+          behavior="padding"
           style={styles.kbv}
         >
           <View style={styles.sheetInner}>

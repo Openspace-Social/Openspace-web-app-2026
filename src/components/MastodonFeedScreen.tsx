@@ -896,7 +896,10 @@ export default function MastodonFeedScreen({
               onPress={closeComposer}
             />
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              // Android no-op fix — see PostDetailModal composer note.
+              // 'padding' on both platforms: composer is an overlay anchored
+              // to flex-end of an absolute backdrop.
+              behavior="padding"
               style={styles.composerKeyboardWrap}
             >
               <View

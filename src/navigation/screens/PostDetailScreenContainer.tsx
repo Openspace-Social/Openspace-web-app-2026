@@ -269,7 +269,21 @@ export default function PostDetailScreenContainer() {
   );
 
   const c = theme.colors;
-  const showLoadingState = loading && !post;
+  // Hold the full-screen spinner until BOTH the post AND the initial
+  // comment fetch are done. Without this, the post renders immediately
+  // then a blank area sits where comments will be, and they pop in a
+  // moment later — distracting on notification deep-links. Comments are
+  // "ready" if either we already have them cached OR the load attempt
+  // has completed (success-with-results, success-with-empty, or error).
+  // commentsLoadingByPost[postId] is undefined before the load triggers,
+  // true while in-flight, and false once finished, so checking for
+  // `=== false` cleanly captures "load attempted and done".
+  const commentsLoadingByPost = comments.commentsLoadingByPost;
+  const commentsReady =
+    postId == null ||
+    alreadyLoaded ||
+    commentsLoadingByPost[postId] === false;
+  const showLoadingState = (loading && !post) || (!!post && !commentsReady);
 
   return (
     <View
@@ -278,10 +292,13 @@ export default function PostDetailScreenContainer() {
         showLoadingState ? { alignItems: 'center', justifyContent: 'center' } : null,
       ]}
     >
-      {/* Behind-modal spinner — visible during the stack push transition
-       *  and the modal's fade-in, so users don't see a black void while
-       *  waiting for content to load. */}
-      {showLoadingState ? <ActivityIndicator color={c.primary} size="large" /> : null}
+      {/* Spinner during the stack push transition AND while comments
+       *  load, so post + comments appear together rather than in
+       *  two pop-in stages. The modal is only mounted once everything
+       *  is ready — that's the visual "all at once" the user wants. */}
+      {showLoadingState ? (
+        <ActivityIndicator color={c.primary} size="large" />
+      ) : (
       <PostDetailModal
       styles={postCardStyles}
       c={c}
@@ -294,13 +311,20 @@ export default function PostDetailScreenContainer() {
       currentUserAvatar={currentUserAvatar}
       translationLanguageCode={translationLanguageCode}
       localComments={comments.localComments}
-      commentsHasMoreByPost={EMPTY_BOOL}
-      commentsLoadingMoreByPost={EMPTY_BOOL}
-      onLoadMoreComments={() => {}}
+      commentsHasMoreByPost={comments.commentsHasMoreByPost}
+      commentsLoadingMoreByPost={comments.commentsLoadingMoreByPost}
+      onLoadMoreComments={(p) => {
+        const id = (p as any)?.id;
+        if (id != null) void comments.loadMoreComments(id);
+      }}
       commentRepliesById={comments.commentRepliesById}
-      repliesHasMoreByComment={EMPTY_BOOL}
-      repliesLoadingMoreByComment={EMPTY_BOOL}
-      onLoadMoreReplies={() => {}}
+      repliesHasMoreByComment={comments.repliesHasMoreByComment}
+      repliesLoadingMoreByComment={comments.repliesLoadingMoreByComment}
+      onLoadMoreReplies={(_uuid, commentId) => {
+        // Modal hands us (postUuid, commentId), but the hook resolves
+        // uuid from postId internally; postId is already in scope.
+        if (postId != null) void comments.loadMoreReplies(postId, commentId);
+      }}
       commentRepliesExpanded={comments.commentRepliesExpanded}
       commentRepliesLoadingById={comments.commentRepliesLoadingById}
       draftCommentMediaByPostId={comments.draftCommentMediaByPostId}
@@ -369,6 +393,7 @@ export default function PostDetailScreenContainer() {
       autoFocusComposer={focusComment}
       autoPlayMedia={autoPlayMedia}
       />
+      )}
     </View>
   );
 }

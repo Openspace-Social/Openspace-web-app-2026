@@ -28,6 +28,7 @@ type ComposerState =
 const SWIPE_TRIGGER_DY = 60;
 const SWIPE_DOMINANT_RATIO = 1.4;
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
 import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
@@ -642,6 +643,7 @@ export default function PostDetailModal({
   const [commentReactionPickerForId, setCommentReactionPickerForId] = React.useState<number | null>(null);
   const [postReactionPickerOpen, setPostReactionPickerOpen] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState<number | null>(null);
+  const { isDark } = useTheme();
   const [detailPanel, setDetailPanel] = React.useState<'comments' | 'reactions'>('comments');
   // Narrow-viewport detection: below this, stack media above comments
   // (instead of side-by-side) so comments aren't squeezed to 42% of width.
@@ -1303,7 +1305,26 @@ export default function PostDetailModal({
             backgroundColor: 'rgba(11,14,19,0.7)',
           }}
         />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Behavior was previously iOS-only ('padding' on iOS, undefined on
+            Android), which made the component a no-op on Android — the
+            comment-composer sat at flex-end of the absolute overlay and the
+            on-screen keyboard covered the TextInput. Android's
+            windowSoftInputMode=adjustResize can't help here because the
+            overlay is position:'absolute' (it doesn't resize with the
+            window). Using 'padding' on both platforms pushes the composer
+            up by the keyboard height, exposing the TextInput. Matches the
+            in-thread bug report from @wmf5. */}
+        <KeyboardAvoidingView
+          behavior="padding"
+          // Android's Keyboard event reports endCoordinates that exclude
+          // Gboard's top toolbar (~40-50px tall row of mic / sticker /
+          // GIF icons). Result: KAV's auto-padding is short by exactly
+          // that amount and the Cancel / Reply buttons at the bottom of
+          // the composer get half-covered by the toolbar. Adding a
+          // platform-specific vertical offset compensates. iOS doesn't
+          // need this — its keyboard frame includes the suggestions bar.
+          keyboardVerticalOffset={Platform.OS === 'android' ? 48 : 0}
+        >
           <View
             style={{
               width: isWebComposer ? 'min(720px, calc(100vw - 48px))' as any : undefined,
@@ -1318,8 +1339,20 @@ export default function PostDetailModal({
               paddingTop: 14,
               paddingHorizontal: 16,
               paddingBottom: Math.max(insets.bottom, 12) + 12,
-              minHeight: isWebComposer ? undefined : Math.min(viewportHeight * 0.58, 520),
-              maxHeight: isWebComposer ? Math.min(viewportHeight * 0.78, 560) : Math.min(viewportHeight * 0.88, 760),
+              // Native composer height tuned so:
+              // - the sheet starts comfortably tall (room for header,
+              //   quote, media row, input, Cancel/Reply buttons)
+              // - BUT stays smaller than (viewport - keyboard) so when
+              //   the keyboard pushes content up via KeyboardAvoidingView's
+              //   'padding' behavior, the top doesn't slip off the screen
+              // The 0.55–0.70 range works for typical Android phones where
+              // the keyboard takes ~40–45 % of the viewport. Previously
+              // capped at 520/760 logical px which left Reply button half
+              // hidden on tall phones; pushing to 0.88/0.95 went too far
+              // the other way (top of sheet clipped off-screen).
+              // Web composer keeps its bounded floating-card look unchanged.
+              minHeight: isWebComposer ? undefined : viewportHeight * 0.55,
+              maxHeight: isWebComposer ? Math.min(viewportHeight * 0.78, 560) : viewportHeight * 0.70,
               shadowColor: '#000',
               shadowOpacity: isWebComposer ? 0.18 : 0.1,
               shadowRadius: 24,
@@ -2357,7 +2390,17 @@ export default function PostDetailModal({
           ) : null}
           {repliesCount > 0 ? (
             <TouchableOpacity activeOpacity={0.85} onPress={() => onToggleCommentReplies(postId, comment.id)}>
-              <Text style={[styles.detailCommentMetaAction, { color: c.textLink }]}>
+              {/* Per-design: red on light mode (high-contrast against the
+                  light surface), warmer/peachier coral on dark so it pops
+                  against the dark surface without burning out. The dark
+                  variant intentionally isn't the same red — `#DC2626` on a
+                  dark bg dulls and competes with the rest of the muted
+                  meta row. `#FB7185` (rose-400) keeps the visual "this is
+                  the replies action" cue while reading clearly in dark. */}
+              <Text style={[
+                styles.detailCommentMetaAction,
+                { color: isDark ? '#FB7185' : '#DC2626' },
+              ]}>
                 {commentRepliesExpanded[comment.id]
                   ? t('home.hideRepliesAction')
                   : t('home.viewRepliesAction', {
@@ -2945,9 +2988,17 @@ export default function PostDetailModal({
 
   const detailContent = (
     <>
+      {/* Same fix as the composer KeyboardAvoidingView above — behavior was
+          iOS-only, making this a no-op on Android. The in-detail comment
+          input (when typing without opening the floating composer) sat at
+          the bottom of the screen and got covered by the soft keyboard
+          even though windowSoftInputMode=adjustResize was set. Using
+          'height' on Android (rather than 'padding') because this wrapper
+          uses flex:1 — shrinking the wrapper is the cleanest interaction
+          with adjustResize. iOS stays on 'padding' which is the iOS norm. */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
       <View style={{ flex: 1, backgroundColor: activePost ? '#0B0E13' : c.background }}>
       {activePost ? (

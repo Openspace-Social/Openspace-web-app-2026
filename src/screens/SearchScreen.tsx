@@ -153,7 +153,10 @@ export default function SearchScreen({
   const hasResults = users.length + communities.length + hashtags.length + federatedCount > 0;
 
   return (
-    <KeyboardAvoidingView style={[s.root, { backgroundColor: c.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // Android no-op fix — see PostComposerScreen note. 'height' on
+    // Android shrinks the KAV (full-screen flex root) so the inner
+    // results list / inputs reflow above the keyboard.
+    <KeyboardAvoidingView style={[s.root, { backgroundColor: c.background }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Top bar */}
       <View style={[s.topBar, { borderBottomColor: c.border, backgroundColor: c.surface }]}>
         <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

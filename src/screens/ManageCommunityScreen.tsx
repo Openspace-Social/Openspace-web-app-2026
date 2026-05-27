@@ -152,7 +152,10 @@ export default function ManageCommunityScreen({ token, communityName, c, t, onNo
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android no-op fix — see PostComposerScreen note. 'height' on
+      // Android shrinks the KAV (full-screen flex root) so the form
+      // inputs reflow above the keyboard.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         style={{ flex: 1 }}

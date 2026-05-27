@@ -1061,6 +1061,11 @@ export type SourceDirectoryEntry = {
   visibility?: string;
   is_source?: boolean;
   is_following?: boolean;
+  // True when the requesting (authed) user has already subscribed to this
+  // Source via the onboarding picker or the settings prune screen.
+  // Undefined for anonymous requests. Drives the ✓ Following state on the
+  // picker card so re-entering the picker shows the user's prior picks.
+  is_followed_source?: boolean;
   profile?: {
     id?: number;
     name?: string;
@@ -1069,6 +1074,9 @@ export type SourceDirectoryEntry = {
     badges?: Array<{ keyword?: string; keyword_description?: string }>;
   };
   source_profile?: {
+    // The SourceProfile row id (not the User id). Needed for the bulk-follow
+    // endpoint which takes source_profile_ids, not source_user_ids.
+    id?: number;
     category?: string;
     publisher_url?: string;
     description?: string;
@@ -1076,6 +1084,22 @@ export type SourceDirectoryEntry = {
   };
   mirrors?: SourceMirrorSummary[];
   mirrors_count?: number;
+};
+
+// One entry in GET /api/sources/categories/. profile_count is 0 for empty
+// categories — the picker uses that to silently skip empty screens.
+export type SourceCategory = {
+  key: string;
+  label: string;
+  profile_count: number;
+};
+
+// One row of GET /api/user/followed-source-profiles/. Used by the future
+// settings prune screen.
+export type FollowedSourceProfileRow = {
+  id: number;
+  source_user: SourceDirectoryEntry;
+  followed_at: string;
 };
 
 // One row in a community's mirrored-sources list. Subscription is per-mirror
@@ -3093,6 +3117,49 @@ export const api = {
       })),
     }));
   },
+
+  // ─── Phase 6.4: Source-picker onboarding (per-user source follows) ──────
+
+  getSourceCategories: (token: string | null) => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Token ${token}`;
+    return request<SourceCategory[]>(`/api/sources/categories/`, { headers });
+  },
+
+  // Bulk-create UserSourceProfileFollow rows. Idempotent on the server side
+  // (ignore_conflicts), so re-submitting the full set after the user toggles
+  // a card on/off is safe. Empty array is also valid — that's the "I'm
+  // skipping" path and still flips has_seen_source_picker=True so the modal
+  // doesn't re-prompt on next launch.
+  bulkFollowSourceProfiles: (token: string, sourceProfileIds: number[]) =>
+    request<{ followed_count: number; has_seen_source_picker: boolean }>(
+      `/api/auth/user/followed-source-profiles/`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: JSON.stringify({ source_profile_ids: sourceProfileIds }),
+      },
+    ),
+
+  getFollowedSourceProfiles: (token: string) =>
+    request<FollowedSourceProfileRow[]>(
+      `/api/auth/user/followed-source-profiles/`,
+      { headers: { Authorization: `Token ${token}` } },
+    ).then((rows) => (Array.isArray(rows) ? rows : []).map((r) => ({
+      ...r,
+      source_user: {
+        ...r.source_user,
+        profile: r.source_user.profile
+          ? { ...r.source_user.profile, avatar: normalizeMediaUrl(r.source_user.profile.avatar), cover: normalizeMediaUrl(r.source_user.profile.cover) }
+          : r.source_user.profile,
+      },
+    }))),
+
+  unfollowSourceProfile: (token: string, sourceProfileId: number) =>
+    request<unknown>(
+      `/api/auth/user/followed-source-profiles/${sourceProfileId}/`,
+      { method: 'DELETE', headers: { Authorization: `Token ${token}` } },
+    ),
 
   getCommunityMirroredSources: (token: string, communityName: string, count = 100) => {
     const params = new URLSearchParams();

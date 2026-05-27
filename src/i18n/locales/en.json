@@ -115,6 +115,32 @@
     "errorShareSessionMissing": "Sharing session expired. Please sign in again.",
     "newAccountLabel": "my new account"
   },
+  "sourcePicker": {
+    "stepProgress": "Step {{current}} of {{total}}",
+    "subtitle": "Pick accounts to follow — their posts will appear in your home feed.",
+    "pickedCounter": "{{picked}} of {{min}} picked",
+    "follow": "Follow",
+    "following": "Following",
+    "skipCategory": "Skip",
+    "skipAll": "Skip for now",
+    "continue": "Continue",
+    "finish": "Done",
+    "maybeLater": "Maybe later",
+    "minHint": "Pick at least {{min}} to continue.",
+    "emptyCategory": "No sources in this category yet.",
+    "errorSubmit": "Could not save your selections. Please try again.",
+    "categoryTitle": "{{label}} accounts",
+    "category": {
+      "news": "News",
+      "sports": "Sports",
+      "entertainment": "Entertainment",
+      "tech": "Tech",
+      "business": "Business",
+      "politics": "Politics",
+      "science": "Science",
+      "other": "Other"
+    }
+  },
   "home": {
     "welcomeBack": "Welcome back, {{name}}!",
     "welcomeBackGeneric": "Welcome back!",
