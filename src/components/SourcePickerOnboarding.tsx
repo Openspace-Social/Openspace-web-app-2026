@@ -15,7 +15,7 @@
  * re-prompt next launch. Posting an empty array is a valid "I'm skipping
  * entirely" signal — same flag flip, no follows created.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -71,8 +71,19 @@ export default function SourcePickerOnboarding({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Bootstrap: fetch categories once. Filter to non-empty so the picker
-  // never renders a category with zero results.
+  // Stable ref for onComplete — parent components (e.g. HomeScreen) typically
+  // pass a fresh inline lambda every render, which would otherwise re-fire
+  // the bootstrap effect on every parent re-render, repeatedly cancelling
+  // the in-flight categories fetch and trapping the picker on the spinner.
+  // Storing the latest callback in a ref keeps the effect's dep list stable
+  // (just [token]) without losing access to the up-to-date function.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  // Bootstrap: fetch categories once per token. Filter to non-empty so the
+  // picker never renders a category with zero results.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -90,7 +101,7 @@ export default function SourcePickerOnboarding({
           } catch {
             // Best-effort; the modal-prompt path can retry next launch.
           }
-          onComplete();
+          onCompleteRef.current();
         }
       } catch (e: any) {
         if (cancelled) return;
@@ -101,28 +112,33 @@ export default function SourcePickerOnboarding({
     return () => {
       cancelled = true;
     };
-  }, [token, onComplete]);
+  }, [token]);
 
   const currentCategory = categories[categoryIndex];
+  // Track only the key (string), so per-key memoisation in deps is stable.
+  // Without this, `currentCategory` is a new object reference whenever the
+  // surrounding `categories` array is rebuilt (e.g. via setState), which
+  // would falsely re-trigger the lazy-fetch effect.
+  const currentCategoryKey = currentCategory?.key;
 
   // Lazy-fetch the active category's profiles on screen entry.
   useEffect(() => {
-    if (!currentCategory) return;
-    if (profilesByCategory[currentCategory.key]) return; // already cached
-    if (loadingCategory === currentCategory.key) return; // in-flight
+    if (!currentCategoryKey) return;
+    if (profilesByCategory[currentCategoryKey]) return; // already cached
+    if (loadingCategory === currentCategoryKey) return; // in-flight
 
     let cancelled = false;
-    setLoadingCategory(currentCategory.key);
+    setLoadingCategory(currentCategoryKey);
     (async () => {
       try {
         const payload = await api.getSourcesDirectory(token, {
-          category: currentCategory.key,
+          category: currentCategoryKey,
           count: PER_CATEGORY_COUNT,
         });
         if (cancelled) return;
         setProfilesByCategory((prev) => ({
           ...prev,
-          [currentCategory.key]: payload.results,
+          [currentCategoryKey]: payload.results,
         }));
         // Pre-populate pickedIds for any profile the server says is already
         // followed — useful for the existing-user modal where the user may
@@ -143,7 +159,7 @@ export default function SourcePickerOnboarding({
         // can hit Skip; we surface the error inline on the empty state.
         setProfilesByCategory((prev) => ({
           ...prev,
-          [currentCategory.key]: [],
+          [currentCategoryKey]: [],
         }));
       } finally {
         if (!cancelled) setLoadingCategory(null);
@@ -152,7 +168,13 @@ export default function SourcePickerOnboarding({
     return () => {
       cancelled = true;
     };
-  }, [currentCategory, profilesByCategory, loadingCategory, token]);
+    // profilesByCategory + loadingCategory intentionally omitted from deps:
+    // we read their LATEST value via the closure inside the in-flight
+    // promise, but they shouldn't TRIGGER the effect — the only signal that
+    // should refetch is the active category key changing. Including them
+    // would cause a refetch every time setProfilesByCategory fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCategoryKey, token]);
 
   const togglePick = useCallback((sourceProfileId: number) => {
     setPickedIds((prev) => {
