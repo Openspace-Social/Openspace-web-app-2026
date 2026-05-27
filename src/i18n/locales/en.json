@@ -128,6 +128,8 @@
     "maybeLater": "Maybe later",
     "minHint": "Pick at least {{min}} to continue.",
     "emptyCategory": "No sources in this category yet.",
+    "emptySearch": "No sources match that search.",
+    "searchPlaceholder": "Search all sources by name…",
     "errorSubmit": "Could not save your selections. Please try again.",
     "categoryTitle": "{{label}} accounts",
     "category": {

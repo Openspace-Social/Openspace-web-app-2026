@@ -24,6 +24,8 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -39,6 +41,13 @@ const MIN_PICKS = 5;
 // Per-category fetch is capped — the directory endpoint allows up to 50.
 // 20 keeps the page short enough to scan without scrolling fatigue.
 const PER_CATEGORY_COUNT = 20;
+
+// Tablet & landscape constraint. Picker content is centered + capped at this
+// width so iPad / Android tablet renders don't have full-bleed cards with
+// the follow pill stranded a half-screen away from the avatar. Phones (most
+// portrait widths ≤ 600px) fall below the cap and get the full viewport,
+// preserving the existing phone layout 1:1.
+const CONTENT_MAX_WIDTH = 640;
 
 export type SourcePickerOnboardingProps = {
   token: string;
@@ -58,6 +67,21 @@ export default function SourcePickerOnboarding({
   const { t } = useTranslation();
   const { theme } = useTheme();
   const c = theme.colors;
+  // Tablet centering: clamp the content column at CONTENT_MAX_WIDTH and
+  // center horizontally. On phones (viewport < cap) width: '100%' fills
+  // the screen — alignSelf: center is a no-op once width === viewport.
+  const { width: viewportWidth } = useWindowDimensions();
+  const contentWidth = Math.min(viewportWidth, CONTENT_MAX_WIDTH);
+
+  // Web gets a noticeably different card layout: 2-column grid of square
+  // tiles instead of full-width horizontal rows. Native phones / tablets
+  // keep the row layout, which works well for narrow viewports + thumb
+  // scrolling. Toggling on Platform.OS rather than viewport width because
+  // RN-Web's "phone-sized" viewport in a desktop browser still benefits
+  // from a grid (the card-row layout assumes thumb-reach, which doesn't
+  // apply with a mouse).
+  const isWeb = Platform.OS === 'web';
+  const gridColumns = isWeb ? 2 : 1;
 
   const [bootstrapping, setBootstrapping] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -70,6 +94,18 @@ export default function SourcePickerOnboarding({
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Global search state. The /api/sources/ endpoint accepts ?search=<q> and
+  // (when no category param is also passed) returns matches across all
+  // categories — useful when a user is on the "News" screen but knows the
+  // name of a Tech source and wants to find it without scrubbing through
+  // every category. Search supersedes the category list while active;
+  // clearing the query restores the category view. Debounced so each
+  // keystroke doesn't hammer the API.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SourceDirectoryEntry[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stable ref for onComplete — parent components (e.g. HomeScreen) typically
   // pass a fresh inline lambda every render, which would otherwise re-fire
@@ -176,6 +212,64 @@ export default function SourcePickerOnboarding({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCategoryKey, token]);
 
+  // Debounced search. Effect re-runs on every keystroke but only fires the
+  // network request 300ms after typing stops, so a fast typist generates one
+  // request, not ten. Empty / whitespace-only query clears search-mode
+  // entirely (callers fall back to the category list).
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const payload = await api.getSourcesDirectory(token, {
+          search: trimmed,
+          count: PER_CATEGORY_COUNT,
+          // No category filter — global search is more useful for "I know
+          // the name but not the category" cases. If users want category-
+          // scoped search later we can add a toggle.
+        });
+        setSearchResults(payload.results);
+        // Same is_followed_source priming as the category fetch — keeps
+        // already-followed sources rendered as ✓ Following in search hits.
+        const alreadyFollowed = payload.results
+          .filter((p) => p.is_followed_source && p.source_profile?.id)
+          .map((p) => p.source_profile!.id as number);
+        if (alreadyFollowed.length > 0) {
+          setPickedIds((prev) => {
+            const next = new Set(prev);
+            alreadyFollowed.forEach((id) => next.add(id));
+            return next;
+          });
+        }
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchQuery, token]);
+
+  // Clear search whenever the user advances/retreats between category
+  // screens. Avoids the surprise of the search bar still being populated
+  // (and showing stale results) after they tap Continue or Skip.
+  useEffect(() => {
+    setSearchQuery('');
+    setSearchResults(null);
+  }, [currentCategoryKey]);
+
   const togglePick = useCallback((sourceProfileId: number) => {
     setPickedIds((prev) => {
       const next = new Set(prev);
@@ -270,6 +364,17 @@ export default function SourcePickerOnboarding({
 
   return (
     <View style={[styles.container, { backgroundColor: c.background }]}>
+      {/* Inner column — clamps content to CONTENT_MAX_WIDTH on tablets so
+          cards don't stretch ear-to-ear with the follow pill stranded at
+          the screen edge. On phones (width < cap) contentWidth equals the
+          viewport and this becomes a transparent passthrough. */}
+      <View
+        style={{
+          flex: 1,
+          width: contentWidth,
+          alignSelf: 'center',
+        }}
+      >
       {/* Header: progress + counter + (modal-only) maybe-later */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
@@ -310,25 +415,87 @@ export default function SourcePickerOnboarding({
         </Text>
       </View>
 
-      {/* Body: profile list */}
-      {isLoadingCurrent && !profiles ? (
-        <View style={styles.fillCentered}>
-          <ActivityIndicator color={c.primary} />
-        </View>
-      ) : profiles && profiles.length === 0 ? (
-        <View style={styles.fillCentered}>
-          <Text style={[styles.errorText, { color: c.textMuted }]}>
-            {t('sourcePicker.emptyCategory', {
-              defaultValue: 'No sources in this category yet.',
+      {/* Search bar — global query across all categories. Clears
+          automatically when the user advances/retreats between screens. */}
+      <View style={styles.searchWrap}>
+        <View
+          style={[
+            styles.searchBox,
+            { backgroundColor: c.inputBackground, borderColor: c.inputBorder },
+          ]}
+        >
+          <Text style={[styles.searchIcon, { color: c.textMuted }]}>🔍</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('sourcePicker.searchPlaceholder', {
+              defaultValue: 'Search all sources by name…',
             })}
-          </Text>
+            placeholderTextColor={c.placeholder}
+            style={[styles.searchInput, { color: c.textPrimary }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => setSearchQuery('')}
+              hitSlop={8}
+              style={styles.searchClear}
+            >
+              <Text style={{ color: c.textSecondary, fontSize: 18 }}>×</Text>
+            </Pressable>
+          )}
         </View>
-      ) : (
+      </View>
+
+      {/* Body: profile list. Search results supersede the category list
+          while a query is active. */}
+      {(() => {
+        const inSearchMode = searchQuery.trim().length > 0;
+        const displayList = inSearchMode ? (searchResults || []) : (profiles || []);
+        const isLoadingDisplay = inSearchMode
+          ? searching && searchResults === null
+          : isLoadingCurrent && !profiles;
+        const emptyMessage = inSearchMode
+          ? t('sourcePicker.emptySearch', {
+              defaultValue: 'No sources match that search.',
+            })
+          : t('sourcePicker.emptyCategory', {
+              defaultValue: 'No sources in this category yet.',
+            });
+
+        if (isLoadingDisplay) {
+          return (
+            <View style={styles.fillCentered}>
+              <ActivityIndicator color={c.primary} />
+            </View>
+          );
+        }
+        if (displayList.length === 0) {
+          return (
+            <View style={styles.fillCentered}>
+              <Text style={[styles.errorText, { color: c.textMuted }]}>
+                {emptyMessage}
+              </Text>
+            </View>
+          );
+        }
+        return (
         <FlatList
-          data={profiles || []}
+          data={displayList}
           keyExtractor={(item) =>
             String(item.source_profile?.id ?? item.id)
           }
+          // Web: 2-column square grid. Native: single column rows. numColumns
+          // can't be changed dynamically without remount, but we set it once
+          // per Platform so that's a non-issue here.
+          numColumns={gridColumns}
+          // columnWrapperStyle is only valid when numColumns > 1, otherwise
+          // RN throws. Guard via the same constant.
+          {...(gridColumns > 1
+            ? { columnWrapperStyle: styles.gridColumnWrapper }
+            : null)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <SourceCard
@@ -342,6 +509,7 @@ export default function SourcePickerOnboarding({
                 if (typeof id === 'number') togglePick(id);
               }}
               colors={c}
+              variant={gridColumns > 1 ? 'tile' : 'row'}
               followLabel={t('sourcePicker.follow', { defaultValue: 'Follow' })}
               followingLabel={t('sourcePicker.following', {
                 defaultValue: 'Following',
@@ -349,7 +517,8 @@ export default function SourcePickerOnboarding({
             />
           )}
         />
-      )}
+        );
+      })()}
 
       {/* Footer: skip + continue/done */}
       <View style={[styles.footer, { borderTopColor: c.border, backgroundColor: c.surface }]}>
@@ -358,7 +527,16 @@ export default function SourcePickerOnboarding({
             {submitError}
           </Text>
         )}
-        <View style={styles.footerRow}>
+        <View
+          style={[
+            styles.footerRow,
+            // On web, anchor both buttons to the right so the Continue
+            // pill doesn't stretch across the whole content column.
+            // Native keeps the existing left-skip / flex-grow-Continue
+            // layout that fits thumb-reach on phones.
+            isWeb && styles.footerRowWeb,
+          ]}
+        >
           <Pressable
             onPress={() => {
               if (isLastScreen) finish();
@@ -385,7 +563,10 @@ export default function SourcePickerOnboarding({
             }}
             disabled={continueDisabled}
             style={({ pressed }) => [
-              styles.primaryBtn,
+              // Native (flex: 1) lets Continue dominate the row — good for
+              // thumbs. Web variant is a fixed-width pill that aligns with
+              // the Skip button, so neither stretches to fill the row.
+              isWeb ? styles.primaryBtnWeb : styles.primaryBtn,
               {
                 backgroundColor: continueDisabled ? c.border : c.primary,
                 opacity: pressed && !continueDisabled ? 0.85 : 1,
@@ -410,6 +591,7 @@ export default function SourcePickerOnboarding({
           </Text>
         )}
       </View>
+      </View>
     </View>
   );
 }
@@ -421,6 +603,11 @@ type SourceCardProps = {
   picked: boolean;
   onToggle: () => void;
   colors: ReturnType<typeof useTheme>['theme']['colors'];
+  // 'row' = native single-column horizontal layout (avatar | text | pill);
+  // 'tile' = web 2-column grid layout (avatar top, text middle, pill bottom).
+  // Same component renders both — only the inner flex arrangement and a
+  // handful of sizes differ.
+  variant: 'row' | 'tile';
   followLabel: string;
   followingLabel: string;
 };
@@ -430,6 +617,7 @@ function SourceCard({
   picked,
   onToggle,
   colors: c,
+  variant,
   followLabel,
   followingLabel,
 }: SourceCardProps) {
@@ -439,12 +627,13 @@ function SourceCard({
   const description = entry.source_profile?.description;
   const mirrorsCount = entry.mirrors_count ?? entry.mirrors?.length ?? 0;
   const verified = !!entry.source_profile?.verified_at;
+  const isTile = variant === 'tile';
 
   return (
     <Pressable
       onPress={onToggle}
       style={({ pressed }) => [
-        styles.card,
+        isTile ? styles.tileCard : styles.card,
         {
           backgroundColor: c.surface,
           borderColor: picked ? c.primary : c.border,
@@ -453,25 +642,34 @@ function SourceCard({
         },
       ]}
     >
-      <View style={styles.avatarWrap}>
+      <View style={isTile ? styles.tileAvatarWrap : styles.avatarWrap}>
         {avatarUri ? (
           <Image
             source={{ uri: avatarUri }}
-            style={[styles.avatar, { backgroundColor: c.inputBackground }]}
+            style={[
+              isTile ? styles.tileAvatar : styles.avatar,
+              { backgroundColor: c.inputBackground },
+            ]}
           />
         ) : (
-          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: c.inputBackground }]}>
-            <Text style={{ color: c.textMuted, fontSize: 18, fontWeight: '600' }}>
+          <View
+            style={[
+              isTile ? styles.tileAvatar : styles.avatar,
+              styles.avatarPlaceholder,
+              { backgroundColor: c.inputBackground },
+            ]}
+          >
+            <Text style={{ color: c.textMuted, fontSize: isTile ? 24 : 18, fontWeight: '600' }}>
               {(displayName || '?').slice(0, 1).toUpperCase()}
             </Text>
           </View>
         )}
       </View>
-      <View style={[styles.cardBody, { minWidth: 0 }]}>
-        <View style={styles.nameRow}>
+      <View style={[isTile ? styles.tileBody : styles.cardBody, { minWidth: 0 }]}>
+        <View style={[styles.nameRow, isTile && styles.tileNameRow]}>
           <Text
             numberOfLines={1}
-            style={[styles.name, { color: c.textPrimary }]}
+            style={[styles.name, isTile && styles.tileName, { color: c.textPrimary }]}
           >
             {displayName}
           </Text>
@@ -482,20 +680,20 @@ function SourceCard({
         {!!handle && (
           <Text
             numberOfLines={1}
-            style={[styles.handle, { color: c.textSecondary }]}
+            style={[styles.handle, isTile && styles.tileHandle, { color: c.textSecondary }]}
           >
             {handle}
           </Text>
         )}
         {!!description && (
           <Text
-            numberOfLines={2}
-            style={[styles.description, { color: c.textMuted }]}
+            numberOfLines={isTile ? 3 : 2}
+            style={[styles.description, isTile && styles.tileDescription, { color: c.textMuted }]}
           >
             {description}
           </Text>
         )}
-        {mirrorsCount > 0 && (
+        {mirrorsCount > 0 && !isTile && (
           <Text style={[styles.mirrorsCount, { color: c.textMuted }]}>
             {mirrorsCount === 1
               ? '1 mirror'
@@ -505,7 +703,7 @@ function SourceCard({
       </View>
       <View
         style={[
-          styles.followPill,
+          isTile ? styles.tileFollowPill : styles.followPill,
           {
             backgroundColor: picked ? c.primary : 'transparent',
             borderColor: picked ? c.primary : c.border,
@@ -591,6 +789,37 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 24,
+  },
+  // Search bar slot above the list. Matches the listContent horizontal
+  // padding so the input aligns with the card column underneath.
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    gap: 8,
+  },
+  searchIcon: {
+    fontSize: 14,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    // RN-Web sometimes leaves the default outline ring; explicit padding
+    // ensures the input doesn't grow extra height when focused.
+    paddingVertical: 0,
+  },
+  searchClear: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     flexDirection: 'row',
@@ -691,5 +920,88 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+
+  // ── Web-only overrides ────────────────────────────────────────────────────
+  // Grid row spacing for the 2-column tile layout. RN's gap on FlatList
+  // columnWrapper handles inter-column spacing; marginBottom on the tile
+  // itself handles inter-row spacing.
+  gridColumnWrapper: {
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  // Right-aligned footer on web so the Skip + Continue buttons sit as
+  // pills next to each other instead of stretching across the column.
+  footerRowWeb: {
+    justifyContent: 'flex-end',
+  },
+  // Fixed-width primary on web. Phones still get the flex:1 stretch via
+  // styles.primaryBtn — only web swaps to this.
+  primaryBtnWeb: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 140,
+  },
+
+  // ── Tile (grid) variant for SourceCard ──────────────────────────────────
+  // Used on web where we render 2 columns of square-ish cards instead of
+  // single-column rows. flex:1 makes each tile fill its grid column; a
+  // small aspectRatio keeps them close to square regardless of content
+  // length so the grid stays tidy.
+  tileCard: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    minHeight: 220,
+  },
+  tileAvatarWrap: {
+    width: 72,
+    height: 72,
+    marginBottom: 12,
+  },
+  tileAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  tileBody: {
+    flex: 1,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 12,
+  },
+  tileNameRow: {
+    justifyContent: 'center',
+  },
+  tileName: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  tileHandle: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  tileDescription: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  tileFollowPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 110,
+    alignItems: 'center',
+    marginTop: 'auto',
   },
 });

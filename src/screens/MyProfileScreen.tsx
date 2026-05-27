@@ -1288,18 +1288,26 @@ export default function MyProfileScreen({
                   </Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity
-                activeOpacity={onOpenFollowingScreen ? 0.8 : 1}
-                disabled={!onOpenFollowingScreen}
-                onPress={onOpenFollowingScreen}
-              >
-                <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
-                  {t('home.profileFollowingDisplay', {
-                    count: resolvedFollowingCount,
-                    defaultValue: `${resolvedFollowingCount} following`,
-                  })}
-                </Text>
-              </TouchableOpacity>
+              {/* Source publishers (BBC, ESPN, ...) can't follow other
+                  accounts — they're operator-created, login-disabled
+                  entities whose content comes from the ingestion pipeline.
+                  Their `following` count is permanently 0 and rendering
+                  "0 following" next to a meaningful followers count looks
+                  like a bug. Hide it entirely for is_source profiles. */}
+              {user?.is_source ? null : (
+                <TouchableOpacity
+                  activeOpacity={onOpenFollowingScreen ? 0.8 : 1}
+                  disabled={!onOpenFollowingScreen}
+                  onPress={onOpenFollowingScreen}
+                >
+                  <Text style={[styles.profileMetaCountText, { color: c.textMuted }]}>
+                    {t('home.profileFollowingDisplay', {
+                      count: resolvedFollowingCount,
+                      defaultValue: `${resolvedFollowingCount} following`,
+                    })}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
             <View style={[
               styles.profileMetaInline,

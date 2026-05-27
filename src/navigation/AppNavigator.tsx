@@ -58,6 +58,7 @@ import SearchScreenContainer from './screens/SearchScreenContainer';
 import SearchResultsScreenContainer from './screens/SearchResultsScreenContainer';
 import HashtagScreenContainer from './screens/HashtagScreenContainer';
 import { NotificationsProvider } from '../context/NotificationsContext';
+import SourcePickerGate from '../components/SourcePickerGate';
 import PostDetailScreenContainer from './screens/PostDetailScreenContainer';
 import LongPostDetailScreenContainer from './screens/LongPostDetailScreenContainer';
 import PublicProfileScreenContainer from './screens/PublicProfileScreenContainer';
@@ -714,7 +715,16 @@ export default function AppNavigator({ isAuthed }: AppNavigatorProps) {
           <RootStack.Screen name="Main">
             {() => (
               <NotificationsProvider>
-                <TabsNavigator />
+                <View style={{ flex: 1 }}>
+                  <TabsNavigator />
+                  {/* One-time source-picker prompt for users with
+                      has_seen_source_picker === false. Renders as an
+                      absolute-positioned sibling so it overlays the entire
+                      tab navigator (including header + tab bar) until the
+                      user finishes / dismisses. The legacy HomeScreen path
+                      (web only) has its own copy of this logic. */}
+                  <SourcePickerGate />
+                </View>
               </NotificationsProvider>
             )}
           </RootStack.Screen>

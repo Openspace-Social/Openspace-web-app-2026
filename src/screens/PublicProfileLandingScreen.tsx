@@ -83,15 +83,22 @@ export default function PublicProfileLandingScreen({ username, onLoginPress }: P
   const url = profile?.profile?.url?.trim();
   const coverUri = profile?.profile?.cover?.trim();
   const publicPostsCount = typeof profile?.posts_count === 'number' ? profile.posts_count : posts.length;
+  // Source publishers (is_source=true) can't follow other accounts, so the
+  // "Following" tile would always read 0. Skip it on Source profile pages
+  // and let Followers + Posts dominate the hero metrics row.
   const heroMetrics = [
     {
       value: profile?.followers_count ?? 0,
       label: t('publicProfile.heroFollowersMetric', { defaultValue: 'Followers' }),
     },
-    {
-      value: profile?.following_count ?? 0,
-      label: t('publicProfile.heroFollowingMetric', { defaultValue: 'Following' }),
-    },
+    ...(profile?.is_source
+      ? []
+      : [
+          {
+            value: profile?.following_count ?? 0,
+            label: t('publicProfile.heroFollowingMetric', { defaultValue: 'Following' }),
+          },
+        ]),
     {
       value: publicPostsCount,
       label: t('publicProfile.heroPostsMetric', { defaultValue: 'Public posts' }),
