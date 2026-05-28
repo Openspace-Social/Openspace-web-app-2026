@@ -65,7 +65,7 @@ export function buildLongPostHtmlFromBlocks(blocks: LongPostBlock[]): string {
         if (!block.url) return '';
         // Round-trip embeds back into the markup the Lexical editor's
         // importDOM accepts: an `<iframe>` for recognized video providers
-        // (YouTube/Vimeo/Twitch/SoundCloud/Spotify) so the video-embed
+        // so the video-embed
         // node reattaches, or a `<figure data-os-link-embed="true">` so
         // the link-embed node reattaches and re-fetches metadata. A
         // plain `<a>` would leave the editor with a bare blue link.

@@ -12,6 +12,7 @@ import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import {
   ExternalVideoProvider,
   fetchExternalVideoPreview,
+  getExternalVideoProviderLabel,
   parseExternalVideoUrl,
 } from '../utils/externalVideoEmbeds';
 
@@ -36,17 +37,18 @@ export const INSERT_LEXICAL_VIDEO_EMBED_COMMAND = createCommand('INSERT_LEXICAL_
 async function buildPayload(url: string): Promise<SerializedLexicalVideoEmbedNode> {
   const parsed = parseExternalVideoUrl(url);
   if (!parsed) {
-    throw new Error('Please use a valid YouTube or Vimeo link.');
+    throw new Error('Please use a valid video link.');
   }
 
   const preview = await fetchExternalVideoPreview(parsed.sourceUrl);
+  const providerLabel = getExternalVideoProviderLabel(parsed.provider);
   return {
     type: 'openspace-video-embed',
     version: 1,
     sourceUrl: parsed.sourceUrl,
     embedUrl: parsed.embedUrl,
     provider: parsed.provider,
-    title: preview.title || `${parsed.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`,
+    title: preview.title || `${providerLabel} video`,
     thumbnailUrl: preview.thumbnailUrl || '',
   };
 }
@@ -63,7 +65,7 @@ function convertIframeElement(domNode: Node) {
       sourceUrl: source,
       embedUrl: parsed.embedUrl,
       provider: parsed.provider,
-      title: iframe.getAttribute('title') || `${parsed.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`,
+      title: iframe.getAttribute('title') || `${getExternalVideoProviderLabel(parsed.provider)} video`,
       thumbnailUrl: iframe.getAttribute('data-thumbnail-url') || '',
     }),
   };
@@ -185,6 +187,7 @@ function LexicalVideoEmbedComponent({
 }) {
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey);
   const [hovered, setHovered] = React.useState(false);
+  const providerLabel = getExternalVideoProviderLabel(provider);
 
   return (
     <div
@@ -269,7 +272,7 @@ function LexicalVideoEmbedComponent({
               textTransform: 'uppercase',
             }}
           >
-            {provider === 'youtube' ? 'YouTube' : 'Vimeo'} embed
+            {providerLabel} embed
           </div>
           <div
             style={{
@@ -283,7 +286,7 @@ function LexicalVideoEmbedComponent({
               whiteSpace: 'nowrap',
             }}
           >
-            {title || `${provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`}
+            {title || `${providerLabel} video`}
           </div>
           <div
             style={{
@@ -314,7 +317,7 @@ export function $createLexicalVideoEmbedNode(payload: {
       payload.sourceUrl,
       payload.embedUrl,
       payload.provider,
-      payload.title || `${payload.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`,
+      payload.title || `${getExternalVideoProviderLabel(payload.provider)} video`,
       payload.thumbnailUrl || ''
     )
   );
@@ -333,7 +336,8 @@ export function LexicalVideoEmbedsPlugin() {
       (payload: InsertLexicalVideoEmbedPayload) => {
         void (async () => {
           const parsed = parseExternalVideoUrl(payload.url);
-          if (!parsed) throw new Error('Please use a valid YouTube or Vimeo link.');
+          if (!parsed) throw new Error('Please use a valid video link.');
+          const providerLabel = getExternalVideoProviderLabel(parsed.provider);
           const nodePayload = payload.title || payload.thumbnailUrl
             ? {
                 type: 'openspace-video-embed' as const,
@@ -341,7 +345,7 @@ export function LexicalVideoEmbedsPlugin() {
                 sourceUrl: parsed.sourceUrl,
                 embedUrl: parsed.embedUrl,
                 provider: parsed.provider,
-                title: payload.title || `${parsed.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`,
+                title: payload.title || `${providerLabel} video`,
                 thumbnailUrl: payload.thumbnailUrl || '',
               }
             : await buildPayload(payload.url);

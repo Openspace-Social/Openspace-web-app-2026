@@ -947,6 +947,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   const committedSearchRequestSeqRef = useRef(0);
   const composerLinkPreviewSeqRef = useRef(0);
   const composerLinkPreviewUrlRef = useRef<string | null>(null);
+  const composerLinkPreviewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastNonPostRouteRef = useRef<AppRoute>(
     route.screen === 'post' ? { screen: 'feed', feed: route.feed || 'home' } : route
   );
@@ -1130,9 +1131,12 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
     const seq = composerLinkPreviewSeqRef.current + 1;
     composerLinkPreviewSeqRef.current = seq;
     if (!url) {
+      if (!composerLinkPreviewUrlRef.current && !composerLinkPreview && !composerLinkPreviewLoading) {
+        return;
+      }
       composerLinkPreviewUrlRef.current = null;
-      setComposerLinkPreview(null);
-      setComposerLinkPreviewLoading(false);
+      if (composerLinkPreview) setComposerLinkPreview(null);
+      if (composerLinkPreviewLoading) setComposerLinkPreviewLoading(false);
       return;
     }
     composerLinkPreviewUrlRef.current = url;
@@ -1152,6 +1156,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
         setComposerLinkPreviewLoading(false);
       }
     }
+  }
+
+  function scheduleComposerLinkPreview(nextText: string) {
+    if (composerLinkPreviewDebounceRef.current) {
+      clearTimeout(composerLinkPreviewDebounceRef.current);
+      composerLinkPreviewDebounceRef.current = null;
+    }
+    composerLinkPreviewDebounceRef.current = setTimeout(() => {
+      composerLinkPreviewDebounceRef.current = null;
+      void refreshComposerLinkPreview(nextText);
+    }, 360);
   }
 
   function handleOpenSettingsFromMenu() {
@@ -4691,6 +4706,15 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
   useEffect(() => {
     return () => {
+      if (composerLinkPreviewDebounceRef.current) {
+        clearTimeout(composerLinkPreviewDebounceRef.current);
+        composerLinkPreviewDebounceRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
       if (inviteDrawerOpenTimerRef.current) {
         clearTimeout(inviteDrawerOpenTimerRef.current);
         inviteDrawerOpenTimerRef.current = null;
@@ -5153,6 +5177,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   function openComposerModal(action?: 'video' | 'image' | 'emoji') {
     composerTextRef.current = '';
     if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
+    if (composerLinkPreviewDebounceRef.current) clearTimeout(composerLinkPreviewDebounceRef.current);
+    composerLinkPreviewDebounceRef.current = null;
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -5206,6 +5232,8 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   function resetComposerState() {
     composerTextRef.current = '';
     if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
+    if (composerLinkPreviewDebounceRef.current) clearTimeout(composerLinkPreviewDebounceRef.current);
+    composerLinkPreviewDebounceRef.current = null;
     setComposerTextLength(0);
     setComposerLinkPreview(null);
     setComposerLinkPreviewLoading(false);
@@ -7978,7 +8006,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                       composerTextRef.current = value;
                       if (composerTextLengthDebounceRef.current) clearTimeout(composerTextLengthDebounceRef.current);
                       composerTextLengthDebounceRef.current = setTimeout(() => setComposerTextLength(value.length), 100);
-                      void refreshComposerLinkPreview(value);
+                      scheduleComposerLinkPreview(value);
                       if (composerPostType === 'LP') {
                         setComposerPostType('P');
                       }
@@ -8088,7 +8116,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                     </View>
                   </View>
 
-                  {!composerVideo && composerImages.length === 0 && composerTextLength > 0 ? (
+                  {!composerVideo && composerImages.length === 0 && (composerLinkPreviewLoading || composerLinkPreview) ? (
                     <View style={[styles.postComposerLinkPreviewWrap, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
                       {composerLinkPreviewLoading ? (
                         <View style={styles.postComposerLinkPreviewLoading}>

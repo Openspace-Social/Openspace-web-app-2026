@@ -26,6 +26,10 @@ import { normalizeImageForUpload } from '../utils/normalizeImage';
 import { api, type FeedPost, type PostComment } from '../api/client';
 import { useGifPicker } from '../components/GifPickerProvider';
 import { extractCommenterFromUser, hydrateCommenter } from '../utils/hydrateCommenter';
+import {
+  fetchAndCacheCurrentUser,
+  getCachedCurrentUser,
+} from '../utils/currentUserCache';
 import { emitPostCommentCountUpdate } from '../utils/postUpdates';
 
 type CurrentCommenter = NonNullable<PostComment['commenter']>;
@@ -138,18 +142,23 @@ export function useCommentsData(token: string | null, posts: FeedPost[]): UseCom
   // `commenter` (the GET endpoint always expands it). Cache the current user
   // so we can fill in the missing author on optimistic inserts — otherwise
   // the freshly-posted comment renders as "@unknown" until reload.
-  const currentCommenterRef = useRef<CurrentCommenter | null>(null);
+  //
+  // Seed the ref from the shared module-level cache so subsequent hook
+  // mounts in the same session start with the right value (eliminates the
+  // "post a comment immediately on opening a post" race that previously
+  // produced "@unknown" until refresh). The effect still refreshes from
+  // the server in the background so a profile change picked up elsewhere
+  // eventually propagates.
+  const currentCommenterRef = useRef<CurrentCommenter | null>(
+    extractCommenterFromUser(getCachedCurrentUser()),
+  );
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     (async () => {
-      try {
-        const me = await api.getAuthenticatedUser(token);
-        if (cancelled) return;
-        currentCommenterRef.current = extractCommenterFromUser(me);
-      } catch {
-        // non-fatal — comments still post, optimistic author info just stays empty
-      }
+      const me = await fetchAndCacheCurrentUser(token);
+      if (cancelled || !me) return;
+      currentCommenterRef.current = extractCommenterFromUser(me);
     })();
     return () => { cancelled = true; };
   }, [token]);

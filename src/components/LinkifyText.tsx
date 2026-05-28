@@ -32,7 +32,14 @@ type Props = {
 // URLs first (so a c/ or @ inside a URL is consumed by it), then @mentions,
 // #hashtags, and c/community references. The c/ token requires a word
 // boundary before it so "abc/def" / paths don't false-positive.
-const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
+//
+// Local @mention pattern allows internal dots — `@user.name`, `@a.b.c` —
+// so usernames with dots (which the server-side username_characters_validator
+// allows) tokenise as ONE mention rather than truncating at the first dot
+// and leaving `.name` as plain text. The `(?:\.[A-Za-z0-9_]+)*` tail
+// requires alphanumeric/underscore on both sides of every dot, so a
+// trailing sentence dot (`Hi @bob.`) doesn't get gobbled into the link.
+const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
 
 type Segment =
   | { kind: 'text'; text: string }

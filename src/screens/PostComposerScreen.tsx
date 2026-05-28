@@ -11,7 +11,7 @@
  * only and never imported from HomeScreen.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -100,6 +100,74 @@ type Props = {
   onNotice: (msg: string) => void;
   onError: (msg: string) => void;
 };
+
+/**
+ * Memoized short-mode composer input wrapper.
+ *
+ * Why this exists as a separate component:
+ *
+ * Web users reported the short-post TextInput felt laggy — typing fast left
+ * a visible gap between keypress and characters appearing. Profile pointed at
+ * the parent PostComposerScreen re-rendering on every keystroke (text is
+ * controlled in parent state) and recreating the input's `style` array as a
+ * new reference each time. RN-Web's TextInput sees the fresh style prop and
+ * does work — re-applying styles, possibly re-attaching listeners — adding
+ * tens of ms per keystroke on slower browsers.
+ *
+ * Extracting the input into a React.memo'd component with primitive-ish
+ * props (`text`, `submitting`, `maxLength`, `token`, plus the stable
+ * `onChangeText` setter from useState) lets React skip the wrapper's render
+ * whenever those don't change. The style array is memoized INSIDE so it
+ * gets a stable reference between renders, and the placeholder string is
+ * also memoized so translation lookup doesn't recompute on every parent
+ * re-render. The TextInput inside only re-renders when `text` actually
+ * changes — which is unavoidable, but at least the surrounding work is
+ * minimised.
+ *
+ * The component must still receive the theme `c` and styles `s` because
+ * the parent owns them; both are stable references across renders (`s` is
+ * useMemo'd in the parent, `c` is theme-context-stable until theme switch).
+ */
+const ShortComposerInput = React.memo(function ShortComposerInput(props: {
+  text: string;
+  onChangeText: (v: string) => void;
+  token: string | null;
+  sharedPost: any;
+  submitting: boolean;
+  maxLength: number;
+  c: any;
+  s: any;
+  t: (key: string, opts?: any) => string;
+}) {
+  const { text, onChangeText, token, sharedPost, submitting, maxLength, c, s, t } = props;
+  const inputStyle = useMemo(() => [s.input, {
+    color: c.textPrimary,
+    borderColor: c.inputBorder,
+    backgroundColor: c.inputBackground,
+    minHeight: 140,
+  }], [s.input, c.textPrimary, c.inputBorder, c.inputBackground]);
+  const placeholder = useMemo(
+    () => (sharedPost
+      ? t('home.repostComposerInputPlaceholder', { defaultValue: 'Add a comment… (optional)' })
+      : t('home.composerShortPlaceholder', { defaultValue: "What's on your mind?" })),
+    [sharedPost, t],
+  );
+  return (
+    <MentionHashtagInput
+      value={text}
+      onChangeText={onChangeText}
+      token={token || undefined}
+      placeholder={placeholder}
+      placeholderTextColor={c.textMuted}
+      multiline
+      numberOfLines={5}
+      editable={!submitting}
+      maxLength={maxLength}
+      c={c}
+      style={inputStyle}
+    />
+  );
+});
 
 export default function PostComposerScreen({ token, c, t, sharedPost, onClose, onPosted, onNotice, onError }: Props) {
   const s = useMemo(() => makeStyles(c), [c]);
@@ -249,19 +317,35 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   const [publishDestination, setPublishDestination] = useState<'openbook' | 'mastodon' | 'both'>('openbook');
   const [selectedFederatedAccountId, setSelectedFederatedAccountId] = useState<number | null>(null);
 
-  // Watch the body for URLs and fetch a preview after a short debounce.
-  // Mirrors HomeScreen's composer logic so YouTube/Vimeo/article previews
-  // appear before the user posts.
+  // Defer the link-preview effect off the typing-hot path. The previous
+  // version ran `extractFirstUrlFromText` (regex scan) + at least one
+  // setState on EVERY keystroke — even when typing plain text with no URL
+  // in sight. React would have to commit those state updates before it
+  // could re-paint the textarea, which on web showed up as visible typing
+  // lag during fast input.
+  //
+  // useDeferredValue gives the link-preview pipeline a "stale-but-cheap"
+  // copy of text. React keeps the textarea snappy by updating `text`
+  // immediately for the input, while `deferredText` lags behind during
+  // fast bursts and catches up when the typing pause makes a render slot
+  // available. The 320 ms setTimeout further coalesces fast catch-ups,
+  // and our existing seq-counter ensures only the latest in-flight fetch
+  // is ever applied to state.
+  const deferredText = useDeferredValue(text);
   useEffect(() => {
-    const url = extractFirstUrlFromText(text);
+    const url = extractFirstUrlFromText(deferredText);
     if (!url) {
-      setLinkPreview(null);
-      setLinkPreviewLoading(false);
+      // Same primitive-guard pattern as the suggestion-popup clear path:
+      // skip the setState calls when state is already in the desired
+      // shape, so deferred-value catch-ups don't generate empty no-op
+      // renders.
+      if (linkPreview !== null) setLinkPreview(null);
+      if (linkPreviewLoading) setLinkPreviewLoading(false);
       return;
     }
     if (dismissedPreviewUrl && url === dismissedPreviewUrl) {
-      setLinkPreview(null);
-      setLinkPreviewLoading(false);
+      if (linkPreview !== null) setLinkPreview(null);
+      if (linkPreviewLoading) setLinkPreviewLoading(false);
       return;
     }
     if (linkPreview && linkPreview.url === url) return; // already loaded
@@ -282,7 +366,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         });
     }, 320);
     return () => clearTimeout(handle);
-  }, [text, dismissedPreviewUrl, linkPreview]);
+  }, [deferredText, dismissedPreviewUrl, linkPreview, linkPreviewLoading]);
 
   // Pre-load joined + pinned communities + circles so the audience
   // sheet has something to show as soon as the user taps it.
@@ -1266,25 +1350,16 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <>
-            <MentionHashtagInput
-              value={text}
+            <ShortComposerInput
+              text={text}
               onChangeText={setText}
               token={token}
-              placeholder={sharedPost
-                ? t('home.repostComposerInputPlaceholder', { defaultValue: 'Add a comment… (optional)' })
-                : t('home.composerShortPlaceholder', { defaultValue: "What's on your mind?" })}
-              placeholderTextColor={c.textMuted}
-              multiline
-              numberOfLines={5}
-              editable={!submitting}
+              sharedPost={sharedPost}
+              submitting={submitting}
               maxLength={maxLength}
               c={c}
-              style={[s.input, {
-                color: c.textPrimary,
-                borderColor: c.inputBorder,
-                backgroundColor: c.inputBackground,
-                minHeight: 140,
-              }]}
+              s={s}
+              t={t}
             />
 
             {sharedPost ? <SharedPostPreview post={sharedPost} c={c} /> : null}
@@ -1542,16 +1617,42 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
 
       {/* Bottom toolbar — short post only. Long mode owns its own image
        *  controls inline with the editor. */}
-      {mode === 'short' ? (
+      {mode === 'short' ? (() => {
+        // True when the user has already hit the per-post image cap AND
+        // hasn't switched to video. Drives both the disabled state and
+        // the dimmed visual cue on the picker / paste buttons below, so
+        // the user can SEE they can't add more without having to tap
+        // and get an error toast.
+        const atImageLimit = !composerVideo && imageUris.length >= MAX_IMAGES;
+        const pickerDisabled = submitting || atImageLimit;
+        const pasteDisabled = submitting || !!composerVideo || atImageLimit;
+        return (
         <View style={[s.toolbar, { borderTopColor: c.border, backgroundColor: c.surface }]}>
           <TouchableOpacity
-            style={[s.toolbarBtn, { backgroundColor: c.inputBackground, flex: 1 }]}
+            style={[
+              s.toolbarBtn,
+              { backgroundColor: c.inputBackground, flex: 1 },
+              // 0.55 mirrors the "disabled control" opacity used elsewhere
+              // in the composer (see send-button states). Pressing has no
+              // effect when disabled, but the dimmed look + the "5/5"
+              // counter together telegraph why.
+              pickerDisabled && { opacity: 0.55 },
+            ]}
             activeOpacity={0.85}
             onPress={() => void pickMedia()}
-            disabled={submitting}
+            disabled={pickerDisabled}
           >
-            <MaterialCommunityIcons name="image-multiple-outline" size={20} color={c.textSecondary} />
-            <Text style={[s.toolbarBtnText, { color: c.textPrimary }]}>
+            <MaterialCommunityIcons
+              name="image-multiple-outline"
+              size={20}
+              color={atImageLimit ? c.textMuted : c.textSecondary}
+            />
+            <Text
+              style={[
+                s.toolbarBtnText,
+                { color: atImageLimit ? c.textMuted : c.textPrimary },
+              ]}
+            >
               {composerVideo
                 ? t('home.composerVideoCount', { defaultValue: '1 video selected' })
                 : imageUris.length === 0
@@ -1559,27 +1660,47 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
                       count: MAX_IMAGES,
                       defaultValue: `Add media (up to ${MAX_IMAGES} photos or 1 video)`,
                     })
-                  : t('home.composerImagesCount', {
-                      count: imageUris.length,
-                      max: MAX_IMAGES,
-                      defaultValue: `${imageUris.length}/${MAX_IMAGES} images`,
-                    })}
+                  : atImageLimit
+                    ? t('home.composerImagesMaxReached', {
+                        count: imageUris.length,
+                        max: MAX_IMAGES,
+                        defaultValue: `${imageUris.length}/${MAX_IMAGES} images — max reached`,
+                      })
+                    : t('home.composerImagesCount', {
+                        count: imageUris.length,
+                        max: MAX_IMAGES,
+                        defaultValue: `${imageUris.length}/${MAX_IMAGES} images`,
+                      })}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.toolbarBtn, { backgroundColor: c.inputBackground }]}
+            style={[
+              s.toolbarBtn,
+              { backgroundColor: c.inputBackground },
+              pasteDisabled && { opacity: 0.55 },
+            ]}
             activeOpacity={0.85}
             onPress={() => void pasteMedia()}
-            disabled={submitting || !!composerVideo}
+            disabled={pasteDisabled}
             accessibilityLabel={t('home.pasteFromClipboard', { defaultValue: 'Paste image from clipboard' })}
           >
-            <MaterialCommunityIcons name="content-paste" size={20} color={c.textSecondary} />
-            <Text style={[s.toolbarBtnText, { color: c.textPrimary }]}>
+            <MaterialCommunityIcons
+              name="content-paste"
+              size={20}
+              color={pasteDisabled ? c.textMuted : c.textSecondary}
+            />
+            <Text
+              style={[
+                s.toolbarBtnText,
+                { color: pasteDisabled ? c.textMuted : c.textPrimary },
+              ]}
+            >
               {t('home.pasteAction', { defaultValue: 'Paste' })}
             </Text>
           </TouchableOpacity>
         </View>
-      ) : null}
+        );
+      })() : null}
 
       {/* Drafts list — fullscreen drawer with a scrollable list of long-
        *  post drafts. Each tile has Resume + Delete actions. */}

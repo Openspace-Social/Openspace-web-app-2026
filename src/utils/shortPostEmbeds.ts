@@ -1,4 +1,4 @@
-import { fetchExternalVideoPreview, parseExternalVideoUrl } from './externalVideoEmbeds';
+import { fetchExternalVideoPreview, getExternalVideoProviderLabel, parseExternalVideoUrl } from './externalVideoEmbeds';
 
 export type ShortPostLinkPreview = {
   url: string;
@@ -82,7 +82,7 @@ export async function fetchShortPostLinkPreview(url: string): Promise<ShortPostL
     const preview = await fetchExternalVideoPreview(video.sourceUrl);
     return {
       url: video.sourceUrl,
-      title: preview.title || `${video.provider === 'youtube' ? 'YouTube' : 'Vimeo'} video`,
+      title: preview.title || `${getExternalVideoProviderLabel(video.provider)} video`,
       imageUrl: preview.thumbnailUrl,
       siteName: preview.providerName,
       isVideoEmbed: true,

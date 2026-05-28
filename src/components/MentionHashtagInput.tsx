@@ -136,6 +136,61 @@ function caretFromDiff(prev: string, next: string): number {
 }
 
 /**
+ * Native-only caret-line Y estimator.
+ *
+ * RN's TextInput on iOS/Android doesn't expose the caret's pixel position
+ * inside the input — we only get the input container's geometry via measure().
+ * Anchoring the suggestion popup to the BOTTOM of the input (the previous
+ * behaviour) means the popup floats outside the text box entirely on tall
+ * composers, which the user has to look down to find.
+ *
+ * Estimate the caret's Y offset from the input top using just the text and
+ * caret index:
+ *   * Count hard newlines BEFORE the caret to get the line number.
+ *   * Multiply by the input's lineHeight (or fontSize × 1.3 fallback).
+ *   * Add the input's vertical padding so we land at the correct line top.
+ *   * Add one more lineHeight to land just BELOW the caret line.
+ *
+ * Limitations: doesn't model soft-wrap (text overflowing the input width and
+ * auto-wrapping to a new line). For composer inputs with short @ or # tokens
+ * that's acceptable — the popup sits within ±1 line of the caret. Proper
+ * soft-wrap handling would need char-width measurement (Text + onLayout
+ * mirror), which is a bigger lift.
+ *
+ * Returned value is the Y of the BOTTOM edge of the caret line, RELATIVE TO
+ * THE INPUT TOP. Callers add the input's absolute y to get viewport coords.
+ */
+function estimateNativeCaretYOffset(
+  text: string,
+  caretIndex: number,
+  style: any,
+): number {
+  const flat = StyleSheet.flatten(style) || {};
+  const fontSize = typeof flat.fontSize === 'number' ? flat.fontSize : 17;
+  const lineHeight = typeof flat.lineHeight === 'number'
+    ? flat.lineHeight
+    : Math.round(fontSize * 1.3);
+  // RN TextInput default vertical padding differs by platform; the parent
+  // can also pass paddingTop / paddingVertical via the style prop. Pick the
+  // most specific value available, falling back to a small default that
+  // matches what RN actually applies.
+  const paddingTop = typeof flat.paddingTop === 'number'
+    ? flat.paddingTop
+    : (typeof flat.paddingVertical === 'number'
+        ? flat.paddingVertical
+        : (Platform.OS === 'ios' ? 0 : 4));
+  const before = text.slice(0, Math.max(0, caretIndex));
+  // Count hard newlines only. Soft-wrap (no \n but long line wrapping
+  // visually) isn't measured here — see helper docstring.
+  let lines = 0;
+  for (let i = 0; i < before.length; i += 1) {
+    if (before.charCodeAt(i) === 10) lines += 1;
+  }
+  // (lines + 1) × lineHeight = bottom of the caret line.
+  return paddingTop + (lines + 1) * lineHeight;
+}
+
+/**
  * Mirror-div technique — positions a hidden div at the EXACT same viewport
  * location as the textarea and measures the span at `caretIndex`.
  * Returns viewport (x, y) of the caret, where y is the BOTTOM of the line.
@@ -351,6 +406,29 @@ export default function MentionHashtagInput({
   const containerRef   = useRef<View>(null);
   const textInputRef   = useRef<any>(null);
   const cursorRef      = useRef<number>(currentText.length);
+  const activeTriggerRef = useRef<ActiveTrigger | null>(activeTrigger);
+  useEffect(() => {
+    activeTriggerRef.current = activeTrigger;
+  }, [activeTrigger]);
+  // Mirror currentText into a ref so the rAF tick (whose closure is captured
+  // once per useEffect run) can read the latest value without re-subscribing.
+  // The native caret-Y estimator needs both the text and the cursor index;
+  // cursorRef already exists, this is the matching text companion.
+  const currentTextRef = useRef<string>(currentText);
+  useEffect(() => {
+    currentTextRef.current = currentText;
+  }, [currentText]);
+  // Same plumbing for the style prop — read inside the rAF tick to apply the
+  // input's actual fontSize / lineHeight / padding when estimating caret Y.
+  const styleRef = useRef<any>(style);
+  useEffect(() => {
+    styleRef.current = style;
+  }, [style]);
+  const suggestionsRef = useRef<Suggestion[]>([]);
+  useEffect(() => {
+    suggestionsRef.current = suggestions;
+  }, [suggestions]);
+  const commitSuggestionByIndexRef = useRef<(event: Event, index: number) => void>(() => {});
   // Stable unique id so we can always find the underlying <textarea>/<input>
   // via document.getElementById — works even inside React Native Web Modals
   // where findDOMNode cannot traverse the portal boundary.
@@ -373,17 +451,19 @@ export default function MentionHashtagInput({
     if (Platform.OS !== 'web') return;
     const div = document.createElement('div');
 
-    // Position the portal container at the top-left of the viewport with a
-    // z-index high enough to float above React Native Web's Modal overlay
-    // (which typically uses z-index ~9999).  width/height = 0 with
-    // overflow:visible means the div itself has no hit-area, so it never
-    // blocks clicks on the LongPostDrawer or anything else underneath.
+    // Position the portal container over the full viewport with a z-index
+    // high enough to float above React Native Web's Modal overlay (which
+    // typically uses z-index ~9999). The layer itself ignores pointer events
+    // so it never blocks the app; the popup panel opts back into pointer
+    // events. A zero-sized portal can render visibly via overflow, but browser
+    // hit-testing may still let mouse clicks fall through to the backdrop.
     div.style.position = 'fixed';
     div.style.top      = '0';
     div.style.left     = '0';
-    div.style.width    = '0';
-    div.style.height   = '0';
+    div.style.width    = '100vw';
+    div.style.height   = '100vh';
     div.style.overflow = 'visible';
+    div.style.pointerEvents = 'none';
     div.style.zIndex   = '2147483647'; // INT_MAX — always on top
 
     document.body.appendChild(div);
@@ -391,10 +471,22 @@ export default function MentionHashtagInput({
 
     // Prevent mousedown inside the popup from stealing focus from the TextInput
     const stop = (e: MouseEvent) => e.preventDefault();
+    const commitFromNativeEvent = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const row = target?.closest?.('[data-mhi-suggestion-index]') as HTMLElement | null;
+      if (!row) return;
+      const index = Number(row.getAttribute('data-mhi-suggestion-index'));
+      if (!Number.isFinite(index)) return;
+      commitSuggestionByIndexRef.current(event, index);
+    };
     div.addEventListener('mousedown', stop);
+    div.addEventListener('pointerdown', commitFromNativeEvent, true);
+    div.addEventListener('mousedown', commitFromNativeEvent, true);
 
     return () => {
       div.removeEventListener('mousedown', stop);
+      div.removeEventListener('pointerdown', commitFromNativeEvent, true);
+      div.removeEventListener('mousedown', commitFromNativeEvent, true);
       if (div.parentNode) div.parentNode.removeChild(div);
     };
   }, []);
@@ -402,6 +494,7 @@ export default function MentionHashtagInput({
   // ─── autocomplete ───────────────────────────────────────────────────────
 
   const clearSuggestions = useCallback(() => {
+    activeTriggerRef.current = null;
     setSuggestions([]);
     setSuggestLoading(false);
     setActiveTrigger(null);
@@ -465,7 +558,21 @@ export default function MentionHashtagInput({
       }
     } else {
       containerRef.current?.measure((_fx, _fy, w, h, px, py) => {
-        setPopupPos({ x: px, y: py + h, spaceAbove: py, inputWidth: w });
+        // Estimate the caret's Y inside the input from text + cursor index
+        // (RN doesn't expose caret pixel coords on native). Cap at the input
+        // bottom so a long unestimable soft-wrap can't push the popup off
+        // the input entirely.
+        const yOffset = Math.min(
+          h,
+          estimateNativeCaretYOffset(text, caretPos, style),
+        );
+        const caretBottomY = py + yOffset;
+        setPopupPos({
+          x: px,
+          y: caretBottomY,
+          spaceAbove: caretBottomY,
+          inputWidth: w,
+        });
       });
     }
   }
@@ -486,14 +593,27 @@ export default function MentionHashtagInput({
       if (cancelled || !containerRef.current) return;
       containerRef.current.measureInWindow((x, y, w, h) => {
         if (cancelled) return;
+        // Re-estimate caret Y inside the input on every frame. The text and
+        // cursor are read from refs (updated on every render) so this
+        // closure sees the latest values even though the useEffect deps
+        // didn't change.
+        const yOffset = Math.min(
+          h,
+          estimateNativeCaretYOffset(
+            currentTextRef.current,
+            cursorRef.current,
+            styleRef.current,
+          ),
+        );
+        const newY = y + yOffset;
         setPopupPos((prev) => {
           if (
             prev
             && Math.abs(prev.x - x) < 0.5
-            && Math.abs(prev.y - (y + h)) < 0.5
+            && Math.abs(prev.y - newY) < 0.5
             && Math.abs(prev.inputWidth - w) < 0.5
           ) return prev;
-          return { x, y: y + h, spaceAbove: y, inputWidth: w };
+          return { x, y: newY, spaceAbove: newY, inputWidth: w };
         });
       });
       rafId = requestAnimationFrame(tick);
@@ -552,6 +672,7 @@ export default function MentionHashtagInput({
   // ─── text / cursor handlers ──────────────────────────────────────────────
 
   function handleChangeText(text: string) {
+    currentTextRef.current = text;
     onChangeText(text);
     if (!isControlled) setUncontrolledText(text);
     if (!token) return;
@@ -575,9 +696,33 @@ export default function MentionHashtagInput({
     cursorRef.current = pos;
 
     const trig = detectTrigger(text, pos);
-    if (!trig) { clearSuggestions(); return; }
+    if (!trig) {
+      // Only clear when there's actually something to clear. Without this
+      // guard, EVERY keystroke (the common case — no @ or # near caret)
+      // fires four `setState` calls that, while semantically no-ops, still
+      // produce a new empty array reference and force a re-render of the
+      // input + popup wrapper. On web, those redundant renders add per-
+      // keystroke lag that's visible while typing fast.
+      if (activeTrigger || suggestions.length > 0 || suggestLoading || popupPos) {
+        clearSuggestions();
+      }
+      return;
+    }
+    activeTriggerRef.current = trig;
 
-    setActiveTrigger(trig);
+    // Only set the trigger when something actually changed — otherwise
+    // typing more characters of the SAME query (e.g. "@k" → "@ke" → "@kev")
+    // produces equivalent ActiveTrigger objects with different identities
+    // each call, forcing a re-render even though the popup just needs to
+    // refetch (which the debounced fetchSuggestions handles below).
+    if (
+      !activeTrigger
+      || activeTrigger.trigger !== trig.trigger
+      || activeTrigger.query !== trig.query
+      || activeTrigger.startIndex !== trig.startIndex
+    ) {
+      setActiveTrigger(trig);
+    }
 
     if (trig.query.length === 0) {
       setSuggestions([]);
@@ -598,17 +743,48 @@ export default function MentionHashtagInput({
   // ─── selection ───────────────────────────────────────────────────────────
 
   function selectSuggestion(s: Suggestion) {
-    if (!activeTrigger) return;
+    const trigger = activeTriggerRef.current;
+    if (!trigger) return;
+    const text = currentTextRef.current;
     const rep = s.kind === 'user' ? `@${s.username}` : `#${s.name}`;
     // Clamp against the current text — guards the edge case where the parent
     // reset `value` out from under us and left the refs/trigger stale.
-    const start = Math.min(activeTrigger.startIndex, currentText.length);
-    const cursor = Math.min(Math.max(cursorRef.current, start), currentText.length);
-    const next = applyInsertion(currentText, start, cursor, rep);
+    const start = Math.min(trigger.startIndex, text.length);
+    const cursor = Math.min(Math.max(cursorRef.current, start), text.length);
+    const next = applyInsertion(text, start, cursor, rep);
+    const nextCursor = start + rep.length + 1;
+    cursorRef.current = nextCursor;
+    currentTextRef.current = next;
     onChangeText(next);
     if (!isControlled) setUncontrolledText(next);
     clearSuggestions();
+
+    if (Platform.OS === 'web') {
+      requestAnimationFrame(() => {
+        const domEl = getInputDOMEl(inputIdRef.current, textInputRef, containerRef);
+        domEl?.focus?.();
+        try {
+          domEl?.setSelectionRange?.(nextCursor, nextCursor);
+        } catch {
+          // Some input types do not allow programmatic selection.
+        }
+      });
+    }
   }
+
+  function commitSuggestionPress(event: any, s: Suggestion) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    selectSuggestion(s);
+  }
+
+  commitSuggestionByIndexRef.current = (event: Event, index: number) => {
+    const suggestion = suggestionsRef.current[index];
+    if (!suggestion) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectSuggestion(suggestion);
+  };
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
@@ -634,10 +810,23 @@ export default function MentionHashtagInput({
   const isWideScreen = screenW >= 700;
   const popupW = isWideScreen ? 320 : POPUP_W;
 
+  // Anchor X resolution:
+  //   * Web — popupPos.x is the EXACT caret viewport X (mirror-div trick).
+  //     Use it directly; popup floats right at the cursor.
+  //   * Native — popupPos.x is the input container's left edge (caret X
+  //     isn't reliably exposed by RN's TextInput API). On narrow phones
+  //     the input is barely wider than the popup, so anchoring at the
+  //     left edge sits close to the caret regardless. On wide screens
+  //     (iPad landscape, ≈1100pt input width) we used to center the
+  //     popup under the input — but the cursor is usually NOT at center,
+  //     so the popup floated 300-400pt away from where the user is
+  //     actually typing. Switch to a left-edge anchor with a small pad
+  //     for breathing room; matches the phone pattern and feels much
+  //     better associated with the field's starting cursor position.
+  //     Proper per-caret X measurement on native would need a hidden
+  //     <Text> mirror + onLayout; left as a follow-up.
   const desiredLeft = popupPos
-    ? (Platform.OS !== 'web' && isWideScreen
-        ? popupPos.x + Math.max(0, (popupPos.inputWidth - popupW) / 2)
-        : popupPos.x)
+    ? popupPos.x + (Platform.OS !== 'web' ? 8 : 0)
     : 0;
   const popupLeft = popupPos
     ? Math.max(4, Math.min(desiredLeft, screenW - popupW - 4))
@@ -671,6 +860,38 @@ export default function MentionHashtagInput({
             <TouchableOpacity
               key={`${s.kind}-${s.id}-${idx}`}
               onPress={() => selectSuggestion(s)}
+              onPressIn={() => {
+                if (Platform.OS === 'web') selectSuggestion(s);
+              }}
+              // Web fix — react-native-web's TouchableOpacity routes onPress
+              // through onClick, which fires AFTER mouseup. The portal-level
+              // `mousedown → preventDefault` handler we use to retain TextInput
+              // focus interacts badly with that sequence on some browsers:
+              // the input briefly blurs, React tears down the suggestion in a
+              // pending state-update, and the click event never reaches the
+              // TouchableOpacity. Symptom: popup closes (from the blur-driven
+              // unmount) but no text gets inserted into the composer.
+              //
+              // Attaching onMouseDown directly to the suggestion row dodges
+              // the issue — mousedown fires synchronously with the press, so
+              // we can preventDefault (focus retention) + run the selection
+              // in one shot before any blur tearing-down happens. onPress
+              // remains wired as a fallback for keyboard / touch events on
+              // platforms where DOM mouse events don't fire.
+              {...(Platform.OS === 'web'
+                ? {
+                    onMouseDown: (e: any) => {
+                      // preventDefault stops the input from losing focus when
+                      // the user clicks the popup; selectSuggestion does the
+                      // actual @-replacement and closes the popup. Calling
+                      // selectSuggestion here AND via onPress is safe — the
+                      // second invocation early-returns when activeTrigger is
+                      // null (already cleared by the first run).
+                      e.preventDefault();
+                      selectSuggestion(s);
+                    },
+                  }
+                : null)}
               activeOpacity={0.75}
               style={{
                 flexDirection: 'row',
@@ -731,6 +952,115 @@ export default function MentionHashtagInput({
     </>
   );
 
+  const webSuggestionRows = Platform.OS === 'web' ? (
+    <>
+      {suggestLoading && suggestions.length === 0 ? (
+        <div style={{ padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: primary, fontSize: 12, fontWeight: 700 }}>Loading...</span>
+        </div>
+      ) : (
+        <div style={{ maxHeight: LIST_MAX_H, overflowY: 'auto' }}>
+          {suggestions.map((s, idx) => (
+            <button
+              key={`${s.kind}-${s.id}-${idx}`}
+              type="button"
+              data-mhi-suggestion-index={idx}
+              onMouseDownCapture={(event) => commitSuggestionPress(event, s)}
+              onPointerDownCapture={(event) => commitSuggestionPress(event, s)}
+              onMouseDown={(event) => commitSuggestionPress(event, s)}
+              onPointerDown={(event) => commitSuggestionPress(event, s)}
+              style={{
+                width: '100%',
+                border: 0,
+                borderBottom: idx < suggestions.length - 1 ? `1px solid ${borderColor}` : 0,
+                background: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '9px 12px',
+                textAlign: 'left',
+                font: 'inherit',
+              }}
+            >
+              {s.kind === 'user' ? (
+                <>
+                  {s.avatar ? (
+                    <img
+                      src={s.avatar}
+                      alt=""
+                      draggable={false}
+                      style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8, objectFit: 'cover', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        marginRight: 8,
+                        background: primary,
+                        color: '#fff',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {(s.username?.[0] ?? '?').toUpperCase()}
+                    </span>
+                  )}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    {s.displayName ? (
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: textColor, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.displayName}
+                      </span>
+                    ) : null}
+                    <span style={{ display: 'block', fontSize: 12, color: mutedColor, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      @{s.username}
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      marginRight: 8,
+                      background: `${primary}18`,
+                      color: primary,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      fontSize: 14,
+                      flexShrink: 0,
+                    }}
+                  >
+                    #
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: textColor, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      #{s.name}
+                    </span>
+                    {s.postsCount != null && s.postsCount > 0 ? (
+                      <span style={{ display: 'block', fontSize: 11, color: mutedColor, lineHeight: '15px' }}>
+                        {s.postsCount.toLocaleString()} posts
+                      </span>
+                    ) : null}
+                  </span>
+                </>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  ) : null;
+
   const panelStyle: any = {
     width: popupW,
     maxHeight: LIST_MAX_H,
@@ -771,7 +1101,7 @@ export default function MentionHashtagInput({
         // reliable document.getElementById hook that works across Modal portals.
         nativeID={inputIdRef.current}
         style={[{ color: textColor, backgroundColor: bgColor }, style]}
-        {...(isControlled ? { value: value as string } : { defaultValue: '' })}
+        value={currentText}
         onChangeText={handleChangeText}
         onSelectionChange={handleSelectionChange}
         placeholder={placeholder}
@@ -806,11 +1136,12 @@ export default function MentionHashtagInput({
                     : (popupTop ?? 0),
                   ...({ boxShadow: '0 4px 16px rgba(0,0,0,0.13)' } as any),
                   ...({ transform: openAbove ? 'translateY(-100%)' : undefined } as any),
+                  ...({ pointerEvents: 'auto' } as any),
                   zIndex: 99999,
                 },
               ]}
             >
-              {suggestionRows}
+              {webSuggestionRows}
             </View>,
             portalEl,
           )

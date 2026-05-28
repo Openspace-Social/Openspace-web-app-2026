@@ -662,7 +662,7 @@ export default function LongPostDrawer({
         <View style={styles.blockEditorGroup}>
           <TextInput
             style={[styles.blockInput, { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary }]}
-            placeholder={t('home.longPostEmbedUrlPlaceholder', { defaultValue: 'Embed URL (YouTube, Vimeo, etc.)' })}
+            placeholder={t('home.longPostEmbedUrlPlaceholder', { defaultValue: 'Embed URL (YouTube, Instagram, etc.)' })}
             placeholderTextColor={c.placeholder}
             value={block.url || ''}
             onChangeText={(value) => updateBlock(block.id, { url: value })}

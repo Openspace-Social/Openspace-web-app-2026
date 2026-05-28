@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FeedPost, PostComment } from '../api/client';
-import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
+import { getExternalVideoEmbedAspectRatio, getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 import { EMBED_BASE_URL, shouldStartLoadWithEmbedRequest } from '../utils/webviewEmbedNavigation';
 import CommentLinkPreview from './CommentLinkPreview';
@@ -210,7 +210,7 @@ function NativePostDetailVideo({
   );
 }
 
-// Native WebView for YouTube/Vimeo embeds. Lazy-required on native only so
+// Native WebView for recognized external video embeds. Lazy-required on native only so
 // web bundles don't pull in the native-only module. Same treatment as
 // PostCard.
 const NativeWebView: any =
@@ -1873,7 +1873,11 @@ export default function PostDetailModal({
       | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
 
     const segments: Segment[] = [];
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
+    // Local @mention pattern allows internal dots — see PostCard.tsx for
+    // the full rationale. `(?:\.[A-Za-z0-9_]+)*` requires alphanumeric on
+    // both sides of every dot so trailing sentence punctuation isn't
+    // gobbled into the username link.
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -1998,6 +2002,7 @@ export default function PostDetailModal({
           }
           if (block.type === 'embed' && block.url) {
             const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+            const embedAspectRatio = getExternalVideoEmbedAspectRatio(block.url);
             if (Platform.OS === 'web' && embedUrl) {
               const iframeProps: any = {
                 src: embedUrl,
@@ -2015,7 +2020,7 @@ export default function PostDetailModal({
               };
               return (
                 <View key={`${postId}-lp-detail-embed-${idx}`} style={{ width: '100%', marginVertical: 8 } as any}>
-                  <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                  <View style={{ width: '100%', aspectRatio: embedAspectRatio, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
                     {React.createElement('iframe', iframeProps)}
                   </View>
                 </View>
@@ -2024,7 +2029,7 @@ export default function PostDetailModal({
             if (Platform.OS !== 'web' && embedUrl && NativeWebView) {
               return (
                 <View key={`${postId}-lp-detail-embed-${idx}`} style={{ width: '100%', marginVertical: 8 } as any}>
-                  <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                  <View style={{ width: '100%', aspectRatio: embedAspectRatio, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
                     <NativeWebView
                       source={{ html: buildEmbedHtml(embedUrl), baseUrl: EMBED_BASE_URL }}
                       originWhitelist={['*']}
@@ -2101,7 +2106,7 @@ export default function PostDetailModal({
     if (!resolvedShortLinkPreview) return null;
     if (Platform.OS === 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl) {
       return (
-        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000', aspectRatio: getExternalVideoEmbedAspectRatio(resolvedShortLinkPreview.url || resolvedShortLinkPreview.embedUrl) }] as any}>
           {React.createElement('iframe', {
             src: resolvedShortLinkPreview.embedUrl,
             title: resolvedShortLinkPreview.title || 'Embedded video',
@@ -2125,7 +2130,7 @@ export default function PostDetailModal({
       NativeWebView
     ) {
       return (
-        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+        <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000', aspectRatio: getExternalVideoEmbedAspectRatio(resolvedShortLinkPreview.url || resolvedShortLinkPreview.embedUrl) }] as any}>
           <NativeWebView
             source={{
               html: buildEmbedHtml(resolvedShortLinkPreview.embedUrl),

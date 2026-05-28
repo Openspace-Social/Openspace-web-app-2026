@@ -8,11 +8,11 @@ import MentionHashtagInput from './MentionHashtagInput';
 import NativeInlineVideo, { type NativeInlineVideoHandle } from './NativeInlineVideo';
 import { useFeedMutePreference } from '../hooks/useFeedMutePreference';
 import { useIsInViewport } from '../hooks/useIsInViewport';
-import { getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
+import { getExternalVideoEmbedAspectRatio, getSafeExternalVideoEmbedUrl } from '../utils/externalVideoEmbeds';
 import { extractFirstUrlFromText, fetchShortPostLinkPreviewCached, getUrlHostLabel, ShortPostLinkPreview } from '../utils/shortPostEmbeds';
 import { EMBED_BASE_URL, shouldStartLoadWithEmbedRequest } from '../utils/webviewEmbedNavigation';
 
-// Native-only: WebView renders YouTube/Vimeo embed URLs inline so the feed
+// Native-only: WebView renders recognized external video embed URLs inline so the feed
 // gets the same inline-playable experience web has via <iframe>. Loaded
 // lazily on native so web bundles don't pull in the native-only module.
 const NativeWebView: any =
@@ -65,7 +65,7 @@ function buildEmbedHtml(embedUrl: string) {
 }
 
 function getEmbedBaseUrl(_embedUrl: string): string {
-  // Neutral origin unrelated to YouTube/Vimeo so the player treats the
+  // Neutral origin unrelated to the embed provider so the player treats the
   // iframe as a legitimate third-party embed rather than a self-embed.
   return EMBED_BASE_URL;
 }
@@ -1282,8 +1282,14 @@ function PostCard({
       | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
 
     const segments: Segment[] = [];
-    // Combined regex: URLs, @mentions, #hashtags
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+)|(#[A-Za-z]\w*)/gi;
+    // Combined regex: URLs, @mentions, #hashtags. Local @mention allows
+    // internal dots — `@user.name`, `@a.b.c` — so usernames with dots
+    // (server-side `username_characters_validator` allows them) tokenise
+    // as a single mention rather than truncating at the first dot and
+    // leaving `.name` as plain text. The `(?:\.[A-Za-z0-9_]+)*` tail
+    // requires alphanumeric/underscore on both sides of every dot, so a
+    // trailing sentence dot (`Hi @bob.`) doesn't get gobbled into the link.
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -2079,13 +2085,14 @@ function PostCard({
                 }
                 if (block.type === 'embed' && block.url) {
                   const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+                  const embedAspectRatio = getExternalVideoEmbedAspectRatio(block.url);
                   if (Platform.OS !== 'web' && embedUrl && NativeWebView) {
                     return (
                       <View
                         key={`${post.id}-lp-embed-${idx}`}
                         style={{ width: '100%', marginVertical: 8 } as any}
                       >
-                        <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                        <View style={{ width: '100%', aspectRatio: embedAspectRatio, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
                           <NativeWebView
                             source={{ html: buildEmbedHtml(embedUrl), baseUrl: getEmbedBaseUrl(embedUrl) }}
                             originWhitelist={['*']}
@@ -2266,6 +2273,7 @@ function PostCard({
               }
               if (block.type === 'embed' && block.url) {
                 const embedUrl = getSafeExternalVideoEmbedUrl(block.url);
+                const embedAspectRatio = getExternalVideoEmbedAspectRatio(block.url);
                 if (Platform.OS === 'web' && embedUrl) {
                   const iframeProps: any = {
                     src: embedUrl,
@@ -2286,7 +2294,7 @@ function PostCard({
                       key={`${post.id}-lp-embed-${idx}`}
                       style={{ width: '100%', marginVertical: 8 } as any}
                     >
-                      <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                      <View style={{ width: '100%', aspectRatio: embedAspectRatio, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
                         {React.createElement('iframe', iframeProps)}
                       </View>
                     </View>
@@ -2298,7 +2306,7 @@ function PostCard({
                       key={`${post.id}-lp-embed-${idx}`}
                       style={{ width: '100%', marginVertical: 8 } as any}
                     >
-                      <View style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
+                      <View style={{ width: '100%', aspectRatio: embedAspectRatio, borderRadius: 10, overflow: 'hidden', backgroundColor: '#000' } as any}>
                         <NativeWebView
                           source={{ html: buildEmbedHtml(embedUrl), baseUrl: getEmbedBaseUrl(embedUrl) }}
                           originWhitelist={['*']}
@@ -2592,7 +2600,7 @@ function PostCard({
       {showShortPostLinkPreview && resolvedShortLinkPreview ? (
         <View style={styles.feedTextWrap}>
           {Platform.OS === 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl ? (
-            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000', aspectRatio: getExternalVideoEmbedAspectRatio(resolvedShortLinkPreview.url || resolvedShortLinkPreview.embedUrl) }] as any}>
               {React.createElement('iframe', {
                 src: resolvedShortLinkPreview.embedUrl,
                 title: resolvedShortLinkPreview.title || 'Embedded video',
@@ -2608,7 +2616,7 @@ function PostCard({
               } as any)}
             </View>
           ) : Platform.OS !== 'web' && resolvedShortLinkPreview.isVideo && resolvedShortLinkPreview.embedUrl && NativeWebView ? (
-            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000' }] as any}>
+            <View style={[styles.shortPostVideoEmbedWrap, { backgroundColor: '#000', aspectRatio: getExternalVideoEmbedAspectRatio(resolvedShortLinkPreview.url || resolvedShortLinkPreview.embedUrl) }] as any}>
               <NativeWebView
                 source={{
                   html: buildEmbedHtml(resolvedShortLinkPreview.embedUrl),

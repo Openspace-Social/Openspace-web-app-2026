@@ -3,7 +3,9 @@ export type ExternalVideoProvider =
   | 'vimeo'
   | 'twitch'
   | 'soundcloud'
-  | 'spotify';
+  | 'spotify'
+  | 'facebook'
+  | 'instagram';
 
 export type ParsedExternalVideo = {
   provider: ExternalVideoProvider;
@@ -115,6 +117,93 @@ function parseSpotifyTarget(url: URL): SpotifyTarget | null {
   return null;
 }
 
+type FacebookTarget = { id: string; sourceUrl: string };
+
+function parseFacebookTarget(url: URL): FacebookTarget | null {
+  const host = url.hostname.toLowerCase();
+  const parts = url.pathname.split('/').filter(Boolean);
+
+  if (host === 'fb.watch' || host.endsWith('.fb.watch')) {
+    const id = parts[0];
+    if (!id) return null;
+    return {
+      id,
+      sourceUrl: `https://fb.watch/${id}/`,
+    };
+  }
+
+  if (!host.endsWith('facebook.com') && !host.endsWith('facebook.com.br')) return null;
+
+  if (url.pathname === '/plugins/video.php') {
+    const href = url.searchParams.get('href');
+    if (!href) return null;
+    try {
+      return parseFacebookTarget(new URL(href));
+    } catch {
+      return null;
+    }
+  }
+
+  if (url.pathname === '/watch/' || url.pathname === '/watch') {
+    const id = url.searchParams.get('v');
+    if (!id) return null;
+    return {
+      id,
+      sourceUrl: `https://www.facebook.com/watch/?v=${id}`,
+    };
+  }
+
+  if (url.pathname === '/video.php') {
+    const id = url.searchParams.get('v');
+    if (!id) return null;
+    return {
+      id,
+      sourceUrl: `https://www.facebook.com/watch/?v=${id}`,
+    };
+  }
+
+  if (parts[0] === 'reel' && parts[1]) {
+    return {
+      id: parts[1],
+      sourceUrl: `https://www.facebook.com/reel/${parts[1]}/`,
+    };
+  }
+
+  const videosIndex = parts.indexOf('videos');
+  if (videosIndex >= 0 && parts[videosIndex + 1]) {
+    const id = parts[videosIndex + 1];
+    return {
+      id,
+      sourceUrl: `https://www.facebook.com/${parts.slice(0, videosIndex + 2).join('/')}/`,
+    };
+  }
+
+  if (parts[0] === 'share' && parts[1] === 'v' && parts[2]) {
+    return {
+      id: parts[2],
+      sourceUrl: `https://www.facebook.com/share/v/${parts[2]}/`,
+    };
+  }
+
+  return null;
+}
+
+type InstagramTarget = { kind: 'p' | 'reel' | 'tv'; shortcode: string };
+
+function parseInstagramTarget(url: URL): InstagramTarget | null {
+  const host = url.hostname.toLowerCase();
+  if (!host.endsWith('instagram.com')) return null;
+
+  const parts = url.pathname.split('/').filter(Boolean);
+  const kind = parts[0];
+  const shortcode = parts[1];
+  if (!shortcode) return null;
+  if (kind === 'p' || kind === 'reel' || kind === 'tv') {
+    return { kind, shortcode };
+  }
+  return null;
+}
+
 export function parseExternalVideoUrl(rawValue: string): ParsedExternalVideo | null {
   const cleaned = normalizeUrl(rawValue);
   if (!cleaned) return null;
@@ -193,6 +282,27 @@ export function parseExternalVideoUrl(rawValue: string): ParsedExternalVideo | n
     };
   }
 
+  const facebook = parseFacebookTarget(url);
+  if (facebook) {
+    return {
+      provider: 'facebook',
+      id: facebook.id,
+      sourceUrl: facebook.sourceUrl,
+      embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(facebook.sourceUrl)}&show_text=false&width=560`,
+    };
+  }
+
+  const instagram = parseInstagramTarget(url);
+  if (instagram) {
+    const sourceUrl = `https://www.instagram.com/${instagram.kind}/${instagram.shortcode}/`;
+    return {
+      provider: 'instagram',
+      id: `${instagram.kind}/${instagram.shortcode}`,
+      sourceUrl,
+      embedUrl: `${sourceUrl}embed/`,
+    };
+  }
+
   return null;
 }
 
@@ -202,13 +312,29 @@ export function getSafeExternalVideoEmbedUrl(value?: string): string | null {
   return parsed?.embedUrl || null;
 }
 
+export function getExternalVideoEmbedAspectRatio(value?: string): number {
+  if (!value) return 16 / 9;
+  const parsed = parseExternalVideoUrl(value);
+  if (!parsed) return 16 / 9;
+  if (parsed.provider === 'instagram') {
+    return parsed.id.startsWith('p/') ? 1 : 9 / 16;
+  }
+  return 16 / 9;
+}
+
 const PROVIDER_LABEL: Record<ExternalVideoProvider, string> = {
   youtube: 'YouTube',
   vimeo: 'Vimeo',
   twitch: 'Twitch',
   soundcloud: 'SoundCloud',
   spotify: 'Spotify',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
 };
+
+export function getExternalVideoProviderLabel(provider: ExternalVideoProvider) {
+  return PROVIDER_LABEL[provider];
+}
 
 export async function fetchExternalVideoPreview(sourceUrl: string): Promise<ExternalVideoPreview> {
   const parsed = parseExternalVideoUrl(sourceUrl);
@@ -223,7 +349,8 @@ export async function fetchExternalVideoPreview(sourceUrl: string): Promise<Exte
         ? `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(parsed.sourceUrl)}`
         : parsed.provider === 'soundcloud'
           ? `https://soundcloud.com/oembed?url=${encodeURIComponent(parsed.sourceUrl)}&format=json`
-          // Twitch + Spotify don't expose a public oembed endpoint; fall through to the default below.
+          // Twitch, Spotify, Facebook, and Instagram do not expose reliable
+          // public no-token oEmbed endpoints; fall through to the default below.
           : null;
 
   if (oembedEndpoint) {

@@ -16,7 +16,7 @@
  * Out-of-scope on native (would require rebuilding TenTap's WebView with
  * additional TipTap extensions — non-trivial; kept as a future task):
  *   - Tables
- *   - Custom video-embed node (YouTube/Vimeo as an `<iframe>`)
+ *   - Custom video-embed node (recognized external video providers as an `<iframe>`)
  *   - Custom link-embed node (rich-card with title/description)
  *   - In-editor `@`/`#` autocomplete popover
  *

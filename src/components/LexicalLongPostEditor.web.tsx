@@ -4,7 +4,6 @@ import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
-import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
@@ -635,7 +634,7 @@ function ToolbarPlugin({
     try {
       const preview = await fetchShortPostLinkPreviewCached(raw);
       if (preview.isVideoEmbed) {
-        setLinkEmbedError('Use "Video URL" for YouTube or Vimeo embeds.');
+        setLinkEmbedError('Use "Video URL" for supported video embeds.');
         setLinkEmbedPreview(null);
       } else {
         setLinkEmbedPreview(preview);
@@ -679,7 +678,7 @@ function ToolbarPlugin({
     const raw = videoUrl.trim();
     const parsed = parseExternalVideoUrl(raw);
     if (!parsed) {
-      setVideoError('Use a valid YouTube or Vimeo URL.');
+      setVideoError('Use a valid supported video URL.');
       setVideoPreview(null);
       return;
     }
@@ -701,7 +700,7 @@ function ToolbarPlugin({
     const raw = videoUrl.trim();
     const parsed = parseExternalVideoUrl(raw);
     if (!parsed) {
-      setVideoError('Use a valid YouTube or Vimeo URL.');
+      setVideoError('Use a valid supported video URL.');
       return;
     }
     editor.dispatchCommand(INSERT_LEXICAL_VIDEO_EMBED_COMMAND, {
@@ -902,7 +901,7 @@ function ToolbarPlugin({
       {videoOpen ? (
         <div style={linkComposerStyle}>
           <div style={linkComposerTitleStyle}>Insert external video</div>
-          <label style={linkLabelStyle}>YouTube or Vimeo URL</label>
+          <label style={linkLabelStyle}>Video URL</label>
           <input
             type="url"
             value={videoUrl}
@@ -1153,6 +1152,20 @@ function SelectionToolbarPlugin({
     paragraph: true,
   });
   const floatingRef = React.useRef<HTMLDivElement | null>(null);
+  const visibleRef = React.useRef(false);
+  const hasSelectionRef = React.useRef(false);
+
+  const updateVisible = React.useCallback((next: boolean) => {
+    if (visibleRef.current === next) return;
+    visibleRef.current = next;
+    setVisible(next);
+  }, []);
+
+  const updateHasSelection = React.useCallback((next: boolean) => {
+    if (hasSelectionRef.current === next) return;
+    hasSelectionRef.current = next;
+    setHasSelection(next);
+  }, []);
 
   const applyBlock = React.useCallback((kind: 'h2' | 'h3' | 'paragraph') => {
     if (kind === 'paragraph') {
@@ -1184,7 +1197,14 @@ function SelectionToolbarPlugin({
 
       const range = browserSelection.getRangeAt(0);
       const hasActiveRange = !range.collapsed && rootEl.contains(range.commonAncestorContainer);
-      setHasSelection(hasActiveRange);
+      updateHasSelection(hasActiveRange);
+
+      if (!hasActiveRange) {
+        if (!linkOpen) {
+          updateVisible(false);
+        }
+        return;
+      }
 
       editor.getEditorState().read(() => {
         const selection = $getSelection();
@@ -1215,13 +1235,6 @@ function SelectionToolbarPlugin({
         });
       });
 
-      if (!hasActiveRange) {
-        if (!linkOpen) {
-          setVisible(false);
-        }
-        return;
-      }
-
       const rect = range.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const rawLeft = rect.left + rect.width / 2 - containerRect.left;
@@ -1232,7 +1245,7 @@ function SelectionToolbarPlugin({
       const maxLeft = Math.max(minLeft, containerRect.width - clampPadding - approxHalfWidth);
       const left = Math.min(maxLeft, Math.max(minLeft, rawLeft));
       setPosition({ left, top });
-      setVisible(true);
+      updateVisible(true);
     };
 
     const unregister = editor.registerUpdateListener(() => {
@@ -1249,7 +1262,7 @@ function SelectionToolbarPlugin({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [containerRef, editor, linkOpen]);
+  }, [containerRef, editor, linkOpen, updateHasSelection, updateVisible]);
 
   React.useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -1259,13 +1272,13 @@ function SelectionToolbarPlugin({
       const rootEl = editor.getRootElement();
       if (floating?.contains(target)) return;
       if (rootEl?.contains(target)) return;
-      setVisible(false);
+      updateVisible(false);
       setLinkOpen(false);
-      setHasSelection(false);
+      updateHasSelection(false);
     };
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [editor]);
+  }, [editor, updateHasSelection, updateVisible]);
 
   if (!visible && !linkOpen) return null;
 
@@ -1317,6 +1330,52 @@ function SelectionToolbarPlugin({
       ) : null}
     </div>
   );
+}
+
+function DeferredHtmlChangePlugin({ onChange }: { onChange: (html: string) => void }) {
+  const [editor] = useLexicalComposerContext();
+  const onChangeRef = React.useRef(onChange);
+  const pendingStateRef = React.useRef<any>(null);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHtmlRef = React.useRef('');
+
+  onChangeRef.current = onChange;
+
+  const flush = React.useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const state = pendingStateRef.current;
+    if (!state) return;
+    pendingStateRef.current = null;
+    state.read(() => {
+      const html = $generateHtmlFromNodes(editor, null);
+      if (html === lastHtmlRef.current) return;
+      lastHtmlRef.current = html;
+      onChangeRef.current(html);
+    });
+  }, [editor]);
+
+  React.useEffect(() => {
+    const unregister = editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }: any) => {
+      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+      pendingStateRef.current = editorState;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(flush, 160);
+    });
+
+    const root = editor.getRootElement();
+    root?.addEventListener('blur', flush, true);
+
+    return () => {
+      unregister();
+      root?.removeEventListener('blur', flush, true);
+      flush();
+    };
+  }, [editor, flush]);
+
+  return null;
 }
 
 export default function LexicalLongPostEditor({
@@ -1443,14 +1502,7 @@ export default function LexicalLongPostEditor({
         <HistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
-        <OnChangePlugin
-          ignoreSelectionChange
-          onChange={(editorState: any, editor: any) => {
-            editorState.read(() => {
-              onChange($generateHtmlFromNodes(editor, null));
-            });
-          }}
-        />
+        <DeferredHtmlChangePlugin onChange={onChange} />
       </LexicalComposer>
     </div>
   );

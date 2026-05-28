@@ -25,6 +25,10 @@ import { useAppToast } from '../../toast/AppToastContext';
 import PostDetailModal from '../../components/PostDetailModal';
 import { postCardStyles } from '../../styles/postCardStyles';
 import { api, type FeedPost } from '../../api/client';
+import {
+  fetchAndCacheCurrentUser,
+  getCachedCurrentUser,
+} from '../../utils/currentUserCache';
 import type { HomeStackParamList } from '../AppNavigator';
 
 function postHasMedia(post?: FeedPost | null) {
@@ -157,23 +161,34 @@ export default function PostDetailScreenContainer() {
     setReactionListLoading(false);
   }, []);
 
-  // Fetch current user for PostCard owner-only gating.
-  const [currentUsername, setCurrentUsername] = useState<string | undefined>(undefined);
-  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | undefined>(undefined);
-  const [translationLanguageCode, setTranslationLanguageCode] = useState<string | undefined>(undefined);
+  // Fetch current user for PostCard owner-only gating + new-comment
+  // renderer fallbacks (so a just-posted comment doesn't render as
+  // "@unknown" / "U" avatar while we wait for the user fetch to resolve).
+  //
+  // Seed from the shared module-level cache so subsequent mounts (e.g.
+  // navigating between post details) start with the right value
+  // immediately. Without this seed, every fresh nav into a post
+  // re-opened a race window where currentUsername was undefined and
+  // a fast comment hit the unknown-user fallback path.
+  const cachedUserAtMount = getCachedCurrentUser();
+  const [currentUsername, setCurrentUsername] = useState<string | undefined>(
+    cachedUserAtMount?.username,
+  );
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | undefined>(
+    cachedUserAtMount?.profile?.avatar,
+  );
+  const [translationLanguageCode, setTranslationLanguageCode] = useState<string | undefined>(
+    cachedUserAtMount?.translation_language?.code,
+  );
   useEffect(() => {
     if (!token) return;
     let active = true;
     (async () => {
-      try {
-        const u: any = await api.getAuthenticatedUser(token);
-        if (!active) return;
-        setCurrentUsername(u?.username);
-        setCurrentUserAvatar(u?.profile?.avatar);
-        setTranslationLanguageCode(u?.translation_language?.code);
-      } catch {
-        // non-fatal
-      }
+      const u: any = await fetchAndCacheCurrentUser(token);
+      if (!active || !u) return;
+      setCurrentUsername(u?.username);
+      setCurrentUserAvatar(u?.profile?.avatar);
+      setTranslationLanguageCode(u?.translation_language?.code);
     })();
     return () => {
       active = false;

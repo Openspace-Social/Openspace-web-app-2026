@@ -33,6 +33,7 @@ import {
   ensurePushRegistration,
   flushPendingPushRoute,
 } from './src/push/service';
+import { clearCurrentUserCache } from './src/utils/currentUserCache';
 
 // Required on web so popup-based OAuth flows can hand the callback URL back to
 // the opener instead of rendering the app inside the popup window.
@@ -160,6 +161,11 @@ function Root() {
     }
     setToken(null);
     await AsyncStorage.removeItem('@openspace/auth_token');
+    // Wipe the cached "current user" payload so the next account that
+    // signs in on this device doesn't briefly inherit the previous
+    // user's username / avatar in race windows (just-posted comment
+    // hydration fallback, post-detail header gating, etc.).
+    clearCurrentUserCache();
     navigate({ screen: 'landing' }, true);
   };
 

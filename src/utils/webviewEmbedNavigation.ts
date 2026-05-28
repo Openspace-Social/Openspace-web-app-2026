@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 
-// The neutral host the YouTube / Vimeo embed wrapper HTML is served from.
+// The neutral host the external video embed wrapper HTML is served from.
 // Must match the WebView's source.baseUrl in PostCard / PostDetailModal so
 // the navigation handler can tell "this is the wrapper page itself" apart
 // from "the user clicked something that wants to leave the embed."
