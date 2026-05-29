@@ -8132,11 +8132,18 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
                           onPress={() => openLink(composerLinkPreview.url)}
                         >
                           {composerLinkPreview.imageUrl ? (
-                            <Image
-                              source={{ uri: composerLinkPreview.imageUrl }}
-                              style={styles.postComposerLinkPreviewImage}
-                              resizeMode="cover"
-                            />
+                            <View style={styles.postComposerLinkPreviewImageWrap}>
+                              <Image
+                                source={{ uri: composerLinkPreview.imageUrl }}
+                                style={styles.postComposerLinkPreviewImage}
+                                resizeMode="cover"
+                              />
+                              {composerLinkPreview.isVideoEmbed || composerLinkPreview.isVideoLinkPreview ? (
+                                <View style={styles.postComposerLinkPreviewPlay}>
+                                  <MaterialCommunityIcons name="play" size={20} color="#fff" />
+                                </View>
+                              ) : null}
+                            </View>
                           ) : null}
                           <View style={styles.postComposerLinkPreviewMeta}>
                             {composerLinkPreview.siteName ? (
@@ -11234,6 +11241,22 @@ const styles = StyleSheet.create({
     minWidth: 108,
     height: '100%',
   },
+  postComposerLinkPreviewImageWrap: {
+    width: 108,
+    minWidth: 108,
+    height: '100%',
+    position: 'relative',
+  },
+  postComposerLinkPreviewPlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
   postComposerLinkPreviewMeta: {
     flex: 1,
     minWidth: 0,
@@ -13149,6 +13172,23 @@ const styles = StyleSheet.create({
     width: 132,
     minWidth: 132,
     height: '100%',
+  },
+  shortPostLinkPreviewImageWrap: {
+    width: 132,
+    minWidth: 132,
+    height: '100%',
+    position: 'relative',
+  },
+  shortPostLinkPreviewPlayBadge: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ translateX: -17 }, { translateY: -17 }],
   },
   shortPostLinkPreviewMeta: {
     flex: 1,

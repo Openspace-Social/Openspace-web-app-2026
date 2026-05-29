@@ -243,6 +243,23 @@ export const postCardStyles = StyleSheet.create({
     minWidth: 132,
     height: '100%',
   },
+  shortPostLinkPreviewImageWrap: {
+    width: 132,
+    minWidth: 132,
+    height: '100%',
+    position: 'relative',
+  },
+  shortPostLinkPreviewPlayBadge: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ translateX: -17 }, { translateY: -17 }],
+  },
   shortPostLinkPreviewMeta: {
     flex: 1,
     minWidth: 0,

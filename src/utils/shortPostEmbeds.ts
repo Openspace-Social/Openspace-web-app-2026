@@ -7,6 +7,7 @@ export type ShortPostLinkPreview = {
   imageUrl?: string;
   siteName?: string;
   isVideoEmbed?: boolean;
+  isVideoLinkPreview?: boolean;
 };
 
 const URL_PATTERN = /(https?:\/\/[^\s]+)/gi;
@@ -76,6 +77,27 @@ function pickBestText(...values: Array<string | undefined>) {
   return undefined;
 }
 
+function getNonEmbeddableSocialVideoPreview(url: string): ShortPostLinkPreview | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if ((host === 'facebook.com' || host.endsWith('.facebook.com')) && parts[0] === 'share' && (parts[1] === 'v' || parts[1] === 'r') && parts[2]) {
+      return {
+        url,
+        title: parts[1] === 'r' ? 'Facebook reel' : 'Facebook video',
+        description: 'Open on Facebook to watch.',
+        siteName: 'Facebook',
+        isVideoEmbed: false,
+        isVideoLinkPreview: true,
+      };
+    }
+  } catch {
+    // Not a URL we recognize.
+  }
+  return null;
+}
+
 export async function fetchShortPostLinkPreview(url: string): Promise<ShortPostLinkPreview> {
   const video = parseExternalVideoUrl(url);
   if (video) {
@@ -89,7 +111,9 @@ export async function fetchShortPostLinkPreview(url: string): Promise<ShortPostL
     };
   }
 
-  const fallback: ShortPostLinkPreview = {
+  const socialVideoFallback = getNonEmbeddableSocialVideoPreview(url);
+
+  const fallback: ShortPostLinkPreview = socialVideoFallback || {
     url,
     title: humanizeUrlTitle(url),
     siteName: getUrlHostLabel(url),
@@ -106,6 +130,7 @@ export async function fetchShortPostLinkPreview(url: string): Promise<ShortPostL
         imageUrl: pickBestText(noembed?.thumbnail_url),
         siteName: pickBestText(noembed?.provider_name, fallback.siteName),
         isVideoEmbed: false,
+        isVideoLinkPreview: fallback.isVideoLinkPreview,
       }
     : null;
 
@@ -120,8 +145,20 @@ export async function fetchShortPostLinkPreview(url: string): Promise<ShortPostL
         imageUrl: pickBestText(microData?.image?.url, microData?.logo?.url, microData?.screenshot?.url, fromNoembed?.imageUrl),
         siteName: pickBestText(microData?.publisher, fromNoembed?.siteName, fallback.siteName),
         isVideoEmbed: false,
+        isVideoLinkPreview: fallback.isVideoLinkPreview,
       }
     : null;
+
+  if (socialVideoFallback) {
+    const enriched = fromMicrolink || fromNoembed;
+    return {
+      ...socialVideoFallback,
+      title: pickBestText(enriched?.title, socialVideoFallback.title) || socialVideoFallback.title,
+      description: pickBestText(enriched?.description, socialVideoFallback.description),
+      imageUrl: enriched?.imageUrl,
+      siteName: pickBestText(enriched?.siteName, socialVideoFallback.siteName),
+    };
+  }
 
   return fromMicrolink || fromNoembed || fallback;
 }
@@ -139,6 +176,7 @@ export function fetchShortPostLinkPreviewCached(url: string): Promise<ShortPostL
       title: humanizeUrlTitle(key),
       siteName: getUrlHostLabel(key),
       isVideoEmbed: false,
+      isVideoLinkPreview: getNonEmbeddableSocialVideoPreview(key)?.isVideoLinkPreview,
     }))
     .then((preview) => preview);
   previewCache.set(key, next);

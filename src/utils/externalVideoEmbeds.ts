@@ -178,13 +178,6 @@ function parseFacebookTarget(url: URL): FacebookTarget | null {
     };
   }
 
-  if (parts[0] === 'share' && parts[1] === 'v' && parts[2]) {
-    return {
-      id: parts[2],
-      sourceUrl: `https://www.facebook.com/share/v/${parts[2]}/`,
-    };
-  }
-
   return null;
 }
 

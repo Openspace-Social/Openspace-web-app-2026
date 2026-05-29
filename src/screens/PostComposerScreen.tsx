@@ -1401,7 +1401,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             {linkPreview.imageUrl ? (
               <View style={s.linkPreviewImageWrap}>
                 <Image source={{ uri: linkPreview.imageUrl }} style={s.linkPreviewImage} resizeMode="cover" />
-                {linkPreview.isVideoEmbed ? (
+                {linkPreview.isVideoEmbed || linkPreview.isVideoLinkPreview ? (
                   <View style={s.linkPreviewPlay}>
                     <MaterialCommunityIcons name="play" size={22} color="#fff" />
                   </View>

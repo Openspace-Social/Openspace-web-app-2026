@@ -180,7 +180,13 @@ export function useNativePostInteractions({
   );
 
   const getPostReactionCount = useCallback((post: FeedPost) => {
-    const emojis = (post as any)?.emoji_counts || (post as any)?.reactions_emoji_counts || [];
+    const reactionsEmojiCounts = (post as any)?.reactions_emoji_counts;
+    const legacyEmojiCounts = (post as any)?.emoji_counts;
+    const emojis = Array.isArray(reactionsEmojiCounts)
+      ? reactionsEmojiCounts
+      : Array.isArray(legacyEmojiCounts)
+        ? legacyEmojiCounts
+        : [];
     if (!Array.isArray(emojis)) return 0;
     return emojis.reduce((sum: number, e: any) => sum + (e?.count || 0), 0);
   }, []);

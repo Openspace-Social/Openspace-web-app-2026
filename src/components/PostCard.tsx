@@ -1052,6 +1052,7 @@ function PostCard({
     siteName?: string;
     embedUrl?: string;
     isVideo: boolean;
+    isVideoLinkPreview?: boolean;
   } | null>(null);
   React.useEffect(() => {
     let cancelled = false;
@@ -2639,7 +2640,14 @@ function PostCard({
               onPress={() => onOpenLink(resolvedShortLinkPreview.url)}
             >
               {resolvedShortLinkPreview.imageUrl ? (
-                <Image source={{ uri: resolvedShortLinkPreview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+                <View style={styles.shortPostLinkPreviewImageWrap}>
+                  <Image source={{ uri: resolvedShortLinkPreview.imageUrl }} style={styles.shortPostLinkPreviewImage} resizeMode="cover" />
+                  {resolvedShortLinkPreview.isVideoLinkPreview ? (
+                    <View style={[styles.shortPostLinkPreviewPlayBadge, { backgroundColor: 'rgba(15,23,42,0.74)' }]}>
+                      <MaterialCommunityIcons name="play" size={20} color="#fff" />
+                    </View>
+                  ) : null}
+                </View>
               ) : null}
               <View style={styles.shortPostLinkPreviewMeta}>
                 {resolvedShortLinkPreview.siteName ? (
