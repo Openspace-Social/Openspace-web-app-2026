@@ -1008,6 +1008,12 @@ export type FollowingUserResult = {
   };
   is_following?: boolean;
   is_connected?: boolean;
+  // Source-publisher flag + nested source_profile.id, populated by
+  // FollowingsUserSerializer. Needed so the FollowPeopleScreen unfollow
+  // handler can target the source-specific endpoint when the row
+  // represents a Source (sources live in their own follow table).
+  is_source?: boolean;
+  source_profile?: { id?: number } | null;
 };
 
 export type BlockedUserResult = FollowingUserResult;

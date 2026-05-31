@@ -76,14 +76,31 @@ export function useNativePostInteractions({
   const [followActionLoadingByUsername, setFollowActionLoadingByUsername] = useState<Record<string, boolean>>({});
 
   const handleToggleFollow = useCallback(
-    async (username: string, currentlyFollowing: boolean) => {
+    async (
+      username: string,
+      currentlyFollowing: boolean,
+      isSource: boolean = false,
+      sourceProfileId?: number,
+    ) => {
       if (!token || !username) return;
       // Optimistic flip + loading flag.
       setFollowStateByUsername((prev) => ({ ...prev, [username]: !currentlyFollowing }));
       setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: true }));
       try {
-        if (currentlyFollowing) await api.unfollowUser(token, username);
-        else await api.followUser(token, username);
+        // Source-vs-human dispatch. Sources live in a separate follow
+        // table (UserSourceProfileFollow) than humans (Follow); see the
+        // architectural note in OpenSpace-API commit f47f8b3. If isSource
+        // is true and we have the source_profile.id, target the
+        // source-specific endpoints so the toggle writes the correct
+        // row. Fall back to the generic API otherwise — better to flip
+        // the wrong row than block the user's click on missing metadata.
+        if (isSource && sourceProfileId != null) {
+          if (currentlyFollowing) await api.unfollowSourceProfile(token, sourceProfileId);
+          else await api.bulkFollowSourceProfiles(token, [sourceProfileId]);
+        } else {
+          if (currentlyFollowing) await api.unfollowUser(token, username);
+          else await api.followUser(token, username);
+        }
       } catch (e: any) {
         // Roll back on failure.
         setFollowStateByUsername((prev) => ({ ...prev, [username]: currentlyFollowing }));

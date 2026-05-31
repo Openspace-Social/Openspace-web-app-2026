@@ -563,7 +563,16 @@ export type PostCardProps = {
   onEnsureReactionGroups: () => Promise<void>;
   onReactToComment: (postId: number, commentId: number, emojiId?: number) => void | Promise<void>;
   onReactToPostWithEmoji?: (post: FeedPost, emojiId?: number) => void | Promise<void>;
-  onToggleFollow: (username: string, currentlyFollowing: boolean) => void;
+  // Toggle accepts optional isSource + sourceProfileId so the handler can
+  // dispatch to the source-specific follow endpoints (sources live in a
+  // separate table from human follows). Old callers can omit the new
+  // args and still get the human-follow path.
+  onToggleFollow: (
+    username: string,
+    currentlyFollowing: boolean,
+    isSource?: boolean,
+    sourceProfileId?: number,
+  ) => void;
   onOpenPostDetail: (
     post: FeedPost,
     options?: {
@@ -1912,7 +1921,12 @@ function PostCard({
               style={[styles.followButton, { borderColor: c.border, backgroundColor: c.surface }]}
               activeOpacity={0.85}
               disabled={!!followActionLoadingByUsername[creatorUsername]}
-              onPress={() => onToggleFollow(creatorUsername, followStateByUsername[creatorUsername] ?? !!post.creator?.is_following)}
+              onPress={() => onToggleFollow(
+                creatorUsername,
+                followStateByUsername[creatorUsername] ?? !!post.creator?.is_following,
+                !!post.creator?.is_source,
+                post.creator?.source_profile?.id,
+              )}
             >
               <Text style={[styles.followButtonText, { color: c.textLink }]}>
                 {followActionLoadingByUsername[creatorUsername] ? '...' : t('home.followAction')}

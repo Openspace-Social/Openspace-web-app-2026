@@ -180,7 +180,18 @@ export default function FollowPeopleScreen({ mode, token, c, t, onNotice, onOpen
   async function handleUnfollow(username: string) {
     setActionLoadingUsername(username);
     try {
-      await api.unfollowUser(token, username);
+      // Sources are tracked in a separate table (UserSourceProfileFollow);
+      // look up the row in the visible list and dispatch to the right
+      // endpoint. Falls back to api.unfollowUser when the row isn't a
+      // source (the normal case) or when source_profile.id is missing.
+      const row =
+        searchResults?.find((p) => p.username === username) ??
+        people.find((p) => p.username === username);
+      if (row?.is_source && row.source_profile?.id != null) {
+        await api.unfollowSourceProfile(token, row.source_profile.id);
+      } else {
+        await api.unfollowUser(token, username);
+      }
       setPeople((prev) => prev.filter((p) => p.username !== username));
       if (searchResults) setSearchResults((prev) => prev!.filter((p) => p.username !== username));
     } catch (err: any) {

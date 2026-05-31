@@ -94,6 +94,11 @@ type PublicUser = {
   is_pending_connection_confirmation?: boolean;
   is_subscribed?: boolean;
   is_blocked?: boolean;
+  // Source-publisher flag + nested source_profile.id. Needed by the
+  // Follow-toggle handler to dispatch to the source-specific endpoints
+  // (sources are tracked in a separate table from human follows).
+  is_source?: boolean;
+  source_profile?: { id?: number } | null;
   connected_circles?: Array<{ id: number; name?: string; color?: string }> | null;
   federation_summary?: FederationSummary | null;
   // Privacy / visibility settings — only present on the authenticated
@@ -334,8 +339,23 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
     setFollowLoading(true);
     setUser((prev) => (prev ? { ...prev, is_following: !wasFollowing } : prev));
     try {
-      if (wasFollowing) await api.unfollowUser(token, username);
-      else await api.followUser(token, username);
+      // Source vs human dispatch — sources use a separate follow table
+      // (UserSourceProfileFollow) so the toggle has to hit a different
+      // endpoint. Without this, tapping Follow on a Source profile would
+      // write to the generic Follow table and the IsFollowingField
+      // serializer (which now reads from the source-specific table for
+      // sources) would still report `is_following=false`, leaving the UI
+      // stuck on "Follow" forever. See OpenSpace-API commit f47f8b3.
+      const isSource = !!user?.is_source;
+      const sourceProfileId = user?.source_profile?.id;
+
+      if (isSource && sourceProfileId != null) {
+        if (wasFollowing) await api.unfollowSourceProfile(token, sourceProfileId);
+        else await api.bulkFollowSourceProfiles(token, [sourceProfileId]);
+      } else {
+        if (wasFollowing) await api.unfollowUser(token, username);
+        else await api.followUser(token, username);
+      }
       await refreshUser();
     } catch (e: any) {
       setUser((prev) => (prev ? { ...prev, is_following: wasFollowing } : prev));
@@ -343,7 +363,7 @@ export default function PublicProfileScreenContainer({ usernameOverride }: { use
     } finally {
       setFollowLoading(false);
     }
-  }, [token, username, followLoading, user?.is_following, refreshUser, showToast, t]);
+  }, [token, username, followLoading, user?.is_following, user?.is_source, user?.source_profile?.id, refreshUser, showToast, t]);
 
   const handleToggleSubscribe = useCallback(async () => {
     if (!token || !username || subscribeLoading) return;
