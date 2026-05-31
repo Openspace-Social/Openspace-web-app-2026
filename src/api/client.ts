@@ -801,6 +801,15 @@ export type FeedPost = {
     // typed by a human. Drives the MirroredBadge render decision and
     // hides DM / react-as-source affordances on Source profiles.
     is_source?: boolean;
+    // Only present when is_source=true. Exposes the SourceProfile.id so
+    // a Follow tap can call the source-specific endpoint
+    // (api.bulkFollowSourceProfiles / api.unfollowSourceProfile) which
+    // keys by source_profile_id, not user_id. Keeps Source-follows in
+    // their own table (UserSourceProfileFollow), distinct from human
+    // follows (Follow), so source UX can evolve independently.
+    source_profile?: {
+      id?: number;
+    };
   };
   community?: {
     name?: string;

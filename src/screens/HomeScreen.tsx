@@ -2830,10 +2830,32 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
 
     setFollowActionLoadingByUsername((prev) => ({ ...prev, [username]: true }));
     try {
-      if (currentlyFollowing) {
-        await api.unfollowUser(token, username);
+      // Sources use a separate follow mechanism (UserSourceProfileFollow)
+      // from humans (Follow). Look up the creator from feed state to
+      // detect is_source + grab source_profile.id, then dispatch to the
+      // matching endpoint. Without this dispatch, a tap on a source
+      // post's Follow button would write/remove the wrong table and the
+      // UI's follow state would drift from reality.
+      const creatorInFeed =
+        feedPosts.find((p) => p.creator?.username === username)?.creator
+          ?? communityRoutePosts.find((p) => p.creator?.username === username)?.creator;
+      const isSource = !!creatorInFeed?.is_source;
+      const sourceProfileId = creatorInFeed?.source_profile?.id;
+
+      if (isSource && sourceProfileId != null) {
+        if (currentlyFollowing) {
+          await api.unfollowSourceProfile(token, sourceProfileId);
+        } else {
+          await api.bulkFollowSourceProfiles(token, [sourceProfileId]);
+        }
       } else {
-        await api.followUser(token, username);
+        // Human (or source where we couldn't resolve source_profile.id —
+        // fall back rather than block the click). Old behavior.
+        if (currentlyFollowing) {
+          await api.unfollowUser(token, username);
+        } else {
+          await api.followUser(token, username);
+        }
       }
 
       setFollowStateByUsername((prev) => ({ ...prev, [username]: !currentlyFollowing }));

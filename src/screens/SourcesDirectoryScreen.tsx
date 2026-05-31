@@ -83,12 +83,22 @@ export default function SourcesDirectoryScreen({
     if (!token || !entry.username) return;
     setFollowLoading((prev) => ({ ...prev, [entry.username!]: true }));
     try {
+      // This is the Sources directory — every entry is a Source by
+      // definition. Use the source-specific endpoints (keyed by
+      // source_profile.id) rather than the generic Follow API so the
+      // write lands in the right table (UserSourceProfileFollow). The
+      // generic Follow API still works against sources, but we keep
+      // the two follow systems distinct architecturally.
+      const sourceProfileId = entry.source_profile?.id;
+      if (sourceProfileId == null) {
+        throw new Error('Source profile id missing from directory entry — cannot toggle follow.');
+      }
       if (entry.is_following) {
-        await api.unfollowUser(token, entry.username);
+        await api.unfollowSourceProfile(token, sourceProfileId);
         setResults((prev) => prev.map((r) => r.id === entry.id ? { ...r, is_following: false } : r));
         onNotice(`Unfollowed @${entry.username}`);
       } else {
-        await api.followUser(token, entry.username);
+        await api.bulkFollowSourceProfiles(token, [sourceProfileId]);
         setResults((prev) => prev.map((r) => r.id === entry.id ? { ...r, is_following: true } : r));
         onNotice(`Following @${entry.username}`);
       }
