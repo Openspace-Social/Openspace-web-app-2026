@@ -237,16 +237,28 @@ export const postCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     minHeight: 86,
+    // Hard cap so the card can't blow up vertically if any ancestor in
+    // the layout chain ends up reporting an unbounded height. Without
+    // this, the image's `height: '100%'` resolves against an
+    // unconstrained parent and we've seen the card stretch to ~600px on
+    // tablet — visible as a tall narrow image strip on the left of the
+    // feed and a normal-sized meta column floating at its top-right.
+    maxHeight: 140,
   },
   shortPostLinkPreviewImage: {
     width: 132,
     minWidth: 132,
+    // Match the card's maxHeight cap, but use '100%' so the image still
+    // stretches to fill the card when the meta column is taller than
+    // the image's intrinsic display size.
     height: '100%',
+    maxHeight: 140,
   },
   shortPostLinkPreviewImageWrap: {
     width: 132,
     minWidth: 132,
     height: '100%',
+    maxHeight: 140,
     position: 'relative',
   },
   shortPostLinkPreviewPlayBadge: {

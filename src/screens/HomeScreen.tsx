@@ -686,6 +686,17 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   });
   // Ref so the interval callback always sees the current feed type
   const activeFeedRef = useRef<FeedType>('home');
+  // Synchronous re-entrancy guard for `loadMoreFeed`. Pure-state guards
+  // (`feedLoadingMore || !feedHasMore`) fail when onScroll fires rapidly
+  // because state updates are asynchronous — multiple invocations see
+  // `feedLoadingMore=false` before any `setFeedLoadingMore(true)` commits,
+  // so 2-3 parallel `getFeed` requests fire, each producing its own
+  // setFeedPosts + setFeedLoadingMore re-render cycle. Visible symptoms:
+  // the loading-more spinner flicker on/off, and the scroll position
+  // jumps back as contentSize grows/shrinks with the spinner toggling.
+  // A ref updates synchronously so the second concurrent caller sees
+  // `true` and bails immediately.
+  const loadMoreFeedInFlightRef = useRef(false);
   const [communityRoutePosts, setCommunityRoutePosts] = useState<FeedPost[]>([]);
   const [communityRouteLoading, setCommunityRouteLoading] = useState(false);
   const [communityRouteError, setCommunityRouteError] = useState('');
@@ -2421,7 +2432,11 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
   }
 
   async function loadMoreFeed() {
-    if (feedLoadingMore || !feedHasMore) return;
+    // Ref-based re-entrancy guard FIRST — see loadMoreFeedInFlightRef
+    // declaration for why the state-based guards below aren't enough.
+    if (loadMoreFeedInFlightRef.current) return;
+    if (!feedHasMore) return;
+    loadMoreFeedInFlightRef.current = true;
     setFeedLoadingMore(true);
     try {
       if (activeFeed === 'mastodon') {
@@ -2469,6 +2484,7 @@ export default function HomeScreen({ token, onLogout, onTokenRefresh, route, onN
       if (handleUnauthorized(errorValue)) return;
       // silently fail — user can keep scrolling to retry
     } finally {
+      loadMoreFeedInFlightRef.current = false;
       setFeedLoadingMore(false);
     }
   }

@@ -35,6 +35,29 @@ const ChromeVisibilityCtx = createContext<ChromeVisibilityValue | null>(null);
 
 const HIDE_AT_TOP_THRESHOLD_PX = 8;
 const DIRECTION_THRESHOLD_PX = 4;
+// Within this many pixels of the bottom of the scrollable content, suppress
+// chrome toggling entirely. Two reasons:
+//
+//  1. Pagination — FlatList's onEndReached fires here, the loader footer
+//     mounts (content height grows), and the user is mid-scroll. Tiny
+//     scroll deltas during this churn would otherwise flip the bottom
+//     tab bar in and out, producing the "the toolbar exposes before
+//     posts load and jumps the feed" user-reported flicker.
+//
+//  2. Overscroll bounce — when the user hits the absolute bottom of the
+//     feed, iOS rubber-bands the content briefly past contentSize, then
+//     snaps back. The snap-back produces a small UPWARD scroll delta
+//     (negative dy) that the directional check would otherwise treat as
+//     "user scrolled up → show chrome again". Suppressing inside this
+//     window keeps the bar in whatever state it was in just before the
+//     user reached the bottom — which is what they expect.
+//
+// 240 was chosen to match the FlatList's `onEndReachedThreshold={0.4}`
+// roughly: for a tablet viewport of ~700pt of feed area, 0.4 of that is
+// 280pt — close enough that the suppression window covers the same region
+// where pagination work is happening. On phones the math works out the
+// same way.
+const SUPPRESS_NEAR_BOTTOM_PX = 240;
 // `useNativeDriver: false` because the chrome components animate layout
 // props (negative margin to collapse their slot in the parent flexbox so
 // the feed's scroll viewport genuinely grows when chrome hides). Layout
@@ -90,6 +113,22 @@ export function useChromeScrollHandler() {
           Animated.spring(hidden, { ...SPRING_CONFIG, toValue: 0 }).start();
         }
         return;
+      }
+
+      // Suppress toggling near the bottom — pagination churn + iOS
+      // rubber-band bounce both produce spurious upward deltas there
+      // that would otherwise pop the tab bar back into view mid-load.
+      // See SUPPRESS_NEAR_BOTTOM_PX comment for the why. The chrome
+      // stays in whatever state it was in when the user entered the
+      // suppression window; it resumes normal direction-based toggling
+      // as soon as they scroll back above it.
+      const contentSize = event.nativeEvent.contentSize?.height ?? 0;
+      const layoutHeight = event.nativeEvent.layoutMeasurement?.height ?? 0;
+      if (contentSize > 0 && layoutHeight > 0) {
+        const distFromBottom = contentSize - layoutHeight - y;
+        if (distFromBottom < SUPPRESS_NEAR_BOTTOM_PX) {
+          return;
+        }
       }
 
       const dy = y - previous;
