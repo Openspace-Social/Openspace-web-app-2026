@@ -53,7 +53,11 @@ export default function SettingsScreenContainer() {
   const refreshAuthenticatedUser = useCallback(async () => {
     if (!token) return;
     try {
-      const user: any = await api.getAuthenticatedUser(token);
+      // Settings screen is the only navigation surface in the user-facing
+      // settings flow that reads federation_summary, so opt in here. The
+      // /api/auth/user/ default is null to keep cold app start fast — see
+      // OpenSpace-API commit 02f866d for the rationale.
+      const user: any = await api.getAuthenticatedUser(token, { includeFederationSummary: true });
       setCurrentEmail(user?.email ?? undefined);
       setHasUsablePassword(user?.has_usable_password !== false);
       setRequiresCurrentPassword(user?.requires_current_password !== false);

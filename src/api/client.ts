@@ -1820,10 +1820,21 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  getAuthenticatedUser: (token: string) =>
-    request('/api/auth/user/', {
+  getAuthenticatedUser: (
+    token: string,
+    options?: { includeFederationSummary?: boolean },
+  ) => {
+    // federation_summary is creator-dashboard data — server returns null
+    // by default because computing it requires an aggregate query path
+    // that takes 10-15s on users with many community memberships.
+    // Opt in only on the screens that actually render the federation card
+    // (see lazy fetch pattern in HomeScreen / MyProfileScreen) or on the
+    // dedicated federation dashboard surfaces.
+    const qs = options?.includeFederationSummary ? '?include_federation_summary=1' : '';
+    return request(`/api/auth/user/${qs}`, {
       headers: { Authorization: `Token ${token}` },
-    }),
+    });
+  },
 
   getUserByUsername: async (token: string, username: string) => {
     const encoded = encodeURIComponent(username);

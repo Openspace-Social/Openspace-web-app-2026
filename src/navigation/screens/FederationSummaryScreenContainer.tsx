@@ -32,7 +32,11 @@ export default function FederationSummaryScreenContainer() {
     setLoading(true);
     setError('');
     try {
-      const me: any = await api.getAuthenticatedUser(token);
+      // Dedicated federation dashboard — opt in to the federation summary
+      // server-side. The server returns null by default to keep the
+      // /api/auth/user/ endpoint sub-second on every other surface; this
+      // screen accepts the slower fetch as the cost of showing the data.
+      const me: any = await api.getAuthenticatedUser(token, { includeFederationSummary: true });
       setSummary(me?.federation_summary ?? null);
     } catch (e: any) {
       setError(
