@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   Modal,
   Platform,
@@ -34,31 +35,40 @@ type Props = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// On native the detail modal becomes a bottom-sheet drawer; the entire
-// content scrolls as one. On web we keep the inner-fixed-height ScrollViews.
+// The detail modal needs scrollable user lists on every platform. The
+// earlier native variant returned a plain <View> on the assumption that
+// the outer DetailScroller would scroll everything as one — but on iOS
+// that pattern wasn't actually scrolling reliably inside the Pressable
+// card, and users got "stuck" looking at the first few rows of a long
+// list. Capping the ListBox itself with a maxHeight ScrollView gives
+// each list section its own independent scroll surface, so a long list
+// always works regardless of what the outer wrapper does.
+//
+// Native gets a larger maxHeight than web because the bottom-sheet modal
+// has more vertical room than web's centered floating card.
 function ListBox({ webMaxHeight, children }: { webMaxHeight: number; children: React.ReactNode }) {
-  if (Platform.OS === 'web') {
-    return (
-      <ScrollView style={{ maxHeight: webMaxHeight }} contentContainerStyle={{ gap: 2 }}>
-        {children}
-      </ScrollView>
-    );
-  }
-  return <View style={{ gap: 2 }}>{children}</View>;
-}
-
-function DetailScroller({ children }: { children: React.ReactNode }) {
-  if (Platform.OS === 'web') return <>{children}</>;
+  const maxHeight = Platform.OS === 'web' ? webMaxHeight : Math.max(webMaxHeight, 320);
   return (
     <ScrollView
-      style={{ flex: 1, marginHorizontal: -20, marginBottom: -20 }}
-      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+      style={{ maxHeight }}
+      contentContainerStyle={{ gap: 2 }}
+      nestedScrollEnabled
       keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
     >
       {children}
     </ScrollView>
   );
+}
+
+function DetailScroller({ children }: { children: React.ReactNode }) {
+  // On native, each ListBox owns its own ScrollView (so users can scroll
+  // long member/follower lists). A second outer ScrollView here would
+  // swallow gestures on iOS and starve the inner ones — so this wrapper
+  // is a plain fragment on native. The fixed-height sections (header,
+  // section labels, search row) stay pinned, which is fine because they
+  // fit on screen even on the smallest supported phones. Web keeps its
+  // existing passthrough.
+  return <>{children}</>;
 }
 
 function UserAvatar({
@@ -427,10 +437,21 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView style={s.list} contentContainerStyle={s.listContent}>
-          {lists.map((list) => (
+        // FlatList replaces the previous ScrollView + lists.map pattern.
+        // The ScrollView had `flex: 1` and was inside a `flex: 1`
+        // container, which on some sized screens left it without a
+        // properly bounded height — the user saw their lists but
+        // couldn't scroll past what fit on the visible page. FlatList
+        // owns its own scroll, virtualizes long lists, and is the
+        // standard RN pattern for paginated/dynamic user lists.
+        <FlatList
+          style={s.list}
+          contentContainerStyle={s.listContent}
+          data={lists}
+          keyExtractor={(item) => String(item.id)}
+          showsVerticalScrollIndicator
+          renderItem={({ item: list }) => (
             <TouchableOpacity
-              key={list.id}
               style={[s.listRow, { borderColor: c.border }]}
               activeOpacity={0.75}
               onPress={() => void openDetail(list)}
@@ -461,8 +482,8 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                 <MaterialCommunityIcons name="trash-can-outline" size={16} color={c.textMuted} />
               </TouchableOpacity>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
 
       {/* ── Create Modal ─────────────────────────────────────────────────────── */}
@@ -527,10 +548,15 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
 
       {/* ── Detail Modal ──────────────────────────────────────────────────────── */}
       <Modal visible={detailOpen} transparent animationType="fade" onRequestClose={closeDetail}>
-        <Pressable style={s.overlay} onPress={closeDetail}>
-          <Pressable
+        {/* Sibling-overlay pattern: a separate Pressable above the card catches
+            background taps to close, while the card itself is a plain View.
+            Wrapping the card in a Pressable made the card's gesture handler
+            compete with inner ScrollViews on iOS, so drags on member rows
+            wouldn't scroll. */}
+        <View style={s.overlay}>
+          <Pressable style={{ flex: 1 }} onPress={closeDetail} />
+          <View
             style={[s.card, s.detailCard, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={() => {}}
           >
             {detailLoading ? (
               <ActivityIndicator color={c.primary} size="large" style={{ marginVertical: 40 }} />
@@ -757,8 +783,8 @@ export default function ListsScreen({ token, c, t, onNotice }: Props) {
                 </DetailScroller>
               </>
             ) : null}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {/* ── Delete Confirmation Modal ──────────────────────────────────────────── */}

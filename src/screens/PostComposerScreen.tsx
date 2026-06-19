@@ -32,6 +32,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Clipboard from 'expo-clipboard';
 import { normalizeImageForUpload } from '../utils/normalizeImage';
+import { uploadMediaDirect } from '../api/uploadMedia';
 import { validatePickedMedia, verifyUriExists } from '../utils/mediaValidation';
 import {
   api,
@@ -304,6 +305,14 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
   // file uploads in the correct orientation.
   const [rotations, setRotations] = useState<Record<string, 0 | 90 | 180 | 270>>({});
   const [submitting, setSubmitting] = useState(false);
+  // Per-media upload progress shown in the inline banner so the user has
+  // feedback while bytes stream up to S3. The compose button stays disabled
+  // (via `submitting`) for the whole submit() run.
+  const [uploadStatus, setUploadStatus] = useState<{
+    index: number;
+    total: number;
+    fraction: number;
+  } | null>(null);
 
   const [communities, setCommunities] = useState<SearchCommunityResult[]>([]);
   const [pinnedCommunities, setPinnedCommunities] = useState<SearchCommunityResult[]>([]);
@@ -719,9 +728,15 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       }
       const result = await Clipboard.getImageAsync({ format: 'jpeg' });
       if (!result?.data) return;
-      // Clipboard image is a data URL; expo-image-manipulator accepts it and
-      // outputs a file:// URI on disk, which is what FormData uploads need.
-      const normalized = await normalizeImageForUpload(result.data);
+      // Clipboard image is a data URL; expo-image-manipulator writes it to a
+      // file:// URI so the upload helper (which fetch()es the URI) can read
+      // it as a Blob. We pass compress=1.0 + maxDimension=0 so the only
+      // transform is the data-URL → file-URL conversion — no resize, no
+      // quality drop vs the clipboard contents.
+      const normalized = await normalizeImageForUpload(result.data, {
+        compress: 1.0,
+        maxDimension: 0,
+      });
       setImageUris((prev) => {
         if (prev.length >= MAX_IMAGES) return prev;
         return [...prev, normalized];
@@ -809,13 +824,89 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
         basePayload.shared_post_uuid = sharedPost.uuid;
       }
 
-      // Bake any user-chosen rotation AND normalize to JPEG. Even when
-      // there's no rotation, we still re-encode so HEIC/HEIF originals
-      // (iOS Photos default since iPhone 7) ship as JPEG the backend
-      // can decode without `pillow-heif`.
-      const rotateIfNeeded = async (uri: string): Promise<string> => {
-        const deg = rotations[uri] || 0;
-        return normalizeImageForUpload(uri, { rotate: deg as 0 | 90 | 180 | 270 });
+      // Upload every picked image/video via the new presigned direct-to-S3
+      // flow and return the list of media_tokens (in picker order). The
+      // original bytes are uploaded verbatim — no resize, no recompress —
+      // so quality is whatever the camera produced. The one exception is
+      // user-requested rotation: rotating in place is a lossy step because
+      // expo-image-manipulator has to re-encode, but we run it at q=1.0
+      // and skip the size cap so the only loss is the JPEG round-trip
+      // itself, not a further downscale.
+      //
+      // HEIC / HEIF originals are uploaded as-is — the server's
+      // SUPPORTED_MEDIA_MIMETYPES whitelist accepts them and Pillow reads
+      // them via pillow-heif. The legacy client-side HEIC→JPEG conversion
+      // pre-baked a quality loss that the server's ProcessedImageField was
+      // going to do anyway; skipping it gives the server the highest-
+      // fidelity source to work from.
+      const uploadAllMedia = async (): Promise<string[]> => {
+        const tokens: string[] = [];
+        if (composerVideo) {
+          setUploadStatus({ index: 0, total: 1, fraction: 0 });
+          const token_ = await uploadMediaDirect({
+            token,
+            uri: composerVideo.uri,
+            name: composerVideo.name,
+            contentType: composerVideo.mimeType,
+            onProgress: (p) => setUploadStatus({ index: 0, total: 1, fraction: p.fraction }),
+          });
+          tokens.push(token_);
+          return tokens;
+        }
+        for (let i = 0; i < imageUris.length; i += 1) {
+          const uri = imageUris[i];
+          const deg = rotations[uri] || 0;
+          let finalUri = uri;
+          let contentType: string | undefined;
+          let name: string;
+          if (deg !== 0) {
+            // User explicitly rotated; re-encode at max JPEG quality with
+            // no size cap so we lose only the JPEG round-trip, not any
+            // dimensions.
+            finalUri = await normalizeImageForUpload(uri, {
+              rotate: deg as 0 | 90 | 180 | 270,
+              compress: 1.0,
+              maxDimension: 0,
+            });
+            contentType = 'image/jpeg';
+            name = `post-image-${i + 1}.jpg`;
+          } else {
+            // No rotation → upload the original bytes verbatim. Derive
+            // content_type from the blob (RN/web both populate this) and
+            // fall back to image/jpeg, which the server accepts and
+            // matches what most camera rolls produce.
+            const probe = await fetch(uri);
+            const probeBlob = await probe.blob();
+            contentType = probeBlob.type && probeBlob.type !== 'application/octet-stream'
+              ? probeBlob.type
+              : 'image/jpeg';
+            // Keep the extension consistent with the type we declare so
+            // the server's ffmpeg / magic-from-file path agrees with the
+            // header.
+            const extByType: Record<string, string> = {
+              'image/jpeg': 'jpg',
+              'image/png': 'png',
+              'image/gif': 'gif',
+              'image/webp': 'webp',
+              'image/heic': 'heic',
+              'image/heif': 'heif',
+            };
+            const ext = extByType[contentType] || 'jpg';
+            name = `post-image-${i + 1}.${ext}`;
+          }
+          setUploadStatus({ index: i, total: imageUris.length, fraction: 0 });
+          const token_ = await uploadMediaDirect({
+            token,
+            uri: finalUri,
+            name,
+            contentType: contentType || 'image/jpeg',
+            onProgress: (p) => setUploadStatus({
+              index: i, total: imageUris.length, fraction: p.fraction,
+            }),
+          });
+          tokens.push(token_);
+        }
+        return tokens;
       };
 
       let finalized: FeedPost | FederatedPublishResult | null = null;
@@ -876,66 +967,23 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             ? await api.createPost(token, payload)
             : await api.createPostWithFederation(token, payload);
         }
-      } else if (composerVideo) {
-        // Video upload — single-call createPost with the `video` payload
-        // field. Backend normalizes the filename extension (e.g. .mpg4 →
-        // .mp4) on its side, so we just forward the picker's metadata.
-        basePayload.text = trimmed;
-        basePayload.video = {
-          uri: composerVideo.uri,
-          type: composerVideo.mimeType,
-          name: composerVideo.name,
-        } as any;
-        basePayload.publish_destination = publishDestination;
-        basePayload.federated_linked_account_id = selectedFederatedAccountId || undefined;
-        finalized = publishDestination === 'openbook'
-          ? await api.createPost(token, basePayload)
-          : await api.createPostWithFederation(token, basePayload);
-      } else if (imageUris.length <= 1) {
-        // Fast path — single (or no) image: createPost handles it directly.
-        const single = imageUris[0];
-        if (single) {
-          const finalUri = await rotateIfNeeded(single);
-          basePayload.image = { uri: finalUri, type: 'image/jpeg', name: 'post-image.jpg' } as any;
-        }
-        basePayload.text = trimmed;
-        basePayload.publish_destination = publishDestination;
-        basePayload.federated_linked_account_id = selectedFederatedAccountId || undefined;
-        finalized = publishDestination === 'openbook'
-          ? await api.createPost(token, basePayload)
-          : await api.createPostWithFederation(token, basePayload);
       } else {
-        // Multi-image short post — create as draft, attach each image, publish.
-        const draft = await api.createPost(token, { ...basePayload, text: trimmed, is_draft: true });
-        const draftUuid = (draft as any)?.uuid as string | undefined;
-        if (!draftUuid) throw new Error('Draft post has no uuid');
-        // If any image attach (or the publish) fails we own the orphan
-        // draft. Roll it back so the user retries from a clean state
-        // instead of accumulating invisible drafts that only the daily
-        // flush job (~24h) cleans up.
-        try {
-          for (let i = 0; i < imageUris.length; i += 1) {
-            const uri = imageUris[i];
-            const finalUri = await rotateIfNeeded(uri);
-            await api.addPostMedia(token, draftUuid, {
-              file: { uri: finalUri, type: 'image/jpeg', name: `post-image-${i + 1}.jpg` } as any,
-              order: i,
-            });
-          }
-          finalized = publishDestination === 'openbook'
-            ? await api.publishPost(token, draftUuid)
-            : await api.publishPostWithFederation(token, draftUuid, {
-                publish_destination: publishDestination,
-                federated_linked_account_id: selectedFederatedAccountId || undefined,
-              });
-        } catch (uploadErr) {
-          try {
-            await api.deletePost(token, draftUuid);
-          } catch (cleanupErr) {
-            console.warn('[ComposerPublish] Orphan draft cleanup failed', cleanupErr);
-          }
-          throw uploadErr;
+        // Short post with optional video or 0..N images. All media flows
+        // through the new presigned direct-to-S3 path (bytes skip
+        // Cloudflare → no 524s on large uploads). Multiple images, a
+        // single image, and a video collapse into the same code path —
+        // they're all just `media_tokens: [...]` on the post-create call.
+        const tokens = await uploadAllMedia();
+        setUploadStatus(null);
+        basePayload.text = trimmed;
+        if (tokens.length > 0) {
+          basePayload.media_tokens = tokens;
         }
+        basePayload.publish_destination = publishDestination;
+        basePayload.federated_linked_account_id = selectedFederatedAccountId || undefined;
+        finalized = publishDestination === 'openbook'
+          ? await api.createPost(token, basePayload)
+          : await api.createPostWithFederation(token, basePayload);
       }
 
       const localPost = finalized && 'publish_destination' in (finalized as any)
@@ -987,6 +1035,7 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
       onError(msg);
     } finally {
       setSubmitting(false);
+      setUploadStatus(null);
     }
   }, [canPost, overLimit, publishDestination, selectedFederatedAccountId, circles.length, communities.length, text, mode, imageUris, composerVideo, rotations, selectedCircleId, selectedCommunities, longHtml, longPlain, longBlocks, longTitle, longDraftUuid, sharedPost, token, onPosted, onNotice, onError, onClose, t]);
 
@@ -1139,6 +1188,23 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
           <TouchableOpacity onPress={() => setInlineError('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <MaterialCommunityIcons name="close" size={16} color={c.errorText} />
           </TouchableOpacity>
+        </View>
+      ) : uploadStatus ? (
+        <View style={[s.errorBanner, { backgroundColor: `${c.primary}1a`, borderColor: c.primary }]}>
+          <ActivityIndicator size="small" color={c.primary} />
+          <Text style={[s.errorBannerText, { color: c.primary }]} numberOfLines={1}>
+            {uploadStatus.total > 1
+              ? t('home.composerUploadingMulti', {
+                  index: uploadStatus.index + 1,
+                  total: uploadStatus.total,
+                  percent: Math.round(uploadStatus.fraction * 100),
+                  defaultValue: `Uploading ${uploadStatus.index + 1} of ${uploadStatus.total} — ${Math.round(uploadStatus.fraction * 100)}%`,
+                })
+              : t('home.composerUploadingSingle', {
+                  percent: Math.round(uploadStatus.fraction * 100),
+                  defaultValue: `Uploading — ${Math.round(uploadStatus.fraction * 100)}%`,
+                })}
+          </Text>
         </View>
       ) : null}
 

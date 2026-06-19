@@ -654,6 +654,11 @@ export type CreatePostPayload = {
   long_text_version?: number;
   image?: Blob | null;
   video?: Blob | null;
+  // Direct-to-S3 presigned-upload tokens returned by
+  // /api/media/upload-complete/. Mutually exclusive with image/video on
+  // the server side. Prefer this over the legacy multipart image/video
+  // fields — bytes skip Cloudflare so 524 timeouts can't fire.
+  media_tokens?: string[];
   circle_id?: number[];
   community_name?: string;
   community_names?: string[];
@@ -2547,6 +2552,18 @@ export const api = {
       form.append('video', videoFile, videoFile.name || 'post-video.mp4');
     }
 
+    // Direct-to-S3 presigned-upload tokens. The server treats each token
+    // as a separately-uploaded piece of media to attach in-order. Sent
+    // alongside the same multipart body as everything else so we don't
+    // need a separate request path for text+tokens posts.
+    if (Array.isArray(payload.media_tokens)) {
+      payload.media_tokens
+        .filter((tok): tok is string => typeof tok === 'string' && tok.length > 0)
+        .forEach((tok) => {
+          form.append('media_tokens', tok);
+        });
+    }
+
     if (typeof payload.shared_post_uuid === 'string' && payload.shared_post_uuid.trim()) {
       form.append('shared_post_uuid', payload.shared_post_uuid.trim());
     }
@@ -2590,6 +2607,11 @@ export const api = {
     if (payload.video) {
       const videoFile = payload.video as Blob & { name?: string };
       form.append('video', videoFile, videoFile.name || 'post-video.mp4');
+    }
+    if (Array.isArray(payload.media_tokens)) {
+      payload.media_tokens
+        .filter((tok): tok is string => typeof tok === 'string' && tok.length > 0)
+        .forEach((tok) => form.append('media_tokens', tok));
     }
 
     return request<unknown>('/api/posts/', {

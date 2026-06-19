@@ -71,19 +71,13 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
     if (!isFocused) resetChromeVisible();
   }, [isFocused, resetChromeVisible]);
 
-  // react-navigation reserves `tabBarHeight` of paddingBottom on every
-  // tab screen so the bar doesn't cover content. `useBottomTabBarHeight`
-  // returns the visible bar height; on iPhones with a home indicator
-  // the wrapping SafeAreaView reserves a *further* `insets.bottom` strip
-  // underneath that the hook doesn't include. Add both so the feed
-  // extends all the way to the screen edge when chrome hides.
-  const tabBarHeight = useBottomTabBarHeight();
-  const safeBottom = useSafeAreaInsets().bottom;
-  const totalBottomReservation = tabBarHeight + safeBottom;
-  const feedExtendBottom = chromeHidden.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -totalBottomReservation],
-  });
+  // Note: the chrome bars no longer affect the feed's layout. They use
+  // translateY (see FeedHeader + CustomTabBar) so the feed area stays a
+  // constant size — there's no point growing it when chrome hides. The
+  // hooks below are kept (and noop'd into the JSX as the same flex:1
+  // wrapper) because tooling elsewhere references `chromeHidden`. If we
+  // ever want to add chrome-aware bottom padding for the feed contents
+  // themselves, this is the right anchor for it.
 
   const {
     posts, loading, loadingMore, refreshing, hasMore, error, refresh, loadMore,
@@ -360,7 +354,7 @@ export default function FeedScreenContainer({ feedType: feedTypeProp }: Props = 
         onClose={closeMovePostCommunities}
         onSave={() => void submitMovePostCommunities()}
       />
-      <Animated.View style={{ flex: 1, marginBottom: feedExtendBottom }}>
+      <Animated.View style={{ flex: 1 }}>
       <ThemedFlatList
         ref={flatListRef}
         scrollsToTop={isFocused}

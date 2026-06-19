@@ -1292,14 +1292,19 @@ function PostCard({
       | { text: string; isLink: false; isMention: false; isHashtag: true; tag: string };
 
     const segments: Segment[] = [];
-    // Combined regex: URLs, @mentions, #hashtags. Local @mention allows
-    // internal dots — `@user.name`, `@a.b.c` — so usernames with dots
-    // (server-side `username_characters_validator` allows them) tokenise
-    // as a single mention rather than truncating at the first dot and
-    // leaving `.name` as plain text. The `(?:\.[A-Za-z0-9_]+)*` tail
-    // requires alphanumeric/underscore on both sides of every dot, so a
-    // trailing sentence dot (`Hi @bob.`) doesn't get gobbled into the link.
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
+    // Combined regex: URLs, federated @mentions, EMAIL addresses, local
+    // @mentions, #hashtags. Local @mention allows internal dots —
+    // `@user.name`, `@a.b.c` — so usernames with dots tokenise as a
+    // single mention rather than truncating at the first dot.
+    //
+    // Email pattern sits BEFORE the local @mention rule on purpose.
+    // Without it, `john.doe@example.com` would match the local @mention
+    // rule on `@example.com` and render that half as a (fake) mention
+    // link, leaving "john.doe" as plain text — the user-reported bug.
+    // The federated mention `@user@host.com` still wins via order
+    // because it requires a leading `@`, which the email pattern
+    // doesn't have.
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -1320,16 +1325,22 @@ function PostCard({
           segments.push({ text: trailing, isLink: false, isMention: false, isHashtag: false });
         }
       } else if (match[2]) {
-        // @mention
-        const username = match[2].slice(1); // strip @
+        // Federated @mention (`@user@host.com`).
+        const username = match[2].slice(1); // strip leading @
         segments.push({ text: match[2], isLink: false, isMention: true, username, isHashtag: false });
       } else if (match[3]) {
-        const username = match[3].slice(1); // strip @
-        segments.push({ text: match[3], isLink: false, isMention: true, username, isHashtag: false });
+        // Email — render as plain text. Not tappable as a mailto: link
+        // yet; the immediate fix is just to stop the local-@mention
+        // rule from chopping `john.doe@example.com` in half.
+        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: false });
       } else if (match[4]) {
+        // Local @mention.
+        const username = match[4].slice(1); // strip @
+        segments.push({ text: match[4], isLink: false, isMention: true, username, isHashtag: false });
+      } else if (match[5]) {
         // #hashtag
-        const tag = match[4].slice(1); // strip #
-        segments.push({ text: match[4], isLink: false, isMention: false, isHashtag: true, tag });
+        const tag = match[5].slice(1); // strip #
+        segments.push({ text: match[5], isLink: false, isMention: false, isHashtag: true, tag });
       }
 
       lastIndex = start + match[0].length;
@@ -2172,7 +2183,12 @@ function PostCard({
                 }
 
                 return (
-                  <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
+                  // `selectable` enables long-press → native Copy menu on
+                  // iOS / Android (and standard click-drag selection on
+                  // web). Doesn't conflict with the tap-to-navigate
+                  // behaviour on mention/hashtag/link spans because the
+                  // OS handles the two gestures distinctly (tap vs hold).
+                  <Text selectable key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
                     {extractTextSegmentsWithLinks(block.text || '').map((seg, segIdx) => {
                       if (seg.isLink) return (
                         <Text key={segIdx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>
@@ -2422,7 +2438,7 @@ function PostCard({
               }
 
               return (
-                <Text key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
+                <Text selectable key={`${post.id}-lp-paragraph-${idx}`} style={[styles.feedText, styles.longPostParagraph, { color: c.textSecondary }]}>
                   {extractTextSegmentsWithLinks(block.text || '').map((seg, segIdx) => {
                     if (seg.isLink) return (
                       <Text key={segIdx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>
@@ -2451,7 +2467,7 @@ function PostCard({
       ) : postText ? (
         Platform.OS !== 'web' ? (
         <TouchableOpacity activeOpacity={0.92} onPress={openPostDetailDefault} style={styles.feedTextWrap}>
-          <Text style={[styles.feedText, { color: c.textSecondary }]}> 
+          <Text selectable style={[styles.feedText, { color: c.textSecondary }]}>
             {extractTextSegmentsWithLinks(
               expandedPostIds[post.id]
                 ? postText
@@ -2507,7 +2523,7 @@ function PostCard({
         </TouchableOpacity>
         ) : (
         <View style={styles.feedTextWrap}>
-          <Text style={[styles.feedText, { color: c.textSecondary }]}> 
+          <Text selectable style={[styles.feedText, { color: c.textSecondary }]}>
             {extractTextSegmentsWithLinks(
               expandedPostIds[post.id]
                 ? postText
@@ -3241,7 +3257,7 @@ function PostCard({
                     </View>
                   ) : (
                     <>
-                      <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>
+                      <Text selectable style={[styles.detailCommentText, { color: c.textSecondary }]}>
                         {extractTextSegmentsWithLinks(comment.text || '').map((seg, idx) => {
                           if (seg.isLink) return <Text key={idx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>;
                           if (seg.isMention) return <Text key={idx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;
@@ -3450,7 +3466,7 @@ function PostCard({
                             </View>
                           ) : (
                             <>
-                              <Text style={[styles.detailCommentText, { color: c.textSecondary }]}>
+                              <Text selectable style={[styles.detailCommentText, { color: c.textSecondary }]}>
                                 {extractTextSegmentsWithLinks(reply.text || '').map((seg, idx) => {
                                   if (seg.isLink) return <Text key={idx} onPress={() => onOpenLink(seg.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>{seg.text}</Text>;
                                   if (seg.isMention) return <Text key={idx} onPress={() => onNavigateProfile(seg.username)} style={{ color: c.primary ?? c.textLink, fontWeight: '700' }}>{seg.text}</Text>;

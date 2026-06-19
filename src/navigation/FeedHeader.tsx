@@ -43,12 +43,19 @@ export default function FeedHeader() {
     navigation.getParent()?.navigate('ProfileTab' as never, { screen: 'Settings' } as never);
   };
 
-  // Negative top-margin pulls the header up *out of layout* as `hidden`
-  // ramps 0 → 1 — so the screen below grows into the freed slot instead
-  // of leaving a transparent gap where the header used to be. Until we
-  // have a measured height, keep marginTop at 0 so the header doesn't
-  // start collapsed on first paint.
-  const marginTop = headerHeight > 0
+  // Translate the header visually upward instead of collapsing it out of
+  // the layout flow. The previous `marginTop` approach grew the feed
+  // below as the header animated away — which produced a visible "jerk"
+  // because RN auto-adjusts scroll position to keep content visible when
+  // contentSize changes mid-frame. translateY moves the bar across pixels
+  // without touching layout, so the feed area below stays exactly the
+  // same size and same scroll offset throughout the hide/show animation.
+  // The header still takes its slot at the top of the layout flow — when
+  // it's "hidden" (translateY: -headerHeight), that slot is empty but
+  // visually overlaid by the feed's top content. Since the feed already
+  // renders against the surface color, the user just sees their feed
+  // continuing upward instead of an empty strip.
+  const translateY = headerHeight > 0
     ? hidden.interpolate({ inputRange: [0, 1], outputRange: [0, -headerHeight] })
     : 0;
 
@@ -60,7 +67,11 @@ export default function FeedHeader() {
         {
           backgroundColor: c.surface,
           borderBottomColor: c.border,
-          marginTop,
+          // Header sits on top of feed content during transition by way of
+          // a small zIndex bump; otherwise siblings could paint over the
+          // animating bar mid-frame.
+          zIndex: 10,
+          transform: [{ translateY }],
         },
       ]}
     >

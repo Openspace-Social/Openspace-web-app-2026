@@ -83,8 +83,17 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     const next = e.nativeEvent.layout.height;
     if (next > 0 && next !== tabBarHeight) setTabBarHeight(next);
   }, [tabBarHeight]);
-  const marginBottom = tabBarHeight > 0
-    ? hidden.interpolate({ inputRange: [0, 1], outputRange: [0, -tabBarHeight] })
+  // Translate downward off-screen on hide instead of negative-margin'ing
+  // the slot out of the parent flexbox. The previous marginBottom approach
+  // grew the feed above as the bar animated away, and the resulting layout
+  // reflow produced a visible "jerk" because RN auto-adjusts scroll
+  // position to keep content visible when contentSize changes mid-frame.
+  // translateY moves the bar across pixels without touching layout — the
+  // feed area stays exactly the same size, scroll position is untouched,
+  // and the user sees the bar glide off / on like a separate overlay
+  // layer above the feed.
+  const translateY = tabBarHeight > 0
+    ? hidden.interpolate({ inputRange: [0, 1], outputRange: [0, tabBarHeight] })
     : 0;
 
   const goTo = useCallback(
@@ -119,7 +128,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   // react-navigation's bottom-tabs already wraps the custom tabBar in a
   // safe-area-aware container, so we don't add paddingBottom here.
   return (
-    <Animated.View onLayout={handleLayout} style={{ marginBottom }}>
+    <Animated.View onLayout={handleLayout} style={{ transform: [{ translateY }] }}>
       <BottomTabBar
         c={theme.colors}
         t={t}

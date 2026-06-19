@@ -29,9 +29,12 @@ type Props = {
   onPressCommunity?: (name: string) => void;
 };
 
-// URLs first (so a c/ or @ inside a URL is consumed by it), then @mentions,
-// #hashtags, and c/community references. The c/ token requires a word
-// boundary before it so "abc/def" / paths don't false-positive.
+// URLs first (so a c/ or @ inside a URL is consumed by it), then federated
+// mentions (`@user@host.com`), then plain email addresses (so the @-name
+// regex doesn't snip off the local-part and treat `@example.com` as a
+// fake mention), then local @mentions, #hashtags, and c/community refs.
+// The c/ token requires a word boundary before it so "abc/def" / paths
+// don't false-positive.
 //
 // Local @mention pattern allows internal dots — `@user.name`, `@a.b.c` —
 // so usernames with dots (which the server-side username_characters_validator
@@ -39,7 +42,15 @@ type Props = {
 // and leaving `.name` as plain text. The `(?:\.[A-Za-z0-9_]+)*` tail
 // requires alphanumeric/underscore on both sides of every dot, so a
 // trailing sentence dot (`Hi @bob.`) doesn't get gobbled into the link.
-const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
+//
+// Email pattern is standard RFC-5322ish: local-part allows
+// alnum/._%+-, then @, then domain labels separated by `.` ending in a
+// 2+ letter TLD. Sitting AFTER the federated-mention rule (which starts
+// with `@`) means `@user@host.com` is still recognised as a federated
+// mention; ordinary `user@host.com` falls through to here and tokenises
+// as ONE plain-text span instead of being chopped in half by the local
+// @mention rule.
+const TOKEN_REGEX = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)|(\bc\/[A-Za-z0-9_]+)/gi;
 
 type Segment =
   | { kind: 'text'; text: string }
@@ -68,14 +79,21 @@ function tokenize(text: string): Segment[] {
       segments.push({ kind: 'link', text: trimmedUrl, url: trimmedUrl });
       if (trailing) segments.push({ kind: 'text', text: trailing });
     } else if (match[2]) {
+      // Federated mention `@user@host.com`.
       segments.push({ kind: 'mention', text: match[2], username: match[2].slice(1) });
     } else if (match[3]) {
-      segments.push({ kind: 'mention', text: match[3], username: match[3].slice(1) });
+      // Email — render as plain text. We deliberately don't make these
+      // tappable (mailto:) yet; the immediate fix is just to STOP the
+      // local-@mention rule from chopping the address in half.
+      segments.push({ kind: 'text', text: match[3] });
     } else if (match[4]) {
-      segments.push({ kind: 'hashtag', text: match[4], tag: match[4].slice(1) });
+      // Local @mention.
+      segments.push({ kind: 'mention', text: match[4], username: match[4].slice(1) });
     } else if (match[5]) {
+      segments.push({ kind: 'hashtag', text: match[5], tag: match[5].slice(1) });
+    } else if (match[6]) {
       // Strip the "c/" prefix (2 chars) to get the community name.
-      segments.push({ kind: 'community', text: match[5], name: match[5].slice(2) });
+      segments.push({ kind: 'community', text: match[6], name: match[6].slice(2) });
     }
 
     lastIndex = start + match[0].length;

@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -649,6 +650,34 @@ export default function PostDetailModal({
   // (instead of side-by-side) so comments aren't squeezed to 42% of width.
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const isNarrow = viewportWidth < 720;
+
+  // Keyboard height tracking — needed to constrain the comment/reply
+  // composer's maxHeight so its Cancel/Reply buttons aren't covered by
+  // the on-screen keyboard on smaller iPhones. The earlier composer
+  // sizing was a fixed `viewportHeight * 0.70`, which on iPhone SE
+  // (568pt) computes to 397pt — but the keyboard takes ~216pt, leaving
+  // only ~352pt of visible area above it. The composer would render
+  // taller than that space, and its bottom (where the buttons live)
+  // would sit behind the keyboard. Tracking the actual keyboard frame
+  // and clamping maxHeight to `viewport - keyboard - safe area top -
+  // margin` keeps the buttons reachable on every screen size.
+  const [keyboardHeight, setKeyboardHeight] = React.useState(0);
+  React.useEffect(() => {
+    // iOS fires Will events ~250ms before the keyboard finishes its
+    // animation; using those (instead of Did) gives the composer time
+    // to resize WITH the keyboard rather than after it. Android only
+    // exposes Did events reliably.
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) => {
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Drives the comments-column height animation on narrow viewports. We
   // animate an explicit pixel height (rather than letting flex resize)
@@ -1321,9 +1350,17 @@ export default function PostDetailModal({
           // GIF icons). Result: KAV's auto-padding is short by exactly
           // that amount and the Cancel / Reply buttons at the bottom of
           // the composer get half-covered by the toolbar. Adding a
-          // platform-specific vertical offset compensates. iOS doesn't
-          // need this — its keyboard frame includes the suggestions bar.
-          keyboardVerticalOffset={Platform.OS === 'android' ? 48 : 0}
+          // platform-specific vertical offset compensates.
+          //
+          // iOS used to include the predictive-text suggestions bar in
+          // its endCoordinates.height — no offset was needed. iOS 17+
+          // (verified on iPhone 15 Pro / iOS 26.4) reports the QWERTY
+          // frame ONLY, leaving the ~36pt suggestions bar uncovered by
+          // the KAV padding. Without an offset, Cancel/Reply land half
+          // behind that bar (the symptom this fix addresses). 40 is a
+          // touch over 36 to give the buttons a sliver of breathing
+          // room above the predictive row.
+          keyboardVerticalOffset={Platform.OS === 'android' ? 48 : 40}
         >
           <View
             style={{
@@ -1351,6 +1388,18 @@ export default function PostDetailModal({
               // hidden on tall phones; pushing to 0.88/0.95 went too far
               // the other way (top of sheet clipped off-screen).
               // Web composer keeps its bounded floating-card look unchanged.
+              //
+              // We intentionally DO NOT cap maxHeight by `viewportHeight
+              // - keyboardHeight` here. An earlier attempt did, and on
+              // small phones the resulting card was shorter than its
+              // content needs (static items + TextInput's minHeight of
+              // 160 + reply preview ~80 ≈ 500pt) — the inner content
+              // overflowed the card and the Cancel/Reply buttons got
+              // CLIPPED at the bottom edge, totally hidden. The right
+              // fix lives below: the TextInput's minHeight drops on
+              // short viewports so the content fits inside the 0.70
+              // ratio, and KAV's behavior='padding' pushes the whole
+              // card up above the keyboard from there.
               minHeight: isWebComposer ? undefined : viewportHeight * 0.55,
               maxHeight: isWebComposer ? Math.min(viewportHeight * 0.78, 560) : viewportHeight * 0.70,
               shadowColor: '#000',
@@ -1475,7 +1524,18 @@ export default function PostDetailModal({
               style={[
                 styles.commentInput,
                 {
-                  minHeight: isWebComposer ? 120 : 160,
+                  // TextInput is the only flexible-height child in the
+                  // composer — when content has to fit in tighter space
+                  // (small phone + keyboard up + optional reply preview),
+                  // it's the right thing to shrink. A fixed 160pt would
+                  // force everything else (Cancel/Reply buttons) past the
+                  // card's maxHeight and they'd get clipped. Halve the
+                  // minHeight on short viewports so 4.7"/5.4" iPhones get
+                  // a usable composer with buttons reliably above the
+                  // keyboard. Bigger phones keep the comfortable 160.
+                  minHeight: isWebComposer
+                    ? 120
+                    : (viewportHeight < 760 ? 80 : 160),
                   maxHeight: isWebComposer ? 220 : undefined,
                   textAlignVertical: 'top',
                   borderColor: c.inputBorder,
@@ -1874,10 +1934,11 @@ export default function PostDetailModal({
 
     const segments: Segment[] = [];
     // Local @mention pattern allows internal dots — see PostCard.tsx for
-    // the full rationale. `(?:\.[A-Za-z0-9_]+)*` requires alphanumeric on
-    // both sides of every dot so trailing sentence punctuation isn't
-    // gobbled into the username link.
-    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
+    // the full rationale. Email pattern (group 3) sits BEFORE the local
+    // @mention rule so addresses like `john.doe@example.com` tokenise as
+    // a single plain-text span; without it, the local @mention rule
+    // would match `@example.com` and render an email as a fake mention.
+    const tokenRegex = /(https?:\/\/[^\s]+)|(@[A-Za-z0-9_.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})|(@[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|(#[A-Za-z]\w*)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null = null;
 
@@ -1895,11 +1956,17 @@ export default function PostDetailModal({
         segments.push({ text: trimmedUrl, isLink: true, url: trimmedUrl, isMention: false, isHashtag: false });
         if (trailing) segments.push({ text: trailing, isLink: false, isMention: false, isHashtag: false });
       } else if (match[2]) {
+        // Federated @mention (`@user@host.com`).
         segments.push({ text: match[2], isLink: false, isMention: true, username: match[2].slice(1), isHashtag: false });
       } else if (match[3]) {
-        segments.push({ text: match[3], isLink: false, isMention: true, username: match[3].slice(1), isHashtag: false });
+        // Email — plain text. Not tappable as mailto: yet; the immediate
+        // fix is just to stop the @mention rule from snipping it in half.
+        segments.push({ text: match[3], isLink: false, isMention: false, isHashtag: false });
       } else if (match[4]) {
-        segments.push({ text: match[4], isLink: false, isMention: false, isHashtag: true, tag: match[4].slice(1) });
+        // Local @mention.
+        segments.push({ text: match[4], isLink: false, isMention: true, username: match[4].slice(1), isHashtag: false });
+      } else if (match[5]) {
+        segments.push({ text: match[5], isLink: false, isMention: false, isHashtag: true, tag: match[5].slice(1) });
       }
 
       lastIndex = start + match[0].length;
@@ -1914,7 +1981,11 @@ export default function PostDetailModal({
 
   function renderLinkedText(text: string, keyPrefix: string, textStyle?: any) {
     return (
-      <Text key={keyPrefix} style={textStyle}>
+      // `selectable` enables long-press → native Copy menu on iOS /
+      // Android and standard click-drag selection on web. Doesn't fight
+      // with the tap-to-navigate behaviour on mention/hashtag/link
+      // spans — the OS treats tap and hold as distinct gestures.
+      <Text key={keyPrefix} selectable style={textStyle}>
         {extractTextSegmentsWithLinks(text).map((segment, idx) => {
           if (segment.isLink) return (
             <Text key={`${keyPrefix}-${idx}`} onPress={() => onOpenLink(segment.url)} style={{ color: c.textLink, textDecorationLine: 'underline' } as any}>

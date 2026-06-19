@@ -52,6 +52,15 @@ export function useFeedData(token: string | null, feed: FeedType): UseFeedDataRe
   const [error, setError] = useState('');
   // Guard against stale responses when the caller rapidly switches feeds.
   const activeFetchRef = useRef(0);
+  // Synchronous re-entrancy guard for loadMore. The state-based check
+  // (`loadingMore || !hasMore`) reads from React state, which is async —
+  // when FlatList's onEndReached fires rapidly during pagination, multiple
+  // invocations pass the check before any `setLoadingMore(true)` commits,
+  // each kicks off its own getFeed + setLoadingMore cycle, and the
+  // ActivityIndicator footer flickers on/off as the parallel requests
+  // complete in different orders. A ref updates synchronously so the
+  // second concurrent caller sees `true` and bails.
+  const loadMoreInFlightRef = useRef(false);
 
   const loadFirstPage = useCallback(
     async (silent = false) => {
@@ -104,7 +113,13 @@ export function useFeedData(token: string | null, feed: FeedType): UseFeedDataRe
   }, [refreshing, loadFirstPage]);
 
   const loadMore = useCallback(async () => {
-    if (!token || loadingMore || !hasMore || nextMaxId === undefined) return;
+    // Ref-based re-entrancy guard FIRST (see loadMoreInFlightRef
+    // declaration). The state-based checks below remain as belt-and-
+    // suspenders for the "feedHas no more posts" / "no cursor yet"
+    // exit paths.
+    if (loadMoreInFlightRef.current) return;
+    if (!token || !hasMore || nextMaxId === undefined) return;
+    loadMoreInFlightRef.current = true;
     setLoadingMore(true);
     try {
       const more = await api.getFeed(token, feed, FEED_PAGE_SIZE, nextMaxId);
@@ -123,9 +138,10 @@ export function useFeedData(token: string | null, feed: FeedType): UseFeedDataRe
     } catch {
       // Silent — user can keep scrolling to retry.
     } finally {
+      loadMoreInFlightRef.current = false;
       setLoadingMore(false);
     }
-  }, [token, feed, loadingMore, hasMore, nextMaxId]);
+  }, [token, feed, hasMore, nextMaxId]);
 
   // ── Reactions ───────────────────────────────────────────────────────────
   const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>([]);
