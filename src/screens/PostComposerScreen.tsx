@@ -877,22 +877,42 @@ export default function PostComposerScreen({ token, c, t, sharedPost, onClose, o
             // matches what most camera rolls produce.
             const probe = await fetch(uri);
             const probeBlob = await probe.blob();
-            contentType = probeBlob.type && probeBlob.type !== 'application/octet-stream'
+            const detectedType = probeBlob.type && probeBlob.type !== 'application/octet-stream'
               ? probeBlob.type
               : 'image/jpeg';
-            // Keep the extension consistent with the type we declare so
-            // the server's ffmpeg / magic-from-file path agrees with the
-            // header.
-            const extByType: Record<string, string> = {
-              'image/jpeg': 'jpg',
-              'image/png': 'png',
-              'image/gif': 'gif',
-              'image/webp': 'webp',
-              'image/heic': 'heic',
-              'image/heif': 'heif',
-            };
-            const ext = extByType[contentType] || 'jpg';
-            name = `post-image-${i + 1}.${ext}`;
+
+            if (detectedType === 'image/heic' || detectedType === 'image/heif') {
+              // pillow-heif on the server's worker (v0.8.0) intermittently fails
+              // to decode some iOS HEIC variants — Live Photos, multi-image
+              // HEIC containers, modern iOS-17+ encoder output — surfacing as
+              // PIL.UnidentifiedImageError inside the worker and leaving the
+              // post stranded in STATUS_PROCESSING with no media attached.
+              // Convert to JPEG client-side BEFORE upload as a safety net.
+              // Quality is not a concern here: the server's PostImage
+              // ProcessedImageField re-encodes everything to JPEG q=80 at
+              // 1024 px anyway, so the final stored image is the same JPEG
+              // whether we convert client-side at q=1.0 or let the server
+              // do it. Pinning maxDimension=0 means no resize.
+              finalUri = await normalizeImageForUpload(uri, {
+                compress: 1.0,
+                maxDimension: 0,
+              });
+              contentType = 'image/jpeg';
+              name = `post-image-${i + 1}.jpg`;
+            } else {
+              contentType = detectedType;
+              // Keep the extension consistent with the type we declare so
+              // the server's ffmpeg / magic-from-file path agrees with
+              // the header.
+              const extByType: Record<string, string> = {
+                'image/jpeg': 'jpg',
+                'image/png': 'png',
+                'image/gif': 'gif',
+                'image/webp': 'webp',
+              };
+              const ext = extByType[contentType] || 'jpg';
+              name = `post-image-${i + 1}.${ext}`;
+            }
           }
           setUploadStatus({ index: i, total: imageUris.length, fraction: 0 });
           const token_ = await uploadMediaDirect({
