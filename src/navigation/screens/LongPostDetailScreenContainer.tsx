@@ -315,10 +315,19 @@ export default function LongPostDetailScreenContainer() {
     setComposerTarget(null);
   }, [composerSubmitting]);
   const submitComposer = useCallback(async () => {
-    if (!post || !composerTarget || !composerDraft.trim() || composerSubmitting) return;
+    if (!post || !composerTarget || composerSubmitting) return;
+    // Allow media-only comments (no text) to match the short-post composer
+    // — the hook accepts an empty text as long as a draft image / GIF is
+    // attached for the same (postId / replyCommentId).
+    const postIdNum = (post as any)?.id as number | undefined;
+    const isReplyComposer = composerTarget.kind === 'reply';
+    const hasMedia = isReplyComposer
+      ? !!comments.draftReplyMediaByCommentId[composerTarget.commentId]?.uri
+      : (postIdNum != null && !!comments.draftCommentMediaByPostId[postIdNum]?.uri);
+    if (!composerDraft.trim() && !hasMedia) return;
     setComposerSubmitting(true);
     try {
-      if (composerTarget.kind === 'reply') {
+      if (isReplyComposer) {
         await comments.submitReply((post as any).id, composerTarget.commentId, composerDraft);
       } else {
         await comments.submitComment((post as any).id, composerDraft);
@@ -681,11 +690,18 @@ export default function LongPostDetailScreenContainer() {
         <View style={styles.composerOverlay} pointerEvents="box-none">
           <Pressable style={styles.composerBackdrop} onPress={closeComposer} />
           <KeyboardAvoidingView
-            // Android no-op fix — see PostDetailModal composer note.
             // 'padding' on both platforms: composer is an overlay anchored
             // to flex-end of an absolute backdrop, so adding bottom padding
             // pushes the composer up above the keyboard.
+            //
+            // keyboardVerticalOffset matches the short-post composer in
+            // PostDetailModal — iOS reports the keyboard frame WITHOUT the
+            // predictive-text suggestion bar, so on small iPhones (15 Pro
+            // and smaller) the Cancel/Reply buttons end up clipped about
+            // 40 pt past the visible bottom unless we top up the offset.
+            // Android needs a slightly larger nudge (status-bar inset).
             behavior="padding"
+            keyboardVerticalOffset={Platform.OS === 'android' ? 48 : 40}
             style={styles.composerKeyboardWrap}
           >
             <View
@@ -761,10 +777,108 @@ export default function LongPostDetailScreenContainer() {
                   </View>
                 );
               })() : null}
+              {/* Photo / Paste / GIF row — same affordances the short-post
+                  composer in PostDetailModal exposes. Photo and GIF
+                  delegate to useCommentsData; the hook routes pick / paste
+                  / gif-picker actions and the draft media is automatically
+                  picked up by submitComment / submitReply when they fire,
+                  so no additional plumbing is needed at submit time. */}
+              {(() => {
+                const isReplyComposer = composerTarget?.kind === 'reply';
+                const postIdNum = (post as any)?.id as number | undefined;
+                const draftMedia = composerTarget
+                  ? (isReplyComposer
+                      ? comments.draftReplyMediaByCommentId[composerTarget.commentId]
+                      : (postIdNum != null ? comments.draftCommentMediaByPostId[postIdNum] : null))
+                  : null;
+                return (
+                  <>
+                    <View style={styles.composerMediaActions}>
+                      <TouchableOpacity
+                        style={[styles.composerMediaButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        onPress={() => {
+                          if (isReplyComposer) void comments.pickDraftReplyImage(composerTarget!.commentId);
+                          else if (postIdNum != null) void comments.pickDraftCommentImage(postIdNum);
+                        }}
+                        disabled={composerSubmitting}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="image-outline" size={14} color={c.textSecondary} />
+                        <Text style={[styles.composerMediaButtonText, { color: c.textSecondary }]}>
+                          {t('home.photoAction', { defaultValue: 'Photo' })}
+                        </Text>
+                      </TouchableOpacity>
+                      {Platform.OS !== 'web' ? (
+                        <TouchableOpacity
+                          style={[styles.composerMediaButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                          onPress={() => {
+                            if (isReplyComposer) void comments.pasteDraftReplyImage(composerTarget!.commentId);
+                            else if (postIdNum != null) void comments.pasteDraftCommentImage(postIdNum);
+                          }}
+                          disabled={composerSubmitting}
+                          activeOpacity={0.85}
+                        >
+                          <MaterialCommunityIcons name="content-paste" size={14} color={c.textSecondary} />
+                          <Text style={[styles.composerMediaButtonText, { color: c.textSecondary }]}>
+                            {t('home.pasteAction', { defaultValue: 'Paste' })}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        style={[styles.composerMediaButton, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                        onPress={() => {
+                          if (isReplyComposer) void comments.setDraftReplyGif(composerTarget!.commentId);
+                          else if (postIdNum != null) void comments.setDraftCommentGif(postIdNum);
+                        }}
+                        disabled={composerSubmitting}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialCommunityIcons name="file-gif-box" size={14} color={c.textSecondary} />
+                        <Text style={[styles.composerMediaButtonText, { color: c.textSecondary }]}>GIF</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {draftMedia?.uri ? (
+                      <View style={styles.composerDraftMediaWrap}>
+                        <View style={[styles.composerDraftMediaThumb, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
+                          <Image source={{ uri: draftMedia.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          {draftMedia.kind === 'gif' ? (
+                            <View style={[styles.composerDraftMediaGifTag, { backgroundColor: c.primary }]}>
+                              <Text style={styles.composerDraftMediaGifTagText}>GIF</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            if (isReplyComposer) comments.clearDraftReplyMedia(composerTarget!.commentId);
+                            else if (postIdNum != null) comments.clearDraftCommentMedia(postIdNum);
+                          }}
+                          style={[styles.composerDraftMediaRemove, { borderColor: c.border, backgroundColor: c.surface }]}
+                          hitSlop={8}
+                          accessibilityLabel={t('home.removeMediaAction', { defaultValue: 'Remove attached media' })}
+                        >
+                          <MaterialCommunityIcons name="close" size={14} color={c.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </>
+                );
+              })()}
+
               <MentionHashtagInput
                 style={[
                   styles.composerInput,
-                  { borderColor: c.inputBorder, backgroundColor: c.inputBackground, color: c.textPrimary },
+                  {
+                    borderColor: c.inputBorder,
+                    backgroundColor: c.inputBackground,
+                    color: c.textPrimary,
+                    // Halve the minHeight on short viewports (4.7"/5.4" iPhones,
+                    // iPhone 15 Pro / mini class) so the photo / paste / gif
+                    // row + the input + the Submit button reliably stay
+                    // above the keyboard. Bigger phones keep the comfortable
+                    // 120pt area.
+                    minHeight: screenHeight < 760 ? 80 : 120,
+                  },
                 ]}
                 value={composerDraft}
                 onChangeText={setComposerDraft}
@@ -776,26 +890,42 @@ export default function LongPostDetailScreenContainer() {
                 autoFocus
                 editable={!composerSubmitting}
               />
+              {(() => {
+                // Enable the submit button on text OR media — must match
+                // the gate inside submitComposer above. Without this the
+                // user can attach a photo/GIF and the button stays grey
+                // because composerDraft is empty.
+                const postIdNum = (post as any)?.id as number | undefined;
+                const isReplyComposer = composerTarget?.kind === 'reply';
+                const hasMedia = composerTarget
+                  ? (isReplyComposer
+                      ? !!comments.draftReplyMediaByCommentId[composerTarget.commentId]?.uri
+                      : (postIdNum != null && !!comments.draftCommentMediaByPostId[postIdNum]?.uri))
+                  : false;
+                const enabled = (!!composerDraft.trim() || hasMedia) && !composerSubmitting;
+                return (
               <TouchableOpacity
                 style={[
                   styles.composerSubmit,
                   {
-                    backgroundColor: composerDraft.trim() && !composerSubmitting ? c.primary : c.inputBackground,
+                    backgroundColor: enabled ? c.primary : c.inputBackground,
                     borderColor: c.border,
                   },
                 ]}
                 activeOpacity={0.85}
-                disabled={!composerDraft.trim() || composerSubmitting}
+                disabled={!enabled}
                 onPress={() => void submitComposer()}
               >
                 {composerSubmitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={[styles.composerSubmitText, { color: composerDraft.trim() ? '#fff' : c.textMuted }]}>
+                  <Text style={[styles.composerSubmitText, { color: enabled ? '#fff' : c.textMuted }]}>
                     {t('home.commentPostAction', { defaultValue: 'Comment' })}
                   </Text>
                 )}
               </TouchableOpacity>
+                );
+              })()}
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -1262,6 +1392,60 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     minHeight: 120,
     textAlignVertical: 'top' as const,
+  },
+  composerMediaActions: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  composerMediaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 4,
+  },
+  composerMediaButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  composerDraftMediaWrap: {
+    width: 120,
+    height: 120,
+    alignSelf: 'flex-start',
+  },
+  composerDraftMediaThumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  composerDraftMediaGifTag: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  composerDraftMediaGifTagText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  composerDraftMediaRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   composerSubmit: {
     borderWidth: 1,
